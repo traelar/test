@@ -1,4 +1,4 @@
-name: Build Clear Choice v1.2 Release
+name: Build Clear Choice v1.2.1 Release
 
 on:
   push:
@@ -7,19 +7,24 @@ on:
 
 jobs:
   android:
-    name: Android Release APK
+    name: Android v1.2.1 Release APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble verified v1.2 source
+      - name: Reassemble and patch verified v1.2.1 source
         shell: bash
         run: |
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
           cp build-source/v120-styles.raw00 styles.css
+          python build-source/v121-patch1.py
+          python build-source/v121-patch2.py
           node --check app.js
-          test "$(sha256sum app.js | awk '{print $1}')" = "d2e2612be79d7e141afd3b4924b7b9f581e7d538b14658fc6456b44647386925"
-          test "$(sha256sum index.html | awk '{print $1}')" = "bf90871f70851bf77668971d97f5c946c5f6aee5c6ae7bfec57b1dc580889442"
+          test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
+          test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "0a8165a7271761f342c13f6a3d890800a83a52584decd534482e5bb744f69722"
+          test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
+          test "$(node -p "require('./package.json').version")" = "1.2.1"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -37,8 +42,8 @@ jobs:
           cp index.html styles.css app.js config.js manifest.json icon.svg service-worker.js www/
           npx cap add android
           npx cap sync android
-          sed -i 's/versionCode 1/versionCode 120/' android/app/build.gradle
-          sed -i 's/versionName "1.0"/versionName "1.2.0"/' android/app/build.gradle
+          sed -i 's/versionCode 1/versionCode 121/' android/app/build.gradle
+          sed -i 's/versionName "1.0"/versionName "1.2.1"/' android/app/build.gradle
           python - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
@@ -61,33 +66,38 @@ jobs:
           ./gradlew assembleRelease
           cd ..
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
           cp "$BT/lib/apksigner.jar" apksigner.jar
-          test -s Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+          test -s Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
           test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-v1.2-Release-Unsigned
+          name: Clear-Choice-Cleaning-v1.2.1-Release-Unsigned
           path: |
-            Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+            Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
             apksigner.jar
           if-no-files-found: error
 
   windows:
-    name: Windows v1.2 EXE
+    name: Windows v1.2.1 EXE
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble verified v1.2 source
+      - name: Reassemble and patch verified v1.2.1 source
         shell: bash
         run: |
           sed -i 's/\r$//' build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 build-source/v120-styles.raw00
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
           cp build-source/v120-styles.raw00 styles.css
+          python build-source/v121-patch1.py
+          python build-source/v121-patch2.py
           node --check app.js
-          test "$(sha256sum app.js | awk '{print $1}')" = "d2e2612be79d7e141afd3b4924b7b9f581e7d538b14658fc6456b44647386925"
-          test "$(sha256sum index.html | awk '{print $1}')" = "bf90871f70851bf77668971d97f5c946c5f6aee5c6ae7bfec57b1dc580889442"
+          test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
+          test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "0a8165a7271761f342c13f6a3d890800a83a52584decd534482e5bb744f69722"
+          test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
+          test "$(node -p "require('./package.json').version")" = "1.2.1"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -97,6 +107,6 @@ jobs:
         run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-Windows-v1.2
+          name: Clear-Choice-Cleaning-Windows-v1.2.1
           path: dist/*.exe
           if-no-files-found: error
