@@ -1,0 +1,80 @@
+Name:$('#customerFirstName').value.trim(), lastName:$('#customerLastName').value.trim(), phone:$('#customerPhone').value.trim(), email:$('#customerEmail').value.trim(),
+      address:$('#customerAddress').value.trim(), city:$('#customerCity').value.trim(), state:$('#customerState').value.trim().toUpperCase(), zip:$('#customerZip').value.trim(), price:Number($('#customerPrice').value)||0,
+      frequency:$('#customerFrequency').value, paymentPreference:$('#customerPayment').value.trim(), pets:$('#customerPets').value.trim(), access:$('#customerAccess').value.trim(), supplies:$('#customerSupplies').value.trim(), expectedMinutes:numberOrZero($('#customerExpectedMinutes').value), driveMinutes:numberOrZero($('#customerDriveMinutes').value), checklist:$('#customerChecklist').value.trim(), notes:$('#customerNotes').value.trim(),
+      textConsent:newConsent, consentDate, consentSource:$('#customerConsentSource').value, consentNote:$('#customerConsentNote').value.trim(), consentHistory:Array.isArray(existing?.consentHistory)?existing.consentHistory:[], updatedAt:new Date().toISOString()
+    };
+    if (!customer.firstName) { toast('First name is required.'); return; }
+    if (newConsent!==oldConsent || (!existing && newConsent!=='not_asked')) customer.consentHistory.push({status:newConsent,date:consentDate||todayISO(),source:customer.consentSource,note:customer.consentNote,recordedAt:new Date().toISOString()});
+    if(existing) state.customers=state.customers.map(c=>c.id===id?customer:c); else state.customers.push(customer);
+    $('#customerDialog').close(); saveState(); toast(existing?'Customer updated.':'Customer added.');
+  }
+
+  function renderCustomerHistory(c){
+    const summary=$('#customerPerformanceSummary'),list=$('#customerHistoryList'); if(!summary||!list)return;
+    if(!c){summary.innerHTML='<span>Save this customer to begin history.</span>';list.innerHTML='';return;}
+    const m=customerMetrics(c.id); summary.innerHTML=`<div><strong>${m.jobs?money(m.grossHourly)+'/hr':'—'}</strong><span>gross avg</span></div><div><strong>${m.jobs?money(m.netHourly)+'/hr':'—'}</strong><span>net avg</span></div><div><strong>${m.jobs?formatDuration(m.minutes/m.jobs):'—'}</strong><span>avg clean</span></div><div><strong>${m.miles.toFixed(1)}</strong><span>miles logged</span></div>`;
+    const apps=state.appointments.filter(a=>a.customerId===c.id).sort((a,b)=>`${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)).slice(0,10);
+    list.innerHTML=apps.length?apps.map(a=>`<div class="compact-item"><span><strong>${formatDate(a.date,{short:true})}</strong><small>${escapeHtml(a.status)} · ${money(a.price)}${durationMinutes(a)?` · ${formatDuration(durationMinutes(a))} · ${money(grossHourly(a))}/hr`:''}</small></span><span class="status ${a.payment==='paid'?'success':''}">${escapeHtml(a.payment||'')}</span></div>`).join(''):'<div class="empty">No appointment history yet.</div>';
+  }
+
+  function deleteCustomer() {
+    const id=$('#customerId').value; if(!id)return;
+    const c=customerById(id); if(!confirm(`Delete ${customerName(c)}? This will also delete their appointments and text log.`))return;
+    state.customers=state.customers.filter(c=>c.id!==id); state.appointments=state.appointments.filter(a=>a.customerId!==id); state.textLog=state.textLog.filter(t=>t.customerId!==id);
+    $('#customerDialog').close(); saveState(); toast('Customer deleted.');
+  }
+
+  function populateAppointmentCustomers(selected='') {
+    const sel=$('#appointmentCustomer');
+    sel.innerHTML=state.customers.length?[...state.customers].sort((a,b)=>customerName(a).localeCompare(customerName(b))).map(c=>`<option value="${c.id}">${escapeHtml(customerName(c))}</option>`).join(''):'<option value="">Add a customer first</option>';
+    if(selected)sel.value=selected;
+  }
+
+  function populateAppointmentVehicles(selected=''){const sel=$('#appointmentVehicle');if(!sel)return;const vehicles=state.settings.vehicles||[];sel.innerHTML=vehicles.length?vehicles.map(v=>`<option value="${v.id}">${escapeHtml(`${v.year} ${v.make} ${v.model} · ${v.mpgCombined||'—'} MPG`)}</option>`).join(''):'<option value="">No vehicle saved</option>';if(selected&&vehicleById(selected))sel.value=selected;}
+
+  function openAppointmentDialog(id='', prefillDate='') {
+    if(!state.customers.length){toast('Add a customer first.');openCustomerDialog();return;}
+    const a=id?appointmentById(id):null; $('#appointmentDialogTitle').textContent=a?'Edit Appointment':'New Appointment'; $('#appointmentId').value=a?.id||'';
+    populateAppointmentCustomers(a?.customerId||'');
+    $('#appointmentDate').value=a?.date||prefillDate||todayISO(); $('#appointmentTime').value=a?.time||'09:00'; $('#appointmentPrice').value=a?.price??customerById($('#appointmentCustomer').value)?.price??'';
+    $('#appointmentStatus').value=a?.status||'scheduled'; $('#appointmentPayment').value=a?.payment||'not_due'; $('#appointmentReminder').value=a?.reminder||'pending'; $('#appointmentMiles').value=a?.miles||''; $('#appointmentExpenses').value=a?.expenses||''; $('#appointmentFuelPrice').value=a?.fuelPrice||state.fuelSnapshot?.price||'';populateAppointmentVehicles(a?.vehicleId||state.settings.activeVehicleId||''); $('#appointmentNotes').value=a?.notes||''; $('#createNextOnComplete').checked=true;
+    $('#deleteAppointmentBtn').hidden=!a; renderWorkMode(a); $('#appointmentDialog').showModal(); startWorkTimerLoop();
+  }
+
+  function saveAppointmentFromForm(e) {
+    e.preventDefault(); const id=$('#appointmentId').value||uid(); const existing=appointmentById(id); const customerId=$('#appointmentCustomer').value; const c=customerById(customerId);
+    if(!c){toast('Select a customer.');return;}
+    const a={...(existing||{}),id,customerId,date:$('#appointmentDate').value,time:$('#appointmentTime').value,price:Number($('#appointmentPrice').value)||0,status:$('#appointmentStatus').value,payment:$('#appointmentPayment').value,reminder:$('#appointmentReminder').value,miles:numberOrZero($('#appointmentMiles').value),expenses:numberOrZero($('#appointmentExpenses').value),vehicleId:$('#appointmentVehicle').value||state.settings.activeVehicleId||'',fuelPrice:numberOrZero($('#appointmentFuelPrice').value)||numberOrZero(state.fuelSnapshot?.price),notes:$('#appointmentNotes').value.trim(),updatedAt:new Date().toISOString()};
+    if(!a.date||!a.time){toast('Date and time are required.');return;}
+    const dateChanged=existing&&(existing.date!==a.date||existing.time!==a.time);
+    if(existing) state.appointments=state.appointments.map(x=>x.id===id?a:x); else state.appointments.push(a);
+    if(dateChanged && confirm('Move all future scheduled cleanings for this customer by the same date/time change? Press Cancel to move only this cleaning.')) shiftFutureAppointments(existing,a);
+    if ($('#createNextOnComplete').checked && a.status==='completed' && existing?.status!=='completed') ensureNextAppointment(a,c);
+    $('#appointmentDialog').close(); saveState(); toast(existing?'Appointment updated.':'Appointment added.');
+  }
+
+  function shiftFutureAppointments(oldA,newA){
+    const dayDelta=dateDiffDays(newA.date,oldA.date); const timeChanged=newA.time!==oldA.time;
+    state.appointments.forEach(x=>{if(x.id!==oldA.id&&x.customerId===oldA.customerId&&x.date>oldA.date&&x.status==='scheduled'){if(dayDelta){const d=parseDate(x.date);d.setDate(d.getDate()+dayDelta);x.date=isoFromDate(d);}if(timeChanged)x.time=newA.time;x.updatedAt=new Date().toISOString();}});
+  }
+
+  function appointmentFromDialog(){const id=$('#appointmentId').value;return id?appointmentById(id):null;}
+  function setWorkButtonsDisabled(disabled){['#navigateAppointmentBtn','#callCustomerBtn','#onMyWayBtn','#scheduleLeaveReminderBtn','#arrivedBtn','#startCleaningBtn','#finishCleaningBtn','#skipCleaningBtn','#addWrittenNoteBtn'].forEach(sel=>{const el=$(sel);if(el)el.disabled=disabled;});}
+  function renderWorkMode(a){
+    const c=a?customerById(a.customerId):customerById($('#appointmentCustomer')?.value); const summary=$('#workRateSummary'),details=$('#workDetails'),checks=$('#appointmentChecklist');
+    if(!summary||!details||!checks)return;
+    if(!a){summary.innerHTML='<div><strong>Save first</strong><span>Work mode becomes available after the appointment is saved.</span></div>';details.innerHTML=c?`<div><strong>Address</strong><span>${escapeHtml(fullAddress(c)||'No address')}</span></div>`:'';checks.innerHTML='<div class="empty">Save the appointment to track checklist progress.</div>';setWorkButtonsDisabled(true);renderAttachments(null);return;}
+    setWorkButtonsDisabled(false);
+    const mins=durationMinutes(a), gross=mins?grossHourly(a):0, net=mins?netHourly(a):0;
+    summary.innerHTML=`<div><strong>${mins?formatDuration(mins):'—'}</strong><span>time</span></div><div><strong>${mins?money(gross)+'/hr':'—'}</strong><span>gross / hr</span></div><div><strong>${mins?money(net)+'/hr':'—'}</strong><span>net / hr</span></div><div><strong>${money(netRevenue(a))}</strong><span>job net</span></div>${state.settings.taxEstimateEnabled?`<div><strong>${money(taxReserveForAppointment(a))}</strong><span>tax reserve</span></div>`:''}`;
+    const cm=c?customerMetrics(c.id):{jobs:0,grossHourly:0,minutes:0};
+    const v=vehicleForAppointment(a);details.innerHTML=`<div><strong>Address</strong><span>${escapeHtml(fullAddress(c)||'No address')}</span></div>${c?.supplies?`<div><strong>Bring</strong><span>${escapeHtml(c.supplies)}</span></div>`:''}${c?.pets?`<div><strong>Pets</strong><span>${escapeHtml(c.pets)}</span></div>`:''}${c?.access?`<div><strong>Entry</strong><span>${escapeHtml(c.access)}</span></div>`:''}<div><strong>Vehicle</strong><span>${v?escapeHtml(`${v.year} ${v.make} ${v.model} · ${vehicleMpg(v)} MPG`):'No vehicle selected'}</span></div><div><strong>Fuel estimate</strong><span>${money(fuelCost(a))} · ${fuelPriceForAppointment(a)?money(fuelPriceForAppointment(a))+'/gal':'no price loaded'}</span></div>${a.routeMilesEstimate?`<div><strong>Route miles</strong><span>${numberOrZero(a.routeMilesEstimate).toFixed(1)} mi estimated from trip start to arrival</span></div>`:''}<div><strong>IRS mileage deduction</strong><span>${money(mileageCost(a))} · ${(irsMileageRateForDate(a.date)*100).toFixed(1)}¢/mi</span></div><div><strong>Planned drive</strong><span>${c?.driveMinutes?`${c.driveMinutes} min`:'Not set'}</span></div><div><strong>Customer avg</strong><span>${cm.jobs?`${money(cm.grossHourly)}/hr gross · ${money(cm.netHourly)}/hr net · ${formatDuration(cm.minutes/cm.jobs)}`:'No timed history yet'}</span></div>`;
+    const items=String(c?.checklist||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean); const done=a.checklistDone||{};
+    checks.innerHTML=items.length?items.map((item,i)=>`<label class="task-check"><input type="checkbox" data-check-index="${i}" ${done[i]?'checked':''}><span>${escapeHtml(item)}</span></label>`).join(''):'<div class="empty">No default checklist saved for this customer.</div>';
+    $('#startCleaningBtn').disabled=!!a.startedAt&&a.status==='in_progress'; $('#finishCleaningBtn').disabled=a.status==='completed'; $('#skipCleaningBtn').disabled=a.status==='completed';
+    renderWorkTimer(); renderAttachments(a);
+  }
+
+  function startWorkTimerLoop(){clearInterval(workTimerInterval);renderWorkTimer();workTimerInterval=setInterval(()=>{if($('#appointmentDialog')?.open)renderWorkTimer();else clearInterval(workTimerInterval);},1000);}
+  function renderWorkTimer(){const el=$('#liveTimer');if(!el)return;const a=appointmentFromDialog();if(!a){el.textContent='Not started';return;}if(a.status==='completed'){el.textContent=`Finished · ${formatDuration(durationMinutes(a))}`;return;}if(a.startedAt){const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(a.startedAt))/1000));const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;el.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}else el.textContent=a.arrivedAt?'Arrived · not started':'Not started';}
+  
