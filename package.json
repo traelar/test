@@ -1,0 +1,44 @@
+{
+  "name": "clear-choice-cleaning-manager",
+  "version": "1.1.0",
+  "description": "Clear Choice Cleaning customer, schedule, payment and text consent manager",
+  "main": "electron-main.cjs",
+  "author": "Clear Choice Cleaning",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "desktop": "electron .",
+    "build:win": "electron-builder --win portable",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.clearchoice.cleaningmanager",
+    "productName": "Clear Choice Cleaning Manager",
+    "asar": true,
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "config.js",
+      "manifest.json",
+      "icon.svg",
+      "service-worker.js",
+      "electron-main.cjs"
+    ],
+    "directories": {"output": "dist"},
+    "win": {
+      "target": [{"target": "portable", "arch": ["x64"]}],
+      "artifactName": "Clear-Choice-Cleaning-Manager-Windows-${version}.exe"
+    }
+  }
+}
