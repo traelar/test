@@ -39,6 +39,20 @@ jobs:
           npx cap sync android
           sed -i 's/versionCode 1/versionCode 120/' android/app/build.gradle
           sed -i 's/versionName "1.0"/versionName "1.2.0"/' android/app/build.gradle
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text(encoding='utf-8')
+          permissions = (
+              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
+              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
+          )
+          if 'android.permission.ACCESS_COARSE_LOCATION' not in s:
+              s = s.replace('    <application', permissions + '    <application', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          grep -q 'android.permission.ACCESS_COARSE_LOCATION' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.ACCESS_FINE_LOCATION' android/app/src/main/AndroidManifest.xml
       - name: Build aligned release APK
         shell: bash
         run: |
