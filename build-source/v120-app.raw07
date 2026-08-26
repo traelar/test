@@ -1,0 +1,28 @@
+ntmentDialog(row.dataset.editAppointment);return;}
+      const cal=e.target.closest('[data-calendar-date]'); if(cal){openAppointmentDialog('',cal.dataset.calendarDate);return;}
+      const compose=e.target.closest('[data-compose]'); if(compose&&!compose.disabled){openComposeForCustomer(compose.dataset.compose);return;}
+      const quickText=e.target.closest('[data-text-customer]'); if(quickText){e.stopPropagation();openComposeForCustomer(quickText.dataset.textCustomer);}
+    });
+    $('input[name="textConsent"]')?.form?.addEventListener('change',e=>{if(e.target.name==='textConsent'&&!$('#customerConsentDate').value)$('#customerConsentDate').value=todayISO();});
+    $('#openFullRouteBtn')?.addEventListener('click',openTodayRoute);$('#navigateAppointmentBtn')?.addEventListener('click',navigateCurrentAppointment);$('#callCustomerBtn')?.addEventListener('click',callCurrentCustomer);$('#onMyWayBtn')?.addEventListener('click',onMyWayCurrent);$('#scheduleLeaveReminderBtn')?.addEventListener('click',scheduleLeaveReminder);$('#arrivedBtn')?.addEventListener('click',arriveAtJob);$('#startCleaningBtn')?.addEventListener('click',startCleaning);$('#finishCleaningBtn')?.addEventListener('click',finishCleaning);$('#skipCleaningBtn')?.addEventListener('click',skipCleaning);$('#addWrittenNoteBtn')?.addEventListener('click',addWrittenNote);
+    $('#appointmentChecklist')?.addEventListener('change',addChecklistToggle);$('#appointmentPhotoInput')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)saveAttachmentFile(f,'photo');e.target.value='';});$('#appointmentAudioInput')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)saveAttachmentFile(f,'audio');e.target.value='';});
+    $('#vehicleYear')?.addEventListener('change',loadVehicleMakes);$('#vehicleMake')?.addEventListener('change',loadVehicleModels);$('#vehicleModel')?.addEventListener('change',loadVehicleOptions);$('#addVehicleBtn')?.addEventListener('click',addSelectedVehicle);$('#activeVehicle')?.addEventListener('change',e=>{state.settings.activeVehicleId=e.target.value;saveState();});$('#refreshFuelBtn')?.addEventListener('click',()=>fetchNearbyFuelPrices());$('#dashboardFuelRefresh')?.addEventListener('click',()=>fetchNearbyFuelPrices());
+    document.addEventListener('click',e=>{const nav=e.target.closest('[data-navigate-customer]');if(nav){e.stopPropagation();navigateToCustomer(customerById(nav.dataset.navigateCustomer));return;}const station=e.target.closest('[data-fuel-station]');if(station){e.stopPropagation();navigateFuelStation(station.dataset.fuelStation);return;}const att=e.target.closest('[data-open-attachment]');if(att){e.stopPropagation();openAttachment(att.dataset.openAttachment);}});
+
+    window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('#installBtn').hidden=false;});
+    $('#installBtn').addEventListener('click',async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$('#installBtn').hidden=true;});
+    window.addEventListener('appinstalled',()=>{$('#installBtn').hidden=true;toast('Clear Choice installed.');});
+    window.addEventListener('focus',()=>{if(cloudConfigured()&&loadAuth()?.access_token)syncCloud().catch(()=>{});});
+  }
+
+  async function init() {
+    bindEvents();
+    if(!isAndroidNative())$$('.android-only').forEach(el=>el.hidden=true);
+    renderAll();loadVehicleYears();
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+    if (cloudConfigured() && loadAuth()?.access_token) syncCloud().catch(console.warn);
+    const age=state.fuelSnapshot?.updatedAt?Date.now()-Date.parse(state.fuelSnapshot.updatedAt):Infinity;if(age>4*3600000){if(isAndroidNative()&&state.settings.googlePlacesApiKey)fetchNearbyFuelPrices({silent:true});else fetchReferenceFuelPrice(true);}
+  }
+
+  init();
+})();
