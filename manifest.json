@@ -1,0 +1,13 @@
+{
+  "name": "Clear Choice Cleaning Manager",
+  "short_name": "Clear Choice",
+  "description": "Customer records, cleaning schedule, reminders and payments.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fc",
+  "theme_color": "#5b53d6",
+  "icons": [
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
