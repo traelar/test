@@ -1,0 +1,74 @@
+aymentNote||'';
+    $('#calendarReminderMinutes').value=String(state.settings.calendarReminderMinutes||120);
+    $('#templateDayBefore').value=state.settings.templates.day_before||'';
+    $('#templateOnMyWay').value=state.settings.templates.on_my_way||'';
+    $('#templateComplete').value=state.settings.templates.complete||'';
+    renderCloudStatus();
+  }
+
+  function renderAll() {
+    renderHeader(); renderDashboard(); renderCustomers(); renderSchedule(); renderTextCenter(); renderPayments(); renderSettings();
+    const auth=loadAuth(); const pill=$('#syncPill');
+    pill.classList.toggle('cloud',!!auth?.access_token);
+    $('#syncPillText').textContent=auth?.access_token?'Cloud sync connected':'Saved on this device';
+  }
+
+  function openCustomerDialog(id='') {
+    const c = id ? customerById(id) : null;
+    $('#customerDialogTitle').textContent=c?'Edit Customer':'New Customer';
+    $('#customerId').value=c?.id||'';
+    $('#customerFirstName').value=c?.firstName||''; $('#customerLastName').value=c?.lastName||''; $('#customerPhone').value=c?.phone||''; $('#customerEmail').value=c?.email||'';
+    $('#customerAddress').value=c?.address||''; $('#customerCity').value=c?.city||''; $('#customerState').value=c?.state||'WI'; $('#customerZip').value=c?.zip||'';
+    $('#customerPrice').value=c?.price??''; $('#customerFrequency').value=c?.frequency||'biweekly'; $('#customerPayment').value=c?.paymentPreference||state.settings.defaultPaymentNote||'';
+    $('#customerPets').value=c?.pets||''; $('#customerAccess').value=c?.access||''; $('#customerNotes').value=c?.notes||'';
+    const consent=c?.textConsent||'not_asked'; const radio=$(`input[name="textConsent"][value="${consent}"]`); if(radio)radio.checked=true;
+    $('#customerConsentDate').value=c?.consentDate||''; $('#customerConsentSource').value=c?.consentSource||'not_recorded'; $('#customerConsentNote').value=c?.consentNote||'';
+    $('#deleteCustomerBtn').hidden=!c;
+    $('#customerDialog').showModal();
+  }
+
+  function saveCustomerFromForm(e) {
+    e.preventDefault();
+    const id=$('#customerId').value||uid(); const existing=customerById(id); const oldConsent=existing?.textConsent||'not_asked'; const newConsent=$('input[name="textConsent"]:checked')?.value||'not_asked';
+    const consentDate=$('#customerConsentDate').value || (newConsent!==oldConsent ? todayISO() : existing?.consentDate || '');
+    const customer={
+      ...(existing||{}), id, firstName:$('#customerFirstName').value.trim(), lastName:$('#customerLastName').value.trim(), phone:$('#customerPhone').value.trim(), email:$('#customerEmail').value.trim(),
+      address:$('#customerAddress').value.trim(), city:$('#customerCity').value.trim(), state:$('#customerState').value.trim().toUpperCase(), zip:$('#customerZip').value.trim(), price:Number($('#customerPrice').value)||0,
+      frequency:$('#customerFrequency').value, paymentPreference:$('#customerPayment').value.trim(), pets:$('#customerPets').value.trim(), access:$('#customerAccess').value.trim(), notes:$('#customerNotes').value.trim(),
+      textConsent:newConsent, consentDate, consentSource:$('#customerConsentSource').value, consentNote:$('#customerConsentNote').value.trim(), consentHistory:Array.isArray(existing?.consentHistory)?existing.consentHistory:[], updatedAt:new Date().toISOString()
+    };
+    if (!customer.firstName) { toast('First name is required.'); return; }
+    if (newConsent!==oldConsent || (!existing && newConsent!=='not_asked')) customer.consentHistory.push({status:newConsent,date:consentDate||todayISO(),source:customer.consentSource,note:customer.consentNote,recordedAt:new Date().toISOString()});
+    if(existing) state.customers=state.customers.map(c=>c.id===id?customer:c); else state.customers.push(customer);
+    $('#customerDialog').close(); saveState(); toast(existing?'Customer updated.':'Customer added.');
+  }
+
+  function deleteCustomer() {
+    const id=$('#customerId').value; if(!id)return;
+    const c=customerById(id); if(!confirm(`Delete ${customerName(c)}? This will also delete their appointments and text log.`))return;
+    state.customers=state.customers.filter(c=>c.id!==id); state.appointments=state.appointments.filter(a=>a.customerId!==id); state.textLog=state.textLog.filter(t=>t.customerId!==id);
+    $('#customerDialog').close(); saveState(); toast('Customer deleted.');
+  }
+
+  function populateAppointmentCustomers(selected='') {
+    const sel=$('#appointmentCustomer');
+    sel.innerHTML=state.customers.length?[...state.customers].sort((a,b)=>customerName(a).localeCompare(customerName(b))).map(c=>`<option value="${c.id}">${escapeHtml(customerName(c))}</option>`).join(''):'<option value="">Add a customer first</option>';
+    if(selected)sel.value=selected;
+  }
+
+  function openAppointmentDialog(id='', prefillDate='') {
+    if(!state.customers.length){toast('Add a customer first.');openCustomerDialog();return;}
+    const a=id?appointmentById(id):null; $('#appointmentDialogTitle').textContent=a?'Edit Appointment':'New Appointment'; $('#appointmentId').value=a?.id||'';
+    populateAppointmentCustomers(a?.customerId||'');
+    $('#appointmentDate').value=a?.date||prefillDate||todayISO(); $('#appointmentTime').value=a?.time||'09:00'; $('#appointmentPrice').value=a?.price??customerById($('#appointmentCustomer').value)?.price??'';
+    $('#appointmentStatus').value=a?.status||'scheduled'; $('#appointmentPayment').value=a?.payment||'not_due'; $('#appointmentReminder').value=a?.reminder||'pending'; $('#appointmentNotes').value=a?.notes||''; $('#createNextOnComplete').checked=true;
+    $('#deleteAppointmentBtn').hidden=!a; $('#appointmentDialog').showModal();
+  }
+
+  function saveAppointmentFromForm(e) {
+    e.preventDefault(); const id=$('#appointmentId').value||uid(); const existing=appointmentById(id); const customerId=$('#appointmentCustomer').value; const c=customerById(customerId);
+    if(!c){toast('Select a customer.');return;}
+    const a={...(existing||{}),id,customerId,date:$('#appointmentDate').value,time:$('#appointmentTime').value,price:Number($('#appointmentPrice').value)||0,status:$('#appointmentStatus').value,payment:$('#appointmentPayment').value,reminder:$('#appointmentReminder').value,notes:$('#appointmentNotes').value.trim(),updatedAt:new Date().toISOString()};
+    if(!a.date||!a.time){toast('Date and time are required.');return;}
+    if(existing) state.appointments=state.appointments.map(x=>x.id===id?a:x); else state.appointments.push(a);
+    if ($('#createNextOnComplete').checked && a.st
