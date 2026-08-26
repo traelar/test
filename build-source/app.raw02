@@ -1,0 +1,78 @@
+''}" title="${escapeHtml(customerName(c))} ${formatTime(a.time)}">${escapeHtml(customerName(c))} ${formatTime(a.time)}</div>`}).join('')}${apps.length>3?`<div class="cal-event">+${apps.length-3} more</div>`:''}</button>`;
+    }
+    $('#calendarGrid').innerHTML=html;
+
+    const upcoming = state.appointments.filter(a=>a.date>=today && a.status!=='cancelled').sort((a,b)=>`${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)).slice(0,20);
+    $('#upcomingList').innerHTML = upcoming.length ? upcoming.map(a=>`<div class="appointment-row" data-edit-appointment="${a.id}"><div class="appointment-time">${formatDate(a.date,{short:true})}<br><small>${formatTime(a.time)}</small></div><div class="appointment-meta"><strong>${escapeHtml(customerName(customerById(a.customerId)))}</strong><small>${money(a.price)} · ${escapeHtml(a.notes||'Cleaning')}</small></div><div class="row-actions"><span class="status ${a.status==='completed'?'success':''}">${escapeHtml(a.status)}</span><button class="secondary small" data-edit-appointment-btn="${a.id}">Open</button></div></div>`).join('') : '<div class="empty">No upcoming appointments.</div>';
+  }
+
+  function renderTextCenter() {
+    const today = todayISO();
+    const candidates = state.appointments.filter(a=>a.status==='scheduled' && a.date>=today && dateDiffDays(a.date,today)<=7).sort((a,b)=>`${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    const ready = candidates.filter(a=>{const c=customerById(a.customerId);return c?.textConsent==='opted_in' && !!normalizePhone(c?.phone)});
+    const blocked = candidates.filter(a=>!ready.includes(a));
+    const list = $('#reminderQueue');
+    const renderItem = (a, eligible) => {
+      const c=customerById(a.customerId); const consent=c?.textConsent||'not_asked';
+      const why=consent==='opted_out'?'DO NOT TEXT':consent==='not_asked'?'Ask before texting':!c?.phone?'No phone number':a.reminder==='sent'?'Reminder marked sent':'Ready to text';
+      return `<div class="reminder-item"><div><h3>${escapeHtml(customerName(c))} · ${formatDate(a.date,{short:true})} at ${formatTime(a.time)}</h3><p>${escapeHtml(why)} · ${money(a.price)}</p></div><div class="row-actions"><span class="pill ${consent}">${escapeHtml(consentLabel(consent))}</span>${eligible?`<button class="secondary small" data-compose="${c?.id||''}">Prepare Text</button>`:''}</div></div>`;
+    };
+    if (!candidates.length) list.innerHTML='<div class="empty">No reminder candidates in the next 7 days.</div>';
+    else {
+      let html = ready.length ? ready.map(a=>renderItem(a,true)).join('') : '<div class="empty">No customers are ready for texting right now.</div>';
+      if (blocked.length) html += `<div style="margin-top:18px"><strong>Needs Attention / Not Textable</strong><p style="margin:4px 0 10px;color:var(--muted);font-size:12px">These are kept out of the ready-to-text queue.</p></div>${blocked.map(a=>renderItem(a,false)).join('')}`;
+      list.innerHTML=html;
+    }
+
+    const sel = $('#composeCustomer');
+    const prior = sel.value;
+    sel.innerHTML = state.customers.length ? [...state.customers].sort((a,b)=>customerName(a).localeCompare(customerName(b))).map(c=>`<option value="${c.id}">${escapeHtml(customerName(c))}</option>`).join('') : '<option value="">No customers yet</option>';
+    if (prior && customerById(prior)) sel.value=prior;
+    updateCompose();
+  }
+
+  function updateCompose() {
+    const customer = customerById($('#composeCustomer').value);
+    const type = $('#composeTemplate').value;
+    const appt = customer ? getUpcomingAppointment(customer.id) : null;
+    if (type !== 'custom') $('#composeMessage').value = renderTemplate(type, customer, appt);
+    refreshComposeEligibility();
+  }
+
+  function refreshComposeEligibility() {
+    const customer = customerById($('#composeCustomer').value);
+    const consent = customer?.textConsent || 'not_asked';
+    const box = $('#composeConsent');
+    const link = $('#openSmsLink'); const mark=$('#markTextSent'); const copy=$('#copyTextBtn');
+    let eligible = false;
+    if (!customer) { box.className='consent-box warn'; box.textContent='Add a customer before preparing a text.'; }
+    else if (consent === 'opted_out') { box.className='consent-box bad'; box.textContent='DO NOT TEXT — this customer has opted out. Update their customer record only if they ask to opt back in.'; }
+    else if (consent === 'not_asked') { box.className='consent-box warn'; box.textContent='Text permission not recorded. Ask the customer first, then mark them Opted In if they agree.'; }
+    else if (!normalizePhone(customer.phone)) { box.className='consent-box warn'; box.textContent='This customer is opted in, but no phone number is saved.'; }
+    else { eligible=true; box.className='consent-box good'; box.textContent=`Opted In${customer.consentDate ? ` on ${formatDate(customer.consentDate,{short:true})}` : ''}. Prepared text actions are available.`; }
+    link.classList.toggle('disabled',!eligible); mark.disabled=!eligible; copy.disabled=!eligible;
+    if (eligible) link.href = buildSmsHref(customer.phone, $('#composeMessage').value);
+    else link.href='#';
+  }
+
+  function buildSmsHref(phone, body) {
+    const p = normalizePhone(phone);
+    const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    return `sms:${p}${isiOS?'&':'?'}body=${encodeURIComponent(body)}`;
+  }
+
+  function renderPayments() {
+    const now=new Date(); const y=now.getFullYear(),m=now.getMonth();
+    const monthApps=state.appointments.filter(a=>{const d=parseDate(a.date);return d&&d.getFullYear()===y&&d.getMonth()===m&&a.status!=='cancelled'});
+    $('#payScheduled').textContent=money(monthApps.reduce((s,a)=>s+Number(a.price||0),0));
+    $('#payPaid').textContent=money(monthApps.filter(a=>a.payment==='paid').reduce((s,a)=>s+Number(a.price||0),0));
+    $('#payOutstanding').textContent=money(state.appointments.filter(a=>a.payment==='unpaid'&&a.status!=='cancelled').reduce((s,a)=>s+Number(a.price||0),0));
+    const all=[...state.appointments].sort((a,b)=>`${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)).slice(0,50);
+    $('#paymentList').innerHTML=all.length?all.map(a=>appointmentRowHtml(a,false)).join(''):'<div class="empty">No payment history yet.</div>';
+  }
+
+  function renderSettings() {
+    $('#businessName').value=state.settings.businessName||'';
+    $('#ownerName').value=state.settings.ownerName||'';
+    $('#ownerPhone').value=state.settings.ownerPhone||'';
+    $('#defaultPaymentNote').value=state.settings.defaultP
