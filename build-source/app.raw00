@@ -1,0 +1,155 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'clear_choice_cleaning_manager_v1';
+  const AUTH_KEY = 'clear_choice_supabase_auth_v1';
+  const CONFIG = window.CLEAR_CHOICE_CONFIG || { supabaseUrl: '', supabaseAnonKey: '' };
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+  const parseDate = (iso) => {
+    const [y,m,d] = String(iso || '').split('-').map(Number);
+    return y && m && d ? new Date(y, m - 1, d) : null;
+  };
+  const isoFromDate = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  const formatDate = (iso, opts = {}) => {
+    const d = parseDate(iso);
+    if (!d) return 'No date';
+    return new Intl.DateTimeFormat('en-US', opts.short ? { month:'short', day:'numeric' } : { weekday:'short', month:'short', day:'numeric', year:'numeric' }).format(d);
+  };
+  const formatTime = (time) => {
+    if (!time) return 'No time';
+    const [h, m] = time.split(':').map(Number);
+    const d = new Date(2000,0,1,h,m || 0);
+    return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(d);
+  };
+  const money = (n) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(n)||0);
+  const escapeHtml = (s) => String(s ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  const normalizePhone = (s) => String(s || '').replace(/[^\d+]/g, '');
+  const dateDiffDays = (a, b) => Math.round((parseDate(a) - parseDate(b)) / 86400000);
+
+  const defaultState = () => ({
+    version: 1,
+    settings: {
+      businessName: 'Clear Choice Cleaning',
+      ownerName: '',
+      ownerPhone: '',
+      defaultPaymentNote: '',
+      calendarReminderMinutes: 120,
+      templates: {
+        day_before: 'Hi {first_name}! Just a reminder that your cleaning with {business_name} is scheduled for {date} at {time}. Please let me know if anything has changed. Thank you!',
+        on_my_way: "Hi {first_name}! I'm on my way to your cleaning now. See you soon! - {business_name}",
+        complete: 'Hi {first_name}! Your cleaning is finished. Thank you again and have a great day! - {business_name}'
+      }
+    },
+    customers: [],
+    appointments: [],
+    textLog: [],
+    quickNotes: '',
+    updatedAt: new Date().toISOString()
+  });
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const base = defaultState();
+      return {
+        ...base,
+        ...parsed,
+        settings: {
+          ...base.settings,
+          ...(parsed.settings || {}),
+          templates: { ...base.settings.templates, ...((parsed.settings || {}).templates || {}) }
+        },
+        customers: Array.isArray(parsed.customers) ? parsed.customers : [],
+        appointments: Array.isArray(parsed.appointments) ? parsed.appointments : [],
+        textLog: Array.isArray(parsed.textLog) ? parsed.textLog : []
+      };
+    } catch (err) {
+      console.error(err);
+      return defaultState();
+    }
+  }
+
+  let state = loadState();
+  let calendarCursor = new Date();
+  calendarCursor.setDate(1);
+  let deferredInstallPrompt = null;
+  let cloudPushTimer = null;
+
+  function saveState({ cloud = true } = {}) {
+    state.updatedAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    if (cloud) scheduleCloudPush();
+  }
+
+  function toast(message) {
+    const el = $('#toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  function customerName(c) {
+    return [c?.firstName, c?.lastName].filter(Boolean).join(' ') || 'Unnamed Customer';
+  }
+
+  function customerById(id) { return state.customers.find(c => c.id === id); }
+  function appointmentById(id) { return state.appointments.find(a => a.id === id); }
+
+  function consentLabel(status) {
+    return status === 'opted_in' ? 'Opted In' : status === 'opted_out' ? 'Opted Out' : 'Not Asked';
+  }
+
+  function nextDateFromFrequency(iso, frequency) {
+    const d = parseDate(iso);
+    if (!d) return null;
+    if (frequency === 'weekly') d.setDate(d.getDate()+7);
+    else if (frequency === 'biweekly') d.setDate(d.getDate()+14);
+    else if (frequency === 'four_weeks') d.setDate(d.getDate()+28);
+    else if (frequency === 'monthly') d.setMonth(d.getMonth()+1);
+    else return null;
+    return isoFromDate(d);
+  }
+
+  function frequencyLabel(value) {
+    return ({weekly:'Weekly',biweekly:'Every 2 Weeks',four_weeks:'Every 4 Weeks',monthly:'Monthly',one_time:'One-Time',custom:'Custom'})[value] || 'Custom';
+  }
+
+  function renderTemplate(type, customer, appointment) {
+    const raw = state.settings.templates[type] || '';
+    return raw
+      .replaceAll('{first_name}', customer?.firstName || 'there')
+      .replaceAll('{date}', appointment?.date ? formatDate(appointment.date, {short:true}) : 'your scheduled date')
+      .replaceAll('{time}', appointment?.time ? formatTime(appointment.time) : 'your scheduled time')
+      .replaceAll('{business_name}', state.settings.businessName || 'our cleaning business');
+  }
+
+  function getUpcomingAppointment(customerId, fromDate = todayISO()) {
+    return state.appointments
+      .filter(a => a.customerId === customerId && a.status !== 'cancelled' && a.date >= fromDate)
+      .sort((a,b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))[0] || null;
+  }
+
+  function showView(name) {
+    $$('.view').forEach(v => v.classList.toggle('active', v.id === `view-${name}`));
+    $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+    closeDrawer();
+    if (name === 'schedule') renderSchedule();
+    if (name === 'texts') renderTextCenter();
+  }
+
+  function openDrawer() { $('#sidebar').classList.add('open'); $('#drawerScrim').classList.add('show'); }
+  function closeDrawer() { $('#sidebar').classList.remove('open'); $('#drawerScrim').classList.remove('show'); }
+
+  function renderHeader() {
+    const d = new Da
