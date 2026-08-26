@@ -1,0 +1,120 @@
+ction renderTextCenter() {
+    const today = todayISO();
+    const candidates = state.appointments.filter(a=>a.status==='scheduled' && a.date>=today && dateDiffDays(a.date,today)<=7).sort((a,b)=>`${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    const ready = candidates.filter(a=>{const c=customerById(a.customerId);return c?.textConsent==='opted_in' && !!normalizePhone(c?.phone)});
+    const blocked = candidates.filter(a=>!ready.includes(a));
+    const list = $('#reminderQueue');
+    const renderItem = (a, eligible) => {
+      const c=customerById(a.customerId); const consent=c?.textConsent||'not_asked';
+      const why=consent==='opted_out'?'DO NOT TEXT':consent==='not_asked'?'Ask before texting':!c?.phone?'No phone number':a.reminder==='sent'?'Reminder marked sent':'Ready to text';
+      return `<div class="reminder-item"><div><h3>${escapeHtml(customerName(c))} · ${formatDate(a.date,{short:true})} at ${formatTime(a.time)}</h3><p>${escapeHtml(why)} · ${money(a.price)}</p></div><div class="row-actions"><span class="pill ${consent}">${escapeHtml(consentLabel(consent))}</span>${eligible?`<button class="secondary small" data-compose="${c?.id||''}">Prepare Text</button>`:''}</div></div>`;
+    };
+    if (!candidates.length) list.innerHTML='<div class="empty">No reminder candidates in the next 7 days.</div>';
+    else {
+      let html = ready.length ? ready.map(a=>renderItem(a,true)).join('') : '<div class="empty">No customers are ready for texting right now.</div>';
+      if (blocked.length) html += `<div style="margin-top:18px"><strong>Needs Attention / Not Textable</strong><p style="margin:4px 0 10px;color:var(--muted);font-size:12px">These are kept out of the ready-to-text queue.</p></div>${blocked.map(a=>renderItem(a,false)).join('')}`;
+      list.innerHTML=html;
+    }
+
+    const sel = $('#composeCustomer');
+    const prior = sel.value;
+    sel.innerHTML = state.customers.length ? [...state.customers].sort((a,b)=>customerName(a).localeCompare(customerName(b))).map(c=>`<option value="${c.id}">${escapeHtml(customerName(c))}</option>`).join('') : '<option value="">No customers yet</option>';
+    if (prior && customerById(prior)) sel.value=prior;
+    updateCompose();
+  }
+
+  function updateCompose() {
+    const customer = customerById($('#composeCustomer').value);
+    const type = $('#composeTemplate').value;
+    const appt = customer ? getUpcomingAppointment(customer.id) : null;
+    if (type !== 'custom') $('#composeMessage').value = renderTemplate(type, customer, appt);
+    refreshComposeEligibility();
+  }
+
+  function refreshComposeEligibility() {
+    const customer = customerById($('#composeCustomer').value);
+    const consent = customer?.textConsent || 'not_asked';
+    const box = $('#composeConsent');
+    const link = $('#openSmsLink'); const mark=$('#markTextSent'); const copy=$('#copyTextBtn');
+    let eligible = false;
+    if (!customer) { box.className='consent-box warn'; box.textContent='Add a customer before preparing a text.'; }
+    else if (consent === 'opted_out') { box.className='consent-box bad'; box.textContent='DO NOT TEXT — this customer has opted out. Update their customer record only if they ask to opt back in.'; }
+    else if (consent === 'not_asked') { box.className='consent-box warn'; box.textContent='Text permission not recorded. Ask the customer first, then mark them Opted In if they agree.'; }
+    else if (!normalizePhone(customer.phone)) { box.className='consent-box warn'; box.textContent='This customer is opted in, but no phone number is saved.'; }
+    else { eligible=true; box.className='consent-box good'; box.textContent=`Opted In${customer.consentDate ? ` on ${formatDate(customer.consentDate,{short:true})}` : ''}. Prepared text actions are available.`; }
+    link.classList.toggle('disabled',!eligible); mark.disabled=!eligible; copy.disabled=!eligible;
+    if (eligible) link.href = buildSmsHref(customer.phone, $('#composeMessage').value);
+    else link.href='#';
+  }
+
+  function buildSmsHref(phone, body) {
+    const p = normalizePhone(phone);
+    const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    return `sms:${p}${isiOS?'&':'?'}body=${encodeURIComponent(body)}`;
+  }
+
+  function renderPayments() {
+    const now=new Date(); const y=now.getFullYear(),m=now.getMonth();
+    const monthApps=state.appointments.filter(a=>{const d=parseDate(a.date);return d&&d.getFullYear()===y&&d.getMonth()===m&&a.status!=='cancelled'});
+    $('#payScheduled').textContent=money(monthApps.reduce((s,a)=>s+Number(a.price||0),0));
+    $('#payPaid').textContent=money(monthApps.filter(a=>a.payment==='paid').reduce((s,a)=>s+Number(a.price||0),0));
+    $('#payOutstanding').textContent=money(state.appointments.filter(a=>a.payment==='unpaid'&&a.status!=='cancelled').reduce((s,a)=>s+Number(a.price||0),0));
+    const all=[...state.appointments].sort((a,b)=>`${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)).slice(0,50);
+    $('#paymentList').innerHTML=all.length?all.map(a=>appointmentRowHtml(a,false)).join(''):'<div class="empty">No payment history yet.</div>';
+  }
+
+  function renderEarnings(){
+    const completed=state.appointments.filter(a=>a.status==='completed'); const all=metricsForAppointments(completed); const now=new Date(); const today=todayISO(); const weekStart=parseDate(today);weekStart.setDate(weekStart.getDate()-weekStart.getDay()); const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);
+    const week=metricsForAppointments(completed.filter(a=>{const d=parseDate(a.date);return d>=weekStart&&d<=weekEnd;}));
+    const month=metricsForAppointments(completed.filter(a=>{const d=parseDate(a.date);return d&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}));
+    $('#earnOverallGross').textContent=all.jobs?`${money(all.grossHourly)}/hr`:'—'; $('#earnOverallNet').textContent=all.jobs?`${money(all.netHourly)}/hr`:'—'; $('#earnMonthGross').textContent=month.jobs?`${money(month.grossHourly)}/hr`:'—'; $('#earnWeekGross').textContent=week.jobs?`${money(week.grossHourly)}/hr`:'—';
+    const customers=state.customers.map(c=>({c,m:customerMetrics(c.id)})).filter(x=>x.m.jobs).sort((a,b)=>b.m.grossHourly-a.m.grossHourly);
+    $('#customerHourlyList').innerHTML=customers.length?customers.map(({c,m})=>`<div class="appointment-row"><div class="appointment-time">${money(m.grossHourly)}/hr</div><div class="appointment-meta"><strong>${escapeHtml(customerName(c))}</strong><small>${m.jobs} timed job${m.jobs===1?'':'s'} · Avg ${formatDuration(m.minutes/m.jobs)} · ${money(m.netHourly)}/hr net</small></div><div class="row-actions"><span class="status success">${money(m.gross)}</span></div></div>`).join(''):'<div class="empty">Complete and time a cleaning to start seeing customer averages.</div>';
+    const jobs=completed.filter(a=>durationMinutes(a)>0).sort((a,b)=>`${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)).slice(0,50);
+    $('#jobHourlyList').innerHTML=jobs.length?jobs.map(a=>`<div class="appointment-row"><div class="appointment-time">${money(grossHourly(a))}/hr</div><div class="appointment-meta"><strong>${escapeHtml(customerName(customerById(a.customerId)))}</strong><small>${formatDate(a.date,{short:true})} · ${formatDuration(durationMinutes(a))} · ${money(netHourly(a))}/hr net · ${numberOrZero(a.miles).toFixed(1)} mi · ${money(fuelCost(a))} fuel${state.settings.taxEstimateEnabled?` · ${money(taxReserveForAppointment(a))} tax reserve`:''}</small></div><div class="row-actions"><span class="status success">${money(a.price)}</span></div></div>`).join(''):'<div class="empty">No timed completed jobs yet.</div>';
+    const tax=ytdTaxSummary(), paid=Math.max(0,numberOrZero(state.settings.taxReservePaid));const remaining=Math.max(0,tax.total-paid);
+    $('#taxEstimatePanel').hidden=!state.settings.taxEstimateEnabled;
+    if(state.settings.taxEstimateEnabled){$('#taxYtdEstimate').textContent=money(tax.total);$('#taxReserveRate').textContent=`${(tax.rate*100).toFixed(1)}%`;$('#taxReserveRemaining').textContent=money(remaining);$('#taxAfterTaxHourly').textContent=all.minutes?`${money(Math.max(0,all.net-tax.total)/(all.minutes/60))}/hr`:'—';$('#taxBreakdown').innerHTML=`<div><strong>${money(tax.se)}</strong><span>self-employment</span></div><div><strong>${money(tax.federal)}</strong><span>federal income</span></div><div><strong>${money(tax.wisconsin)}</strong><span>Wisconsin income</span></div><div><strong>${money(tax.business)}</strong><span>tax-profit base</span></div>`;}
+  }
+
+  function renderSettings() {
+    $('#businessName').value=state.settings.businessName||'';
+    $('#ownerName').value=state.settings.ownerName||'';
+    $('#ownerPhone').value=state.settings.ownerPhone||'';
+    $('#defaultPaymentNote').value=state.settings.defaultPaymentNote||'';
+    $('#calendarReminderMinutes').value=String(state.settings.calendarReminderMinutes||120);
+    $('#mileageRate').value=String(state.settings.mileageRate??0.76);
+    $('#taxEstimateEnabled').checked=!!state.settings.taxEstimateEnabled;$('#taxFilingStatus').value=state.settings.taxFilingStatus||'married_joint';$('#otherFederalIncome').value=state.settings.otherFederalIncome||'';$('#otherWisconsinTaxableIncome').value=state.settings.otherWisconsinTaxableIncome||'';$('#otherSocialSecurityWages').value=state.settings.otherSocialSecurityWages||'';$('#taxReservePaid').value=state.settings.taxReservePaid||'';
+    $('#templateDayBefore').value=state.settings.templates.day_before||'';
+    $('#templateOnMyWay').value=state.settings.templates.on_my_way||'';
+    $('#templateComplete').value=state.settings.templates.complete||'';
+    renderVehicleSettings();renderCloudStatus();
+  }
+
+  function renderAll() {
+    renderHeader(); renderDashboard(); renderCustomers(); renderSchedule(); renderTextCenter(); renderPayments(); renderEarnings(); renderSettings();
+    const auth=loadAuth(); const pill=$('#syncPill');
+    pill.classList.toggle('cloud',!!auth?.access_token);
+    $('#syncPillText').textContent=auth?.access_token?'Cloud sync connected':'Saved on this device';
+  }
+
+  function openCustomerDialog(id='') {
+    const c = id ? customerById(id) : null;
+    $('#customerDialogTitle').textContent=c?'Edit Customer':'New Customer';
+    $('#customerId').value=c?.id||'';
+    $('#customerFirstName').value=c?.firstName||''; $('#customerLastName').value=c?.lastName||''; $('#customerPhone').value=c?.phone||''; $('#customerEmail').value=c?.email||'';
+    $('#customerAddress').value=c?.address||''; $('#customerCity').value=c?.city||''; $('#customerState').value=c?.state||'WI'; $('#customerZip').value=c?.zip||'';
+    $('#customerPrice').value=c?.price??''; $('#customerFrequency').value=c?.frequency||'biweekly'; $('#customerPayment').value=c?.paymentPreference||state.settings.defaultPaymentNote||'';
+    $('#customerPets').value=c?.pets||''; $('#customerAccess').value=c?.access||''; $('#customerSupplies').value=c?.supplies||''; $('#customerExpectedMinutes').value=c?.expectedMinutes||''; $('#customerDriveMinutes').value=c?.driveMinutes||''; $('#customerChecklist').value=c?.checklist||''; $('#customerNotes').value=c?.notes||'';
+    const consent=c?.textConsent||'not_asked'; const radio=$(`input[name="textConsent"][value="${consent}"]`); if(radio)radio.checked=true;
+    $('#customerConsentDate').value=c?.consentDate||''; $('#customerConsentSource').value=c?.consentSource||'not_recorded'; $('#customerConsentNote').value=c?.consentNote||'';
+    $('#deleteCustomerBtn').hidden=!c; renderCustomerHistory(c);
+    $('#customerDialog').showModal();
+  }
+
+  function saveCustomerFromForm(e) {
+    e.preventDefault();
+    const id=$('#customerId').value||uid(); const existing=customerById(id); const oldConsent=existing?.textConsent||'not_asked'; const newConsent=$('input[name="textConsent"]:checked')?.value||'not_asked';
+    const consentDate=$('#customerConsentDate').value || (newConsent!==oldConsent ? todayISO() : existing?.consentDate || '');
+    const customer={
+      ...(existing||{}), id, first
