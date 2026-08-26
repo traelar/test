@@ -1,0 +1,1 @@
+Clear Choice Cleaning v1.2 Android release requires ACCESS_COARSE_LOCATION and ACCESS_FINE_LOCATION for Android field-mode location features.
