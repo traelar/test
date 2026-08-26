@@ -21,6 +21,7 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           node --check app.js
+          sha256sum app.js index.html styles.css config.js package.json
           test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
           test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
           test "$(sha256sum styles.css | awk '{print $1}')" = "d0b844ba0af581aae79d975aa1077418b6c2dab07a17e06e280690e83d6d5e3f"
@@ -95,6 +96,7 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           node --check app.js
+          sha256sum app.js index.html styles.css config.js package.json
           test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
           test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
           test "$(sha256sum styles.css | awk '{print $1}')" = "d0b844ba0af581aae79d975aa1077418b6c2dab07a17e06e280690e83d6d5e3f"
