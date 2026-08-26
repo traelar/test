@@ -1,0 +1,125 @@
+
+        <div class="settings-grid mt-panel">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Customer Averages</h2><p>See which recurring customers give you the best return for your time.</p></div></div>
+            <div id="customerHourlyList" class="appointment-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Recent Job Rates</h2><p>Gross and net hourly rate for each completed cleaning.</p></div></div>
+            <div id="jobHourlyList" class="appointment-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="page-head"><div><p class="eyebrow">App setup</p><h1>Settings</h1></div><button class="primary" id="saveSettingsBtn">Save Settings</button></div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Business</h2><p>Used in your text templates.</p></div></div>
+            <div class="form-grid single">
+              <label>Business Name<input id="businessName" /></label>
+              <label>Your Name<input id="ownerName" /></label>
+              <label>Your Phone<input id="ownerPhone" inputmode="tel" /></label>
+              <label>Default Payment Note<input id="defaultPaymentNote" placeholder="Cash only right now" /></label>
+              <label>Phone Calendar Reminder<select id="calendarReminderMinutes"><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="120">2 hours before</option><option value="240">4 hours before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select></label>
+              <label>Fallback Mileage Rate / Mile<input id="mileageRate" inputmode="decimal" placeholder="0.76" /><small class="input-help">2026 IRS rate changed to 76¢/mile for July–December; the app applies the date-specific 2026 rate automatically.</small></label>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Vehicle & Fuel</h2><p>Search your exact vehicle and automatically use its EPA MPG.</p></div></div>
+            <div class="form-grid single">
+              <label>Active Vehicle<select id="activeVehicle"><option value="">No vehicle saved</option></select></label>
+              <div id="activeVehicleSummary" class="notice neutral"></div>
+              <div class="vehicle-search-grid">
+                <label>Year<select id="vehicleYear"><option value="">Loading years…</option></select></label>
+                <label>Make<select id="vehicleMake"><option value="">Select make</option></select></label>
+                <label>Model<select id="vehicleModel"><option value="">Select model</option></select></label>
+                <label>Trim / Drivetrain<select id="vehicleOption"><option value="">Select trim / drivetrain</option></select></label>
+              </div>
+              <button type="button" class="secondary" id="addVehicleBtn">Add Selected Vehicle + Pull EPA MPG</button>
+              <label>Fuel Type<select id="preferredFuelType"><option value="REGULAR_UNLEADED">Regular Unleaded</option><option value="MIDGRADE">Midgrade</option><option value="PREMIUM">Premium</option><option value="DIESEL">Diesel</option><option value="E85">E85</option></select></label>
+              <label>Nearby Fuel Search Radius<select id="fuelSearchRadiusMiles"><option value="3">3 miles</option><option value="5">5 miles</option><option value="10">10 miles</option><option value="15">15 miles</option><option value="25">25 miles</option></select></label>
+              <label>Google Places API Key<input id="googlePlacesApiKey" type="password" autocomplete="off" placeholder="Optional for exact nearby station prices" /><small class="input-help">Needed only for exact nearby station prices. Without it the app automatically uses FuelEconomy.gov’s current reference fuel price.</small></label>
+              <button type="button" class="primary android-only" id="refreshFuelBtn">⛽ Pull Nearby Fuel Prices</button>
+              <div id="fuelSnapshot" class="fuel-snapshot"></div>
+              <div id="nearbyFuelList" class="compact-list android-only"></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Tax Reserve Estimate</h2><p>Optional 2026 U.S. federal + Wisconsin planning estimate.</p></div></div>
+            <div class="form-grid single">
+              <label class="check-row compact-check"><input type="checkbox" id="taxEstimateEnabled" /><span>Show tax reserve estimates in earnings and completed jobs.</span></label>
+              <label>Filing Status<select id="taxFilingStatus"><option value="married_joint">Married Filing Jointly</option><option value="single">Single</option><option value="head_household">Head of Household</option><option value="married_separate">Married Filing Separately</option></select></label>
+              <label>Other Federal Household Income (annual estimate)<input id="otherFederalIncome" inputmode="decimal" placeholder="0" /><small class="input-help">Used only to estimate the incremental federal income tax caused by the cleaning business.</small></label>
+              <label>Other Wisconsin Taxable Income<input id="otherWisconsinTaxableIncome" inputmode="decimal" placeholder="0" /><small class="input-help">Enter estimated Wisconsin taxable income before this business for a better state estimate.</small></label>
+              <label>Your Other Social-Security Wages<input id="otherSocialSecurityWages" inputmode="decimal" placeholder="0" /><small class="input-help">Only your own wages matter for the Social Security wage-base cap.</small></label>
+              <label>Tax Money Already Set Aside / Paid<input id="taxReservePaid" inputmode="decimal" placeholder="0" /></label>
+              <div class="notice info">This is a reserve-planning estimate, not a tax return. It intentionally does not assume every credit or deduction you may qualify for.</div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Reminder Templates</h2><p>Use {first_name}, {date}, {time}, {business_name}.</p></div></div>
+            <div class="form-grid single">
+              <label>Day-Before<textarea id="templateDayBefore" rows="4"></textarea></label>
+              <label>On My Way<textarea id="templateOnMyWay" rows="3"></textarea></label>
+              <label>Cleaning Complete<textarea id="templateComplete" rows="3"></textarea></label>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Cloud Sync</h2><p>Optional Supabase Free sync for your computer and phone.</p></div></div>
+            <div id="cloudStatus" class="notice neutral"></div>
+            <div class="form-grid single">
+              <label>Email<input id="cloudEmail" type="email" autocomplete="username" /></label>
+              <label>Password<input id="cloudPassword" type="password" autocomplete="current-password" /></label>
+            </div>
+            <div class="action-row wrap"><button class="secondary" id="cloudSignUp">Create Cloud Account</button><button class="primary" id="cloudSignIn">Sign In</button><button class="secondary" id="cloudSyncNow">Sync Now</button><button class="danger ghost" id="cloudSignOut">Sign Out</button></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Backup</h2><p>Keep an extra copy whenever you want.</p></div></div>
+            <div class="action-row wrap"><button class="secondary" id="exportData">Export Backup</button><label class="secondary file-button">Import Backup<input type="file" id="importData" accept="application/json" hidden /></label><button class="danger ghost" id="resetData">Reset App</button></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="drawer-scrim" id="drawerScrim"></div>
+
+  <dialog id="customerDialog" class="dialog">
+    <form method="dialog" id="customerForm">
+      <div class="dialog-head"><div><p class="eyebrow">Customer record</p><h2 id="customerDialogTitle">New Customer</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <input type="hidden" id="customerId" />
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label>First Name<input id="customerFirstName" required /></label>
+          <label>Last Name<input id="customerLastName" /></label>
+          <label>Phone<input id="customerPhone" inputmode="tel" /></label>
+          <label>Email<input id="customerEmail" type="email" /></label>
+          <label class="span-2">Address<input id="customerAddress" /></label>
+          <label>City<input id="customerCity" /></label>
+          <label>State<input id="customerState" value="WI" maxlength="2" /></label>
+          <label>ZIP<input id="customerZip" inputmode="numeric" /></label>
+          <label>Cleaning Price<input id="customerPrice" inputmode="decimal" placeholder="80" /></label>
+          <label>Frequency<select id="customerFrequency"><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="four_weeks">Every 4 Weeks</option><option value="monthly">Monthly</option><option value="one_time">One-Time</option><option value="custom">Custom</option></select></label>
+          <label>Payment Preference<input id="customerPayment" placeholder="Cash" /></label>
+          <label class="span-2">Pets / Home Notes<input id="customerPets" placeholder="2 cats, dog stays in bedroom…" /></label>
+          <label class="span-2">Entry Instructions<input id="customerAccess" placeholder="Keypad, key location, knock first…" /></label>
+          <label class="span-2">Supplies / Bring With Me<input id="customerSupplies" placeholder="Wood-floor cleaner, extra pet-hair tools…" /></label>
+          <label>Expected Cleaning Time (minutes)<input id="customerExpectedMinutes" inputmode="numeric" placeholder="120" /></label>
+          <label>Typical Drive Time (minutes)<input id="customerDriveMinutes" inputmode="numeric" placeholder="20" /></label>
+          <label class="span-2">Default Cleaning Checklist<textarea id="customerChecklist" rows="4" placeholder="Bathrooms&#10;Vacuum bedrooms&#10;Mop floors&#10;Kitchen counters"></textarea></label>
+          <label class="span-2">Cleaning Notes<textarea id="customerNotes" rows="4"></textarea></label>
+        </div>
+        <fieldset class="consent-fieldset">
+          <legend>Text Message Permission</legend>
+          <p class="field-help">Track the customer’s preference so you don’t accidentally text someone who asked not to receive reminders.</p>
+          <div class="segmented" id="textConsentSegment">
+            <label><input type="radio" name="textConsent" value="opted_in" /><span>✓ Opted In</span></label>
+            <label><input type="radio" name="textConsent" value="not_asked" checked /><span>Not Asked</span></label>
+            <label><input type="radio" name="textConsent" value="opted_out" /><span>⛔ Opted Out</span></label>
+          </div>
+          <div class="form-grid consent-meta">
+            <label>Consent / Opt-out Date<input id="customerConsentDate" type="date" /></label>
+            <label>How Was Preference Given?<select id="customerConsentSource"><option value="not_recorded">Not recorded</option><option value="in_person">In person</option><option value="phone">Phone call</option><option value="text">Text message</option><option value="email">Email</option><option value="website">Website/form</option><option value="other">Other</option></select></label>
+            <label class="span-2">Consent Note<input id="customerConsentNote" placeholder="Example: Asked for appointment reminders during first cleaning" /></label>
+          </div>
