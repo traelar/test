@@ -1,0 +1,70 @@
+name: Build Clear Choice Installers
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble app logic
+        shell: bash
+        run: |
+          cat build-source/app.raw00 build-source/app.raw01 build-source/app.raw02 build-source/app.raw03 build-source/app.raw04 build-source/app.raw05 build-source/app.raw06 > app.js
+          node --check app.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm install
+      - name: Prepare Android app
+        shell: bash
+        run: |
+          rm -rf www android
+          mkdir -p www
+          cp index.html styles.css app.js config.js manifest.json icon.svg service-worker.js www/
+          npx cap add android
+          npx cap sync android
+      - name: Build installable APK
+        shell: bash
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../Clear-Choice-Cleaning-Android-v1.1.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clear-Choice-Cleaning-Android
+          path: Clear-Choice-Cleaning-Android-v1.1.0.apk
+          if-no-files-found: error
+
+  windows:
+    name: Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble app logic
+        shell: bash
+        run: |
+          cat build-source/app.raw00 build-source/app.raw01 build-source/app.raw02 build-source/app.raw03 build-source/app.raw04 build-source/app.raw05 build-source/app.raw06 > app.js
+          node --check app.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install
+      - name: Build Windows executable
+        run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clear-Choice-Cleaning-Windows
+          path: dist/*.exe
+          if-no-files-found: error
