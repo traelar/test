@@ -17,12 +17,13 @@ jobs:
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
           cp build-source/v120-styles.raw00 styles.css
+          python build-source/v121-normalize.py
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           node --check app.js
           test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
           test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
-          test "$(sha256sum styles.css | awk '{print $1}')" = "0a8165a7271761f342c13f6a3d890800a83a52584decd534482e5bb744f69722"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "d0b844ba0af581aae79d975aa1077418b6c2dab07a17e06e280690e83d6d5e3f"
           test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
           test "$(node -p "require('./package.json').version")" = "1.2.1"
       - uses: actions/setup-node@v4
@@ -90,12 +91,13 @@ jobs:
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
           cp build-source/v120-styles.raw00 styles.css
+          python build-source/v121-normalize.py
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           node --check app.js
           test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
           test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
-          test "$(sha256sum styles.css | awk '{print $1}')" = "0a8165a7271761f342c13f6a3d890800a83a52584decd534482e5bb744f69722"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "d0b844ba0af581aae79d975aa1077418b6c2dab07a17e06e280690e83d6d5e3f"
           test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
           test "$(node -p "require('./package.json').version")" = "1.2.1"
       - uses: actions/setup-node@v4
