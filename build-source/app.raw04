@@ -1,0 +1,74 @@
+atus==='completed' && existing?.status!=='completed') {
+      const next=nextDateFromFrequency(a.date,c.frequency);
+      if(next && !state.appointments.some(x=>x.customerId===customerId&&x.date===next&&x.status!=='cancelled')) state.appointments.push({id:uid(),customerId,date:next,time:a.time,price:a.price,status:'scheduled',payment:'not_due',reminder:'pending',notes:'',createdFromRecurring:true,updatedAt:new Date().toISOString()});
+    }
+    $('#appointmentDialog').close(); saveState(); toast(existing?'Appointment updated.':'Appointment added.');
+  }
+
+  function deleteAppointment() {
+    const id=$('#appointmentId').value; if(!id)return; if(!confirm('Delete this appointment?'))return;
+    state.appointments=state.appointments.filter(a=>a.id!==id); $('#appointmentDialog').close(); saveState(); toast('Appointment deleted.');
+  }
+
+  function openComposeForCustomer(id) {
+    showView('texts'); if(customerById(id)) $('#composeCustomer').value=id; $('#composeTemplate').value='day_before'; updateCompose();
+    setTimeout(()=>$('#composeMessage').focus(),0);
+  }
+
+  function markTextSent() {
+    const c=customerById($('#composeCustomer').value); if(!c||c.textConsent!=='opted_in'){toast('Texting is blocked for this customer.');return;}
+    const appt=getUpcomingAppointment(c.id); state.textLog.unshift({id:uid(),customerId:c.id,appointmentId:appt?.id||null,type:$('#composeTemplate').value,message:$('#composeMessage').value,sentAt:new Date().toISOString()});
+    if(appt && $('#composeTemplate').value==='day_before') appt.reminder='sent'; saveState(); toast('Text marked as sent.');
+  }
+
+  function saveSettings() {
+    state.settings.businessName=$('#businessName').value.trim()||'Clear Choice Cleaning'; state.settings.ownerName=$('#ownerName').value.trim(); state.settings.ownerPhone=$('#ownerPhone').value.trim(); state.settings.defaultPaymentNote=$('#defaultPaymentNote').value.trim(); state.settings.calendarReminderMinutes=Number($('#calendarReminderMinutes').value)||120;
+    state.settings.templates.day_before=$('#templateDayBefore').value.trim(); state.settings.templates.on_my_way=$('#templateOnMyWay').value.trim(); state.settings.templates.complete=$('#templateComplete').value.trim(); saveState(); toast('Settings saved.');
+  }
+
+  function exportBackup() {
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`clear-choice-backup-${todayISO()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); toast('Backup exported.');
+  }
+
+  function importBackup(file) {
+    const reader=new FileReader(); reader.onload=()=>{try{const parsed=JSON.parse(reader.result); if(!parsed||!Array.isArray(parsed.customers)||!Array.isArray(parsed.appointments))throw new Error('Invalid backup'); state={...defaultState(),...parsed}; saveState(); toast('Backup imported.');}catch(e){toast('That file is not a valid Clear Choice backup.');}}; reader.readAsText(file);
+  }
+
+  function resetApp() { if(!confirm('Reset the app and delete all local customers, appointments and settings? Export a backup first if you may need them.'))return; state=defaultState(); localStorage.removeItem(STORAGE_KEY); saveState({cloud:false}); toast('App reset.'); }
+
+  function cloudConfigured() { return /^https:\/\/.+\.supabase\.co\/?$/.test(CONFIG.supabaseUrl||'') && !!CONFIG.supabaseAnonKey; }
+  function loadAuth(){try{return JSON.parse(localStorage.getItem(AUTH_KEY)||'null')}catch{return null}}
+  function saveAuth(auth){if(auth)localStorage.setItem(AUTH_KEY,JSON.stringify(auth));else localStorage.removeItem(AUTH_KEY);renderCloudStatus();renderAll();}
+  function parseJwt(token){try{let part=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');while(part.length%4)part+='=';return JSON.parse(atob(part))}catch{return {}}}
+
+  async function authRequest(path, body) {
+    const res=await fetch(`${CONFIG.supabaseUrl.replace(/\/$/,'')}/auth/v1/${path}`,{method:'POST',headers:{'apikey':CONFIG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json().catch(()=>({})); if(!res.ok)throw new Error(data.msg||data.message||data.error_description||'Cloud request failed'); return data;
+  }
+
+  async function cloudSignUp() {
+    if(!cloudConfigured()){toast('Add your Supabase URL and anon key to config.js first.');return;}
+    const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value; if(!email||password.length<6){toast('Enter an email and a password of at least 6 characters.');return;}
+    try{const data=await authRequest('signup',{email,password}); if(data.access_token){saveAuth(data);await pushCloud();toast('Cloud account created and synced.');}else toast('Account created. Check your email if Supabase asks you to confirm it, then sign in.');}catch(e){toast(e.message)}
+  }
+
+  async function cloudSignIn() {
+    if(!cloudConfigured()){toast('Add your Supabase URL and anon key to config.js first.');return;}
+    const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value; if(!email||!password){toast('Enter your cloud email and password.');return;}
+    try{const data=await authRequest('token?grant_type=password',{email,password});saveAuth(data);await syncCloud();toast('Signed in and synced.');}catch(e){toast(e.message)}
+  }
+
+  async function refreshAuth() {
+    const auth=loadAuth(); if(!auth?.refresh_token) return null;
+    try{const data=await authRequest('token?grant_type=refresh_token',{refresh_token:auth.refresh_token});saveAuth(data);return data}catch{saveAuth(null);return null}
+  }
+
+  async function apiFetch(path, opts={}) {
+    let auth=loadAuth(); if(!auth?.access_token)throw new Error('Sign in to cloud sync first.');
+    const run=async(token)=>fetch(`${CONFIG.supabaseUrl.replace(/\/$/,'')}/rest/v1/${path}`,{...opts,headers:{'apikey':CONFIG.supabaseAnonKey,'Authorization':`Bearer ${token}`,'Content-Type':'application/json',...(opts.headers||{})}});
+    let res=await run(auth.access_token); if(res.status===401){auth=await refreshAuth();if(!auth)throw new Error('Cloud session expired. Please sign in again.');res=await run(auth.access_token);} if(!res.ok){const t=await res.text();throw new Error(t||'Cloud sync failed');}return res;
+  }
+
+  async function pushCloud() {
+    if(!cloudConfigured()||!loadAuth()?.access_token)return;
+    const auth=loadAuth(),payload=parseJwt(auth.access_token); const userId=payload.s
