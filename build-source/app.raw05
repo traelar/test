@@ -1,0 +1,59 @@
+ub; if(!userId)throw new Error('Could not identify cloud account.');
+    await apiFetch('app_state?on_conflict=user_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:userId,data:state,updated_at:state.updatedAt})});
+    renderCloudStatus();
+  }
+
+  async function pullCloud() {
+    const res=await apiFetch('app_state?select=data,updated_at&limit=1',{method:'GET'}); const rows=await res.json(); return rows?.[0]||null;
+  }
+
+  async function syncCloud() {
+    if(!cloudConfigured()){toast('Cloud sync is not configured yet.');return;}
+    if(!loadAuth()?.access_token){toast('Sign in to cloud sync first.');return;}
+    try{
+      const remote=await pullCloud();
+      if(!remote){await pushCloud();return;}
+      const localTime=Date.parse(state.updatedAt||0),remoteTime=Date.parse(remote.data?.updatedAt||remote.updated_at||0);
+      if(remoteTime>localTime){state={...defaultState(),...remote.data};localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderAll();}
+      else await pushCloud();
+      renderCloudStatus();
+    }catch(e){toast(`Sync problem: ${e.message}`)}
+  }
+
+  function scheduleCloudPush(){clearTimeout(cloudPushTimer); if(cloudConfigured()&&loadAuth()?.access_token) cloudPushTimer=setTimeout(()=>pushCloud().catch(e=>console.warn(e)),1600)}
+  function cloudSignOut(){saveAuth(null);toast('Cloud sync signed out. Local data is still on this device.');}
+  function renderCloudStatus(){const el=$('#cloudStatus');if(!el)return;if(!cloudConfigured()){el.textContent='Cloud sync is optional and currently not configured. The app is fully usable on this device. Follow README.md to add your free Supabase project.';return;}const auth=loadAuth();el.textContent=auth?.access_token?'Signed in. Changes are saved locally first and then synced to Supabase while the app is open.':'Supabase is configured. Sign in here on each device to sync the same records.';}
+
+  async function copyPreparedText() {
+    const c=customerById($('#composeCustomer').value);
+    if(!c||c.textConsent!=='opted_in'){toast('Texting is blocked for this customer.');return;}
+    const text=$('#composeMessage').value;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else { const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove(); }
+      toast('Message copied. Paste it into Google Messages or your phone texting app.');
+    } catch { toast('Could not copy automatically. Select the message and copy it manually.'); }
+  }
+
+  function exportCalendar() {
+    const upcoming=state.appointments.filter(a=>a.status!=='cancelled'&&a.date>=todayISO()).sort((a,b)=>`${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    if(!upcoming.length){toast('No upcoming appointments to export.');return;}
+    const esc=s=>String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+    const pad=n=>String(n).padStart(2,'0');
+    const dt=(date,time)=>{const d=parseDate(date);const [h,m]=time.split(':').map(Number);return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(h)}${pad(m)}00`;};
+    const reminderMinutes=Number(state.settings.calendarReminderMinutes)||120;
+    const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Clear Choice Cleaning//Cleaning Manager//EN','CALSCALE:GREGORIAN'];
+    for(const a of upcoming){const c=customerById(a.customerId);const start=dt(a.date,a.time);const endD=new Date(parseDate(a.date));const [h,m]=a.time.split(':').map(Number);endD.setHours(h+2,m||0,0,0);const end=`${endD.getFullYear()}${pad(endD.getMonth()+1)}${pad(endD.getDate())}T${pad(endD.getHours())}${pad(endD.getMinutes())}00`;lines.push('BEGIN:VEVENT',`UID:${a.id}@clearchoice`, `DTSTART:${start}`,`DTEND:${end}`,`SUMMARY:${esc(`Cleaning - ${customerName(c)}`)}`,`LOCATION:${esc([c?.address,c?.city,c?.state,c?.zip].filter(Boolean).join(', '))}`,`DESCRIPTION:${esc([a.notes,c?.notes,c?.access].filter(Boolean).join(' | '))}`,'BEGIN:VALARM',`TRIGGER:-PT${reminderMinutes}M`,'ACTION:DISPLAY','DESCRIPTION:Cleaning appointment reminder','END:VALARM','END:VEVENT');}
+    lines.push('END:VCALENDAR');
+    const blob=new Blob([lines.join('\r\n')],{type:'text/calendar;charset=utf-8'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`clear-choice-schedule-${todayISO()}.ics`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);toast(`Calendar exported with a ${reminderMinutes >= 1440 ? `${reminderMinutes/1440}-day` : `${reminderMinutes/60}-hour`} reminder for each cleaning.`);
+  }
+
+  function bindEvents() {
+    $$('.nav-item').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view))); $$('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
+    $('#menuBtn').addEventListener('click',openDrawer); $('#drawerScrim').addEventListener('click',closeDrawer); $('#mobileAddBtn').addEventListener('click',()=>openAppointmentDialog());
+    $('#addCustomerBtn').addEventListener('click',()=>openCustomerDialog()); $('#addCustomerDashboard').addEventListener('click',()=>openCustomerDialog()); $('#addAppointmentBtn').addEventListener('click',()=>openAppointmentDialog()); $('#addAppointmentDashboard').addEventListener('click',()=>openAppointmentDialog());
+    $('#customerForm').addEventListener('submit',saveCustomerFromForm); $('#deleteCustomerBtn').addEventListener('click',deleteCustomer); $('#appointmentForm').addEventListener('submit',saveAppointmentFromForm); $('#deleteAppointmentBtn').addEventListener('click',deleteAppointment);
+    $('#appointmentCustomer').addEventListener('change',()=>{const c=customerById($('#appointmentCustomer').value); if(c)$('#appointmentPrice').value=c.price||'';});
+    $('#customerSearch').addEventListener('input',renderCustomers); $('#customerTextFilter').addEventListener('change',renderCustomers);
+    $('#quickNotes').addEventListener('input',e=>{state.quickNotes=e.target.value;state.updatedAt=new Date().toISOString();localStorage.setItem(STORAGE_KEY,JSON.stringify(state));scheduleCloudPush();});
+    $('#prevMonth').addEventListener('click',()=>{calendarCursor.setMonth(calendarCursor.getMonth()-1);renderSchedule()}); $('#nextMonth').addEventListener('click',()=>{calendarCursor.setMonth(calendarCursor.getMonth()+1);renderSchedule()}); $(
