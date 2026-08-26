@@ -1,0 +1,88 @@
+te();
+    $('#todayLabel').textContent = new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric'}).format(d);
+    const hour = d.getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    $('#greeting').textContent = state.settings.ownerName ? `${greeting}, ${state.settings.ownerName}` : `${greeting}`;
+  }
+
+  function renderDashboard() {
+    const today = todayISO();
+    const todayApps = state.appointments.filter(a => a.date === today && a.status !== 'cancelled').sort((a,b)=>a.time.localeCompare(b.time));
+    const start = parseDate(today); start.setDate(start.getDate() - start.getDay());
+    const end = new Date(start); end.setDate(end.getDate()+6);
+    const weekApps = state.appointments.filter(a => {
+      const d = parseDate(a.date); return d >= start && d <= end && a.status !== 'cancelled';
+    });
+    const unpaid = state.appointments.filter(a => a.payment === 'unpaid' && a.status !== 'cancelled');
+    $('#statToday').textContent = todayApps.length;
+    $('#statTodayTotal').textContent = money(todayApps.reduce((s,a)=>s+Number(a.price||0),0));
+    $('#statWeek').textContent = weekApps.length;
+    $('#statUnpaid').textContent = money(unpaid.reduce((s,a)=>s+Number(a.price||0),0));
+    $('#statUnpaidCount').textContent = `${unpaid.length} cleaning${unpaid.length===1?'':'s'}`;
+
+    const list = $('#todayAppointments');
+    if (!todayApps.length) list.innerHTML = '<div class="empty">No cleanings scheduled for today.</div>';
+    else list.innerHTML = todayApps.map(a => appointmentRowHtml(a, true)).join('');
+
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1); const tomorrowISO = isoFromDate(tomorrow);
+    const tomorrowApps = state.appointments.filter(a=>a.date===tomorrowISO && a.status==='scheduled').sort((a,b)=>a.time.localeCompare(b.time));
+    const rem = $('#tomorrowReminderList');
+    if (!tomorrowApps.length) rem.innerHTML = '<div class="empty">No reminders due tomorrow.</div>';
+    else rem.innerHTML = tomorrowApps.map(a => {
+      const c = customerById(a.customerId); const status = c?.textConsent || 'not_asked';
+      const label = status === 'opted_in' ? 'Ready' : status === 'opted_out' ? 'Do not text' : 'Needs opt-in';
+      return `<div class="compact-item"><span><strong>${escapeHtml(customerName(c))}</strong><small>${formatTime(a.time)} · ${escapeHtml(label)}</small></span><span class="pill ${status}">${escapeHtml(consentLabel(status))}</span></div>`;
+    }).join('');
+    $('#quickNotes').value = state.quickNotes || '';
+  }
+
+  function appointmentRowHtml(a, includeQuickActions = false) {
+    const c = customerById(a.customerId);
+    const statusClass = a.status === 'completed' ? 'success' : a.status === 'cancelled' ? 'danger' : '';
+    const actions = includeQuickActions ? `<button class="secondary small" data-text-customer="${a.customerId}">Text</button>` : '';
+    return `<div class="appointment-row" data-edit-appointment="${a.id}">
+      <div class="appointment-time">${formatTime(a.time)}</div>
+      <div class="appointment-meta"><strong>${escapeHtml(customerName(c))}</strong><small>${escapeHtml(c?.city || '')}${c?.city ? ' · ' : ''}${money(a.price)} · ${escapeHtml(a.notes || frequencyLabel(c?.frequency))}</small></div>
+      <div class="row-actions">${actions}<span class="status ${statusClass}">${escapeHtml(a.status)}</span><span class="status ${a.payment==='paid'?'success':a.payment==='unpaid'?'warning':''}">${escapeHtml(a.payment.replace('_',' '))}</span><button class="secondary small" data-edit-appointment-btn="${a.id}">Open</button></div>
+    </div>`;
+  }
+
+  function renderCustomers() {
+    const q = ($('#customerSearch').value || '').trim().toLowerCase();
+    const filter = $('#customerTextFilter').value;
+    const customers = [...state.customers].sort((a,b)=>customerName(a).localeCompare(customerName(b))).filter(c => {
+      const blob = [customerName(c),c.phone,c.city,c.notes,c.pets,c.address].join(' ').toLowerCase();
+      return (!q || blob.includes(q)) && (filter === 'all' || (c.textConsent || 'not_asked') === filter);
+    });
+    const grid = $('#customerGrid');
+    if (!customers.length) {
+      grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${state.customers.length ? 'No customers match that filter.' : 'No customers yet. Add your first customer to get started.'}</div>`;
+      return;
+    }
+    grid.innerHTML = customers.map(c => {
+      const next = getUpcomingAppointment(c.id);
+      const consent = c.textConsent || 'not_asked';
+      return `<article class="customer-card" data-edit-customer="${c.id}">
+        <div class="customer-card-head"><div><h3>${escapeHtml(customerName(c))}</h3><p>${escapeHtml(frequencyLabel(c.frequency))} · ${money(c.price)}</p></div><span class="pill ${consent}">${escapeHtml(consentLabel(consent))}</span></div>
+        <div class="customer-detail">
+          <div>☎ ${escapeHtml(c.phone || 'No phone')}</div>
+          <div>⌂ ${escapeHtml([c.city,c.state].filter(Boolean).join(', ') || 'No address')}</div>
+          <div>▦ ${next ? `Next: ${formatDate(next.date,{short:true})} at ${formatTime(next.time)}` : 'No upcoming cleaning'}</div>
+          ${c.pets ? `<div>🐾 ${escapeHtml(c.pets)}</div>` : ''}
+          ${c.notes ? `<div>📝 ${escapeHtml(c.notes)}</div>` : ''}
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function renderSchedule() {
+    const y = calendarCursor.getFullYear(), m = calendarCursor.getMonth();
+    $('#calendarTitle').textContent = new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(calendarCursor);
+    $('#calendarSubtitle').textContent = `${state.appointments.filter(a=>{const d=parseDate(a.date);return d&&d.getFullYear()===y&&d.getMonth()===m&&a.status!=='cancelled'}).length} scheduled cleanings`;
+    const first = new Date(y,m,1); const start = new Date(y,m,1-first.getDay());
+    const today = todayISO();
+    let html='';
+    for (let i=0;i<42;i++) {
+      const d = new Date(start); d.setDate(start.getDate()+i); const iso = isoFromDate(d);
+      const apps = state.appointments.filter(a=>a.date===iso).sort((a,b)=>a.time.localeCompare(b.time));
+      html += `<button class="calendar-day ${d.getMonth()!==m?'muted':''} ${iso===today?'today':''}" data-calendar-date="${iso}" type="button"><span class="day-number">${d.getDate()}</span>${apps.slice(0,3).map(a=>{const c=customerById(a.customerId);return `<div class="cal-event ${a.status==='cancelled'?'cancelled':
