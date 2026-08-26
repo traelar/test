@@ -1,0 +1,209 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'clear_choice_cleaning_manager_v1';
+  const AUTH_KEY = 'clear_choice_supabase_auth_v1';
+  const CONFIG = window.CLEAR_CHOICE_CONFIG || { supabaseUrl: '', supabaseAnonKey: '' };
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+  const parseDate = (iso) => {
+    const [y,m,d] = String(iso || '').split('-').map(Number);
+    return y && m && d ? new Date(y, m - 1, d) : null;
+  };
+  const isoFromDate = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  const formatDate = (iso, opts = {}) => {
+    const d = parseDate(iso);
+    if (!d) return 'No date';
+    return new Intl.DateTimeFormat('en-US', opts.short ? { month:'short', day:'numeric' } : { weekday:'short', month:'short', day:'numeric', year:'numeric' }).format(d);
+  };
+  const formatTime = (time) => {
+    if (!time) return 'No time';
+    const [h, m] = time.split(':').map(Number);
+    const d = new Date(2000,0,1,h,m || 0);
+    return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(d);
+  };
+  const money = (n) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(n)||0);
+  const escapeHtml = (s) => String(s ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  const normalizePhone = (s) => String(s || '').replace(/[^\d+]/g, '');
+  const dateDiffDays = (a, b) => Math.round((parseDate(a) - parseDate(b)) / 86400000);
+
+  const defaultState = () => ({
+    version: 1,
+    settings: {
+      businessName: 'Clear Choice Cleaning',
+      ownerName: '',
+      ownerPhone: '',
+      defaultPaymentNote: '',
+      calendarReminderMinutes: 120,
+      mileageRate: 0.76,
+      googlePlacesApiKey: '',
+      fuelSearchRadiusMiles: 10,
+      preferredFuelType: 'REGULAR_UNLEADED',
+      activeVehicleId: '',
+      vehicles: [],
+      taxEstimateEnabled: false,
+      taxFilingStatus: 'married_joint',
+      otherFederalIncome: 0,
+      otherWisconsinTaxableIncome: 0,
+      otherSocialSecurityWages: 0,
+      taxReservePaid: 0,
+      templates: {
+        day_before: 'Hi {first_name}! Just a reminder that your cleaning with {business_name} is scheduled for {date} at {time}. Please let me know if anything has changed. Thank you!',
+        on_my_way: "Hi {first_name}! I'm on my way to your cleaning now. See you soon! - {business_name}",
+        complete: 'Hi {first_name}! Your cleaning is finished. Thank you again and have a great day! - {business_name}'
+      }
+    },
+    customers: [],
+    appointments: [],
+    textLog: [],
+    fuelSnapshot: null,
+    quickNotes: '',
+    updatedAt: new Date().toISOString()
+  });
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const base = defaultState();
+      return {
+        ...base,
+        ...parsed,
+        settings: {
+          ...base.settings,
+          ...(parsed.settings || {}),
+          templates: { ...base.settings.templates, ...((parsed.settings || {}).templates || {}) },
+          vehicles: Array.isArray(parsed.settings?.vehicles) ? parsed.settings.vehicles : []
+        },
+        customers: Array.isArray(parsed.customers) ? parsed.customers : [],
+        appointments: Array.isArray(parsed.appointments) ? parsed.appointments : [],
+        textLog: Array.isArray(parsed.textLog) ? parsed.textLog : []
+      };
+    } catch (err) {
+      console.error(err);
+      return defaultState();
+    }
+  }
+
+  let state = loadState();
+  let calendarCursor = new Date();
+  calendarCursor.setDate(1);
+  let deferredInstallPrompt = null;
+  let cloudPushTimer = null;
+
+  function saveState({ cloud = true } = {}) {
+    state.updatedAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    if (cloud) scheduleCloudPush();
+  }
+
+  function toast(message) {
+    const el = $('#toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  function customerName(c) {
+    return [c?.firstName, c?.lastName].filter(Boolean).join(' ') || 'Unnamed Customer';
+  }
+
+  function customerById(id) { return state.customers.find(c => c.id === id); }
+  function appointmentById(id) { return state.appointments.find(a => a.id === id); }
+
+  const isAndroidNative = () => !!(window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android');
+  const fullAddress = (c) => [c?.address,c?.city,c?.state,c?.zip].filter(Boolean).join(', ');
+  const numberOrZero = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+  const formatDuration = (minutes) => {
+    const mins=Math.max(0,Math.round(numberOrZero(minutes))); if(!mins)return '—';
+    const h=Math.floor(mins/60),m=mins%60; return h?`${h}h ${m}m`:`${m}m`;
+  };
+  function durationMinutes(a) {
+    if(numberOrZero(a?.durationMinutes)>0)return numberOrZero(a.durationMinutes);
+    if(a?.startedAt && a?.completedAt)return Math.max(1,Math.round((Date.parse(a.completedAt)-Date.parse(a.startedAt))/60000));
+    if(a?.startedAt && a?.status==='in_progress')return Math.max(1,Math.round((Date.now()-Date.parse(a.startedAt))/60000));
+    return 0;
+  }
+  function vehicleById(id){return (state.settings.vehicles||[]).find(v=>v.id===id);}
+  function activeVehicle(){return vehicleById(state.settings.activeVehicleId)||(state.settings.vehicles||[])[0]||null;}
+  function vehicleForAppointment(a){return vehicleById(a?.vehicleId)||activeVehicle();}
+  function vehicleMpg(v){return numberOrZero(v?.mpgCombined)||numberOrZero(v?.mpgHighway)||numberOrZero(v?.mpgCity)||0;}
+  function fuelPriceForAppointment(a){return numberOrZero(a?.fuelPrice)||numberOrZero(state.fuelSnapshot?.price)||0;}
+  function fuelCost(a){
+    if(numberOrZero(a?.fuelCostActual)>0)return numberOrZero(a.fuelCostActual);
+    const mpg=vehicleMpg(vehicleForAppointment(a)), price=fuelPriceForAppointment(a), miles=numberOrZero(a?.miles);
+    return mpg>0&&price>0&&miles>0?(miles/mpg)*price:0;
+  }
+  function irsMileageRateForDate(iso){
+    if(!iso)return numberOrZero(state.settings.mileageRate)||0.76;
+    if(iso>='2026-07-01'&&iso<='2026-12-31')return 0.76;
+    if(iso>='2026-01-01'&&iso<'2026-07-01')return 0.725;
+    if(iso>='2025-01-01'&&iso<='2025-12-31')return 0.70;
+    return numberOrZero(state.settings.mileageRate)||0.76;
+  }
+  function mileageCost(a){return numberOrZero(a?.miles)*irsMileageRateForDate(a?.date);}
+  function netRevenue(a){return Math.max(0,numberOrZero(a?.price)-numberOrZero(a?.expenses)-fuelCost(a));}
+  function taxBusinessProfit(a){return Math.max(0,numberOrZero(a?.price)-numberOrZero(a?.expenses)-mileageCost(a));}
+  function grossHourly(a){const mins=durationMinutes(a);return mins>0?numberOrZero(a?.price)/(mins/60):0;}
+  function netHourly(a){const mins=durationMinutes(a);return mins>0?netRevenue(a)/(mins/60):0;}
+  function metricsForAppointments(apps){
+    const timed=apps.filter(a=>a.status==='completed'&&durationMinutes(a)>0);
+    const minutes=timed.reduce((s,a)=>s+durationMinutes(a),0);
+    const gross=timed.reduce((s,a)=>s+numberOrZero(a.price),0);
+    const net=timed.reduce((s,a)=>s+netRevenue(a),0);
+    return {jobs:timed.length,minutes,gross,net,miles:timed.reduce((s,a)=>s+numberOrZero(a.miles),0),fuel:timed.reduce((s,a)=>s+fuelCost(a),0),taxProfit:timed.reduce((s,a)=>s+taxBusinessProfit(a),0),grossHourly:minutes?gross/(minutes/60):0,netHourly:minutes?net/(minutes/60):0};
+  }
+  function customerMetrics(customerId){return metricsForAppointments(state.appointments.filter(a=>a.customerId===customerId));}
+
+  const FEDERAL_2026={
+    single:{standard:16100,brackets:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]]},
+    married_joint:{standard:32200,brackets:[[24800,.10],[100800,.12],[211400,.22],[403550,.24],[512450,.32],[768700,.35],[Infinity,.37]]},
+    married_separate:{standard:16100,brackets:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[384350,.35],[Infinity,.37]]},
+    head_household:{standard:24150,brackets:[[17700,.10],[67450,.12],[105700,.22],[201750,.24],[256200,.32],[640600,.35],[Infinity,.37]]}
+  };
+  const WI_2026={
+    single:[[15110,.035],[51950,.044],[332720,.053],[Infinity,.0765]],
+    head_household:[[15110,.035],[51950,.044],[332720,.053],[Infinity,.0765]],
+    married_joint:[[20150,.035],[69260,.044],[443630,.053],[Infinity,.0765]],
+    married_separate:[[10080,.035],[34630,.044],[221820,.053],[Infinity,.0765]]
+  };
+  function progressiveTax(income,brackets){let left=Math.max(0,numberOrZero(income)),prev=0,tax=0;for(const [cap,rate] of brackets){const amount=Math.min(left,cap-prev);if(amount>0)tax+=amount*rate;left-=amount;if(left<=0)break;prev=cap;}return tax;}
+  function estimateTaxesForProfit(profit){
+    const business=Math.max(0,numberOrZero(profit));if(!business)return {business:0,se:0,federal:0,wisconsin:0,total:0,rate:0};
+    const status=state.settings.taxFilingStatus||'married_joint';const fed=FEDERAL_2026[status]||FEDERAL_2026.married_joint;
+    const otherIncome=Math.max(0,numberOrZero(state.settings.otherFederalIncome));const otherSS=Math.max(0,numberOrZero(state.settings.otherSocialSecurityWages));
+    const seBase=business*.9235,ssBase=Math.max(0,Math.min(seBase,184500-otherSS));const se=ssBase*.124+seBase*.029;
+    const halfSe=se/2;const baseTaxable=Math.max(0,otherIncome-fed.standard);const withBusiness=Math.max(0,otherIncome+Math.max(0,business-halfSe)-fed.standard);
+    const federal=Math.max(0,progressiveTax(withBusiness,fed.brackets)-progressiveTax(baseTaxable,fed.brackets));
+    const wiBase=Math.max(0,numberOrZero(state.settings.otherWisconsinTaxableIncome));const wiBrackets=WI_2026[status]||WI_2026.married_joint;
+    const wisconsin=Math.max(0,progressiveTax(wiBase+business,wiBrackets)-progressiveTax(wiBase,wiBrackets));
+    const total=se+federal+wisconsin;return {business,se,federal,wisconsin,total,rate:business?total/business:0};
+  }
+  function ytdCompleted(){const y=new Date().getFullYear();return state.appointments.filter(a=>a.status==='completed'&&String(a.date||'').startsWith(`${y}-`));}
+  function ytdTaxSummary(){const profit=ytdCompleted().reduce((s,a)=>s+taxBusinessProfit(a),0);return estimateTaxesForProfit(profit);}
+  function taxReserveForAppointment(a){if(!state.settings.taxEstimateEnabled)return 0;const t=ytdTaxSummary();return taxBusinessProfit(a)*t.rate;}
+  function ensureNextAppointment(a,c){
+    if(!a||!c||a.nextRecurringCreated)return;
+    const next=nextDateFromFrequency(a.date,c.frequency); if(!next)return;
+    if(!state.appointments.some(x=>x.customerId===c.id&&x.date===next&&x.status!=='cancelled'&&x.status!=='skipped')){
+      state.appointments.push({id:uid(),customerId:c.id,date:next,time:a.time,price:a.price,status:'scheduled',payment:'not_due',reminder:'pending',notes:'',createdFromRecurring:true,updatedAt:new Date().toISOString()});
+    }
+    a.nextRecurringCreated=true;
+  }
+  function numericNotificationId(id){let h=0;for(const ch of String(id||''))h=((h<<5)-h)+ch.charCodeAt(0),h|=0;return Math.abs(h)||1;}
+  function openExternal(url){
+    try{ if(isAndroidNative()) window.location.href=url; else window.open(url,'_blank','noopener'); }
+    catch{ window.location.href=url; }
+  }
+  function navigateToCustomer(c){
+    const address=fullAddress(c); if(!address){toast('Add an address for this customer first.');return;}
+    openExternal(isAndroidNative()?`geo:0,0?q=${encodeURIComponent(a
