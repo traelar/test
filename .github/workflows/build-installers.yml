@@ -1,23 +1,25 @@
-name: Build Clear Choice Installers
+name: Build Clear Choice v1.2 Release
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ clear-choice-v1.2-release ]
   workflow_dispatch:
 
 jobs:
   android:
-    name: Android APK
+    name: Android Release APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble app logic
+      - name: Reassemble verified v1.2 source
         shell: bash
         run: |
-          cat build-source/app.raw00 build-source/app.raw01 build-source/app.raw02 build-source/app.raw03 build-source/app.raw04 build-source/app.raw05 build-source/app.raw06 > app.js
+          cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
+          cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
+          cp build-source/v120-styles.raw00 styles.css
           node --check app.js
+          test "$(sha256sum app.js | awk '{print $1}')" = "d2e2612be79d7e141afd3b4924b7b9f581e7d538b14658fc6456b44647386925"
+          test "$(sha256sum index.html | awk '{print $1}')" = "bf90871f70851bf77668971d97f5c946c5f6aee5c6ae7bfec57b1dc580889442"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,7 +29,7 @@ jobs:
           java-version: '21'
       - name: Install dependencies
         run: npm install
-      - name: Prepare Android app
+      - name: Prepare Android project
         shell: bash
         run: |
           rm -rf www android
@@ -35,38 +37,24 @@ jobs:
           cp index.html styles.css app.js config.js manifest.json icon.svg service-worker.js www/
           npx cap add android
           npx cap sync android
-      - name: Build installable APK
+          sed -i 's/versionCode 1/versionCode 120/' android/app/build.gradle
+          sed -i 's/versionName "1.0"/versionName "1.2.0"/' android/app/build.gradle
+      - name: Build aligned release APK
         shell: bash
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk ../Clear-Choice-Cleaning-Android-v1.1.0.apk
+          ./gradlew assembleRelease
+          cd ..
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+          cp "$BT/lib/apksigner.jar" apksigner.jar
+          test -s Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+          test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-Android
-          path: Clear-Choice-Cleaning-Android-v1.1.0.apk
-          if-no-files-found: error
-
-  windows:
-    name: Windows EXE
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Reassemble app logic
-        shell: bash
-        run: |
-          cat build-source/app.raw00 build-source/app.raw01 build-source/app.raw02 build-source/app.raw03 build-source/app.raw04 build-source/app.raw05 build-source/app.raw06 > app.js
-          node --check app.js
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install dependencies
-        run: npm install
-      - name: Build Windows executable
-        run: npm run build:win
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Clear-Choice-Cleaning-Windows
-          path: dist/*.exe
+          name: Clear-Choice-Cleaning-v1.2-Release-Unsigned
+          path: |
+            Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
+            apksigner.jar
           if-no-files-found: error
