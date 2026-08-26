@@ -58,3 +58,30 @@ jobs:
             Clear-Choice-Cleaning-Android-v1.2.0-aligned-unsigned.apk
             apksigner.jar
           if-no-files-found: error
+
+  windows:
+    name: Windows v1.2 EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble verified v1.2 source
+        shell: bash
+        run: |
+          cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
+          cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
+          cp build-source/v120-styles.raw00 styles.css
+          node --check app.js
+          test "$(sha256sum app.js | awk '{print $1}')" = "d2e2612be79d7e141afd3b4924b7b9f581e7d538b14658fc6456b44647386925"
+          test "$(sha256sum index.html | awk '{print $1}')" = "bf90871f70851bf77668971d97f5c946c5f6aee5c6ae7bfec57b1dc580889442"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install
+      - name: Build Windows executable
+        run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clear-Choice-Cleaning-Windows-v1.2
+          path: dist/*.exe
+          if-no-files-found: error
