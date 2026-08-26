@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#5b53d6" />
+  <meta name="description" content="Customer records, cleaning schedule, reminders and payments for Clear Choice Cleaning." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Clear Choice Cleaning Manager</title>
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">CC</div>
+        <div>
+          <strong>Clear Choice</strong>
+          <span>Cleaning Manager</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav-item" data-view="schedule"><span>▦</span> Schedule</button>
+        <button class="nav-item" data-view="customers"><span>👥</span> Customers</button>
+        <button class="nav-item" data-view="texts"><span>💬</span> Text Center</button>
+        <button class="nav-item" data-view="payments"><span>$</span> Payments</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncPillText">Saved on this device</span></div>
+        <button class="ghost small full" id="installBtn" hidden>Install App</button>
+      </div>
+    </aside>
+
+    <header class="mobile-header">
+      <button class="icon-btn" id="menuBtn" aria-label="Open menu">☰</button>
+      <div class="mobile-brand"><strong>Clear Choice</strong><span>Cleaning Manager</span></div>
+      <button class="icon-btn" id="mobileAddBtn" aria-label="Add cleaning">＋</button>
+    </header>
+
+    <main class="main">
+      <section class="view active" id="view-dashboard">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow" id="todayLabel"></p>
+            <h1 id="greeting">Your cleaning day</h1>
+          </div>
+          <div class="head-actions">
+            <button class="secondary" id="addCustomerDashboard">+ Customer</button>
+            <button class="primary" id="addAppointmentDashboard">+ Add Cleaning</button>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card"><span>Today</span><strong id="statToday">0</strong><small>cleanings</small></article>
+          <article class="stat-card"><span>Today’s Total</span><strong id="statTodayTotal">$0</strong><small>scheduled</small></article>
+          <article class="stat-card"><span>This Week</span><strong id="statWeek">0</strong><small>appointments</small></article>
+          <article class="stat-card"><span>Unpaid</span><strong id="statUnpaid">$0</strong><small id="statUnpaidCount">0 cleanings</small></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>Today’s Cleanings</h2><p>Everything you need before you head out.</p></div><button class="link-btn" data-go="schedule">View schedule →</button></div>
+            <div class="appointment-list" id="todayAppointments"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><h2>Tomorrow’s Texts</h2><p>Only customers who allow reminders.</p></div></div>
+            <div id="tomorrowReminderList" class="compact-list"></div>
+            <button class="secondary full mt" data-go="texts">Open Text Center</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><h2>Quick Notes</h2><p>Saved automatically on this device.</p></div></div>
+            <textarea id="quickNotes" rows="7" placeholder="Example: Pick up extra microfiber cloths…"></textarea>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-schedule">
+        <div class="page-head">
+          <div><p class="eyebrow">Calendar</p><h1>Cleaning Schedule</h1></div>
+          <div class="head-actions always"><button class="secondary" id="exportCalendarBtn">Export Phone Calendar</button><button class="primary" id="addAppointmentBtn">+ New Appointment</button></div>
+        </div>
+        <article class="panel calendar-panel">
+          <div class="calendar-toolbar">
+            <button class="icon-btn bordered" id="prevMonth" aria-label="Previous month">‹</button>
+            <div><h2 id="calendarTitle"></h2><p id="calendarSubtitle"></p></div>
+            <button class="icon-btn bordered" id="nextMonth" aria-label="Next month">›</button>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><h2>Upcoming</h2><p>Tap an appointment to edit it.</p></div></div>
+          <div id="upcomingList" class="appointment-list"></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-customers">
+        <div class="page-head">
+          <div><p class="eyebrow">Customer records</p><h1>Customers</h1></div>
+          <button class="primary" id="addCustomerBtn">+ New Customer</button>
+        </div>
+        <div class="toolbar panel slim">
+          <label class="search"><span>⌕</span><input id="customerSearch" placeholder="Search name, phone, city or notes…" /></label>
+          <select id="customerTextFilter" aria-label="Filter customers by text consent"><option value="all">All text preferences</option><option value="opted_in">Text opted in</option><option value="opted_out">Text opted out</option><option value="not_asked">Not asked</option></select>
+        </div>
+        <div id="customerGrid" class="customer-grid"></div>
+      </section>
+
+      <section class="view" id="view-texts">
+        <div class="page-head">
+          <div><p class="eyebrow">Consent-aware reminders</p><h1>Text Center</h1></div>
+          <button class="secondary" id="editTemplatesBtn">Edit Templates</button>
+        </div>
+        <div class="notice info"><strong>Built-in safety:</strong> customers marked Opted Out are excluded from reminder queues and the app disables prepared text actions for them.</div>
+        <div class="text-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Reminder Queue</h2><p>Upcoming cleanings in the next 7 days.</p></div></div>
+            <div id="reminderQueue" class="reminder-list"></div>
+          </article>
+          <article class="panel sticky-card">
+            <div class="panel-head"><div><h2>Compose Text</h2><p>Prepare it here, then send with your phone.</p></div></div>
+            <div class="form-grid single">
+              <label>Customer<select id="composeCustomer"></select></label>
+              <label>Template<select id="composeTemplate"><option value="day_before">Day-Before Reminder</option><option value="on_my_way">On My Way</option><option value="complete">Cleaning Complete</option><option value="custom">Custom</option></select></label>
+              <label>Message<textarea id="composeMessage" rows="7"></textarea></label>
+            </div>
+            <div class="text-safety" id="textSafety"></iv>
+            <div class="action-row wrap"><button class="primary" id="openSmsBtn">Open Text Message</button><button class="secondary" id="copyMessageBtn">Copy Message</button><button class="secondary" id="googleMessagesBtn">Google Messages Web</button><button class="secondary" id="markSentBtn">Mark Sent</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-payments">
+        <div class="page-head"><div><p class="eyebrow">Money tracker</p><h1>Payments</h1></div></div>
+        <div class="stats-grid three">
+          <article class="stat-card"><span>This Month</span><strong id="payMenthTotal">$0</strong><small>completed cleanings</small></article>
+          <article class="stat-card"><span>Unpaid</span><strong id="payUnpaid">$0</strong><small>outstanding</small></article>
+          <article class="stat-card"><span>This Year</span><strong id="payYear">$0</strong><small>paid cleanings</small></article>
+        </div>
+        <article class="panel"><div class="panel-head"><div><h2>Payment History</h2><p>Completed appointments and whether they were paid.</p></div></div><div id="paymentList" class="payment-list"></div></article>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="page-head"><div><p class="eyebrow">Your preferences</p><h1>Settings</h1></div></div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Business Details</h2><p>Used in your messages and calendar exports.</p></div></div>
+            <div class="form-grid single"><label>Business Name<input id="settingsBusinessName" /></label><label>Your Name<input id="settingsOwnerName" /></label><label>Default State<input id="settingsState" maxlength="2" /></label></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Phone Reminders</h2><p>Exporting an appointment can add a reminder to your phone calendar.</p></div></div>
+            <div class="form-grid single"><label>Default Calendar Alert<select id="settingsAlarm"><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="120">2 hours before</option><option value="240">4 hours before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select></label></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Cloud Sync</h2><p>Optional free Supabase sync for PC + phone.</p></div></div>
+            <p class="field-help" id="cloudStatus">Cloud is not set up. The app is still fully usable on this device.</p>
+            <div class="form-grid single" id="cloudAuthFields"><label>Cloud Email<input id="cloudEmail" type="email" autocomplete="username" /></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password" /></label></div>
+            <div class="action-row wrap"><button class="secondary" id="cloudSignUp">Create Cloud Account</button><button class="primary" id="cloudSignIn">Sign In</button><button class="secondary" id="cloudSyncNow">Sync Now</button><button class="danger ghost" id="cloudSignOut">Sign Out</button></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Backup</h2><p>Keep an extra copy whenever you want.</p></div></div>
+            <div class="action-row wrap"><button class="secondary" id="exportData">Export Backup</button><label class="secondary file-button">Import Backup<input type="file" id="importData" accept="application/json" hidden /></label><button class="danger ghost" id="resetData">Reset App</button></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="drawer-scrim" id="drawerScrim"></div>
+
+  <dialog id="customerDialog" class="dialog">
+    <form method="dialog" id="customerForm">
+      <div class="dialog-head"><div><p class="eyebrow">Customer record</p><h2 id="customerDialogTitle">New Customer</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <input type="hidden" id="customerId" />
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label>First Name<input id="customerFirstName" required /></label>
+          <label>Last Name<input id="customerLastName" /></label>
+          <label>Phone<input id="customerPhone" inputmode="tel" /></label>
+          <label>Email<input id="customerEmail" type="email" /></label>
+          <label class="span-2">Address<input id="customerAddress" /></label>
+          <label>City<input id="customerCity" /></label>
+          <label>State<input id="customerState" value="WI" maxlength="2" /></label>
+          <label>ZIP<igput id="customerZip" inputmode="numeric" /></label>
+          <label>Cleaning Price<input id="customerPrice" inputmode="decimal" placeholder="80" /></label>
+          <label>Frequency<select id="customerFrequency"><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="four_weeks">Every 4 Weeks</option><option value="monthly">Monthly</option><option value="one_time">One-Time</option><option value="custom">Custom</option></select></label>
+          <label>Payment Preference<input id="customerPayment" placeholder="Cash" /></label>
+          <label class="span-2">Pets / Home Notes<input id="customerPets" placeholder="2 cats, dog stays in bedroom…" /></label>
+          <label class="span-2">Entry Instructions<in`ut id="customerAccess" placeholder="Keypad, key location, knock first…" /></label>
+          <label class="span-2">Cleaning Notes<textarea id="customerNotes" rows="4"></textarea></label>
+        </div>
+        <fieldset class="consent-fieldset">
+          <legend>Text Message Permission</legend>
+          <p class="field-help">Track the customer’s preference so you don’t accidentally text someone who asked not to receive reminders.</p>
+          <div class="segmented" id="textConsentSegment">
+            <label><input type="radio" name="textConsent" value="opted_in" /><span>✓ Opted In</span></label>
+            <label><input type="radio" name="textConsent" value="not_asked" checked /><span>Not Asked</span></label>
+            <label><input type="radio" name="textConsent" value="opted_out" /><span>⛄ Opted Out</span></label>
+          </div>
+          <div class="form-grid consent-meta">
+            <label>Consent / Opt-out Date<input id="customerConsentDate" type="date" /></label>
+            <label>How Was Preference Given?<select id="customerConsentSource"><option value="not_recorded">Not recorded</option><option value="in_person">In person</option><option value="phone">Phone call</option><option value="text">Text message</option><option value="email">Email</option><option value="website">Website/form</option><option value="other">Other</option></select></label>
+            <label class="span-2">Consent Note<input id="customerConsentNote" placeholder="Example: Asked for appointment reminders during first cleaning" /></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="dialog-actions"><button type="button" class="danger ghost" id="deleteCustomerBtn" hidden>Delete</button><span class="spacer"></span><button value="cancel" class="secondary">Cancel</button><buttton type="submit" class="primary" id="saveCustomerBtn">Save Customer</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="appointmentDialog" class="dialog">
+    <form method="dialog" id="appointmentForm">
+      <div class="dialog-head"><div><p class="eyebrow">Cleaning appointment</p><h2 id="appointmentDialogTitle">New Appointment</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <input type="hidden" id="appointmentId" />
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label class="span-2">Customer<select id="appointmentCustomer" required></select></label>
+          <label>Date<input id="appointmentDate" type="date" required /></label>
+          <label>Time<input id="appointmentTime" type="time" required /></label>
+          <label>Price<input id="appointmentPrice" inputmode="decimal" /></label>
+          <label>Status<select id="appointmentStatus"><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+          <label>Payment<select id="appointmentPayment"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="not_due">Not Due Yet</option></select></label>
+          <label>Reminder<select id="appointmentReminder"><option value="pending">Pending</option><option value="sent">Sent</option><option value="skipped">Skipped</option></select></label>
+          <label class="span-2">Appointment Notes<textarea id="appointmentNotes" rows="4"></textarea></label>
+        </div>
+        <label class="check-row"><input type="checkbox" id="createNextOnComplete" checked /><span>When marked completed, create the next appointment using this customer’s frequency.</span></label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="danger ghost" id="deleteAppointmentBtn" hidden>Delete</button><span class="spacer"></span><buttton value="cancel" class="secondary">Cancel</button><button type="submit" class="primary">Save Appointment</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="templateDialog" class="dialog small-dialog">
+    <form method="dialog" id="templateForm">
+      <div class="dialog-head"><div><p class="eyebrow">Messages</p><h2>Edit Text Templates</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <div class="dialog-body form-grid single">
+        <label>Day-Before<textarea id="modalTemplateDayBefore" rows="5"></textarea></label>
+        <label>On My Way<textarea id="modalTemplateOnMyWay" rows="4"></textarea></label>
+        <label>Cleaning Complete<textarea id="modalTemplateComplete" rows="4"></textarea></label>
+      </div>
+      <div class="dialog-actions"><span class="spacer"></span><button value="cancel" class="secondary">Cancel</button><button type="submit" class="primary">Save Templates</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
