@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#5b53d6" />
+  <meta name="description" content="Customer records, cleaning schedule, reminders and payments for Clear Choice Cleaning." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Clear Choice Cleaning Manager</title>
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">CC</div>
+        <div>
+          <strong>Clear Choice</strong>
+          <span>Cleaning Manager</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav-item" data-view="schedule"><span>▦</span> Schedule</button>
+        <button class="nav-item" data-view="customers"><span>👥</span> Customers</button>
+        <button class="nav-item" data-view="texts"><span>💬</span> Text Center</button>
+        <button class="nav-item" data-view="payments"><span>$</span> Payments</button>
+        <button class="nav-item" data-view="earnings"><span>↗</span> Earnings</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncPillText">Saved on this device</span></div>
+        <button class="ghost small full" id="installBtn" hidden>Install App</button>
+      </div>
+    </aside>
+
+    <header class="mobile-header">
+      <button class="icon-btn" id="menuBtn" aria-label="Open menu">☰</button>
+      <div class="mobile-brand"><strong>Clear Choice</strong><span>Cleaning Manager</span></div>
+      <button class="icon-btn" id="mobileAddBtn" aria-label="Add cleaning">＋</button>
+    </header>
+
+    <main class="main">
+      <section class="view active" id="view-dashboard">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow" id="todayLabel"></p>
+            <h1 id="greeting">Your cleaning day</h1>
+          </div>
+          <div class="head-actions">
+            <button class="secondary" id="addCustomerDashboard">+ Customer</button>
+            <button class="primary" id="addAppointmentDashboard">+ Add Cleaning</button>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card"><span>Today</span><strong id="statToday">0</strong><small>cleanings</small></article>
+          <article class="stat-card"><span>Today’s Total</span><strong id="statTodayTotal">$0</strong><small>scheduled</small></article>
+          <article class="stat-card"><span>This Week</span><strong id="statWeek">0</strong><small>appointments</small></article>
+          <article class="stat-card"><span>Unpaid</span><strong id="statUnpaid">$0</strong><small id="statUnpaidCount">0 cleanings</small></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>Today’s Cleanings</h2><p>Everything you need before you head out.</p></div><button class="link-btn" data-go="schedule">View schedule →</button></div>
+            <div class="appointment-list" id="todayAppointments"></div>
+          </article>
+
+          <article class="panel android-only" id="todayRoutePanel">
+            <div class="panel-head"><div><h2>Today’s Route</h2><p>Phone field mode — next stop and route order.</p></div><button class="secondary small" id="openFullRouteBtn">Open Full Route</button></div>
+            <div id="todayRouteList" class="compact-list"></div>
+          </article>
+
+          <article class="panel android-only" id="fuelPanel">
+            <div class="panel-head"><div><h2>Fuel Near Me</h2><p>Current price used for trip/job cost estimates.</p></div><button class="secondary small" id="dashboardFuelRefresh">Refresh</button></div>
+            <div class="fuel-hero"><strong id="dashboardFuelPrice">—</strong><span id="dashboardFuelSource">Tap refresh to load current fuel pricing.</span></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><h2>Tomorrow’s Texts</h2><p>Only customers who allow reminders.</p></div></div>
+            <div id="tomorrowReminderList" class="compact-list"></div>
+            <button class="secondary full mt" data-go="texts">Open Text Center</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><h2>Quick Notes</h2><p>Saved automatically on this device.</p></div></div>
+            <textarea id="quickNotes" rows="7" placeholder="Example: Pick up extra microfiber cloths…"></textarea>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-schedule">
+        <div class="page-head">
+          <div><p class="eyebrow">Calendar</p><h1>Cleaning Schedule</h1></div>
+          <div class="head-actions always"><button class="secondary" id="exportCalendarBtn">Export Phone Calendar</button><button class="primary" id="addAppointmentBtn">+ New Appointment</button></div>
+        </div>
+        <article class="panel calendar-panel">
+          <div class="calendar-toolbar">
+            <button class="icon-btn bordered" id="prevMonth" aria-label="Previous month">‹</button>
+            <div><h2 id="calendarTitle"></h2><p id="calendarSubtitle"></p></div>
+            <button class="icon-btn bordered" id="nextMonth" aria-label="Next month">›</button>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><h2>Upcoming</h2><p>Tap an appointment to edit it.</p></div></div>
+          <div id="upcomingList" class="appointment-list"></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-customers">
+        <div class="page-head">
+          <div><p class="eyebrow">Customer records</p><h1>Customers</h1></div>
+          <button class="primary" id="addCustomerBtn">+ New Customer</button>
+        </div>
+        <div class="toolbar panel slim">
+          <label class="search"><span>⌕</span><input id="customerSearch" placeholder="Search name, phone, city or notes…" /></label>
+          <select id="customerTextFilter" aria-label="Filter customers by text consent"><option value="all">All text preferences</option><option value="opted_in">Text opted in</option><option value="opted_out">Text opted out</option><option value="not_asked">Not asked</option></select>
+        </div>
+        <div id="customerGrid" class="customer-grid"></div>
+      </section>
+
+      <section class="view" id="view-texts">
+        <div class="page-head">
+          <div><p class="eyebrow">Consent-aware reminders</p><h1>Text Center</h1></div>
+          <button class="secondary" id="editTemplatesBtn">Edit Templates</button>
+        </div>
+        <div class="notice info"><strong>Built-in safety:</strong> customers marked Opted Out are excluded from reminder queues and the app disables prepared text actions for them.</div>
+        <div class="text-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Reminder Queue</h2><p>Upcoming cleanings in the next 7 days.</p></div></div>
+            <div id="reminderQueue" class="reminder-list"></div>
+          </article>
+          <article class="panel sticky-card">
+            <div class="panel-head"><div><h2>Compose Text</h2><p>Prepare it here, then send with your phone.</p></div></div>
+            <div class="form-grid single">
+              <label>Customer<select id="composeCustomer"></select></label>
+              <label>Template<select id="composeTemplate"><option value="day_before">Day-Before Reminder</option><option value="on_my_way">On My Way</option><option value="complete">Cleaning Complete</option><option value="custom">Custom</option></select></label>
+              <label>Message<textarea id="composeMessage" rows="7"></textarea></label>
+            </div>
+            <div id="composeConsent" class="consent-box"></div>
+            <div class="action-row wrap"><a class="primary button-link" id="openSmsLink" href="#">Open Text Message</a><button class="secondary" id="copyTextBtn">Copy Message</button><a class="secondary button-link" id="googleMessagesLink" href="https://messages.google.com/web/" target="_blank" rel="noopener">Google Messages Web</a><button class="secondary" id="markTextSent">Mark Sent</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-payments">
+        <div class="page-head"><div><p class="eyebrow">Money</p><h1>Payments</h1></div></div>
+        <div class="stats-grid three">
+          <article class="stat-card"><span>This Month Scheduled</span><strong id="payScheduled">$0</strong><small>all appointments</small></article>
+          <article class="stat-card"><span>This Month Paid</span><strong id="payPaid">$0</strong><small>completed payments</small></article>
+          <article class="stat-card"><span>Outstanding</span><strong id="payOutstanding">$0</strong><small>marked unpaid</small></article>
+        </div>
+        <article class="panel">
+          <div class="panel-head"><div><h2>Payment History</h2><p>Use appointment status to track cash received.</p></div></div>
+          <div id="paymentList" class="appointment-list"></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-earnings">
+        <div class="page-head"><div><p class="eyebrow">Time + money</p><h1>Earnings & Hourly Rate</h1></div></div>
+        <div class="stats-grid">
+          <article class="stat-card"><span>Overall Gross / Hr</span><strong id="earnOverallGross">$0</strong><small>completed timed jobs</small></article>
+          <article class="stat-card"><span>Overall Net / Hr</span><strong id="earnOverallNet">$0</strong><small>after logged expenses</small></article>
+          <article class="stat-card"><span>This Month / Hr</span><strong id="earnMonthGross">$0</strong><small>gross average</small></article>
+          <article class="stat-card"><span>This Week / Hr</span><strong id="earnWeekGross">$0</strong><small>gross average</small></article>
+        </div>
+        <section class="panel" id="taxEstimatePanel" hidden>
+          <div class="panel-head"><div><h2>2026 U.S. + Wisconsin Tax Reserve Estimate</h2><p>Optional planning estimate based on recorded business profit. Not tax-preparation software.</p></div></div>
+          <div class="stats-grid">
+            <article class="stat-card"><span>Estimated Tax on Recorded Profit</span><strong id="taxYtdEstimate">$0</strong><small>SE + federal + Wisconsin</small></article>
+            <article class="stat-card"><span>Estimated Reserve Rate</span><strong id="taxReserveRate">0%</strong><small>of tax-profit base</small></article>
+            <article class="stat-card"><span>Still to Reserve</span><strong id="taxReserveRemaining">$0</strong><small>after amount already set aside</small></article>
+            <article class="stat-card"><span>After-Tax Net / Hr</span><strong id="taxAfterTaxHourly">—</strong><small>recorded completed work</small></article>
+          </div>
+          <div id="taxBreakdown" class="mini-stats"></div>
+          <p class="field-help mt">Estimate uses 2026 federal brackets/standard deductions, self-employment tax, and Wisconsin 2026 rate schedules. It does not calculate credits, QBI, all deductions, or your final return.</p>
+        </section>
