@@ -1,0 +1,82 @@
+
+        </fieldset>
+        <section class="work-card" id="customerHistoryCard">
+          <div class="work-card-head"><div><p class="eyebrow">Performance</p><h3>Customer History</h3></div></div>
+          <div id="customerPerformanceSummary" class="mini-stats"></div>
+          <div id="customerHistoryList" class="appointment-list"></div>
+        </section>
+      </div>
+      <div class="dialog-actions"><button type="button" class="danger ghost" id="deleteCustomerBtn" hidden>Delete</button><span class="spacer"></span><button value="cancel" class="secondary">Cancel</button><button type="submit" class="primary" id="saveCustomerBtn">Save Customer</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="appointmentDialog" class="dialog">
+    <form method="dialog" id="appointmentForm">
+      <div class="dialog-head"><div><p class="eyebrow">Cleaning appointment</p><h2 id="appointmentDialogTitle">New Appointment</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <input type="hidden" id="appointmentId" />
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label class="span-2">Customer<select id="appointmentCustomer" required></select></label>
+          <label>Date<input id="appointmentDate" type="date" required /></label>
+          <label>Time<input id="appointmentTime" type="time" required /></label>
+          <label>Price<input id="appointmentPrice" inputmode="decimal" /></label>
+          <label>Status<select id="appointmentStatus"><option value="scheduled">Scheduled</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="skipped">Skipped</option><option value="cancelled">Cancelled</option></select></label>
+          <label>Payment<select id="appointmentPayment"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="not_due">Not Due Yet</option></select></label>
+          <label>Reminder<select id="appointmentReminder"><option value="pending">Pending</option><option value="sent">Sent</option><option value="skipped">Skipped</option></select></label>
+          <label>Miles Driven<input id="appointmentMiles" inputmode="decimal" placeholder="0" /></label>
+          <label>Job Expenses<input id="appointmentExpenses" inputmode="decimal" placeholder="0.00" /></label>
+          <label>Vehicle<select id="appointmentVehicle"><option value="">No vehicle saved</option></select></label>
+          <label>Fuel Price / Gallon<input id="appointmentFuelPrice" inputmode="decimal" placeholder="Auto from current fuel price" /></label>
+          <label class="span-2">Appointment Notes<textarea id="appointmentNotes" rows="4"></textarea></label>
+        </div>
+
+        <section class="work-card" id="workModeCard">
+          <div class="work-card-head"><div><p class="eyebrow">Field work</p><h3>Cleaning Work Mode</h3></div><div id="liveTimer" class="live-timer">Not started</div></div>
+          <div id="workRateSummary" class="mini-stats"></div>
+          <div class="action-row wrap android-only">
+            <button type="button" class="primary" id="navigateAppointmentBtn">🧭 Navigate</button>
+            <button type="button" class="secondary" id="callCustomerBtn">☎ Call</button>
+            <button type="button" class="secondary" id="onMyWayBtn">🚗 On My Way</button>
+            <button type="button" class="secondary" id="scheduleLeaveReminderBtn">🔔 Leave Reminder</button>
+          </div>
+          <div class="action-row wrap">
+            <button type="button" class="secondary android-only" id="arrivedBtn">📍 Arrived</button>
+            <button type="button" class="primary" id="startCleaningBtn">▶ Start Cleaning</button>
+            <button type="button" class="secondary" id="finishCleaningBtn">✓ Finish Cleaning</button>
+            <button type="button" class="secondary" id="skipCleaningBtn">Skip This Visit</button>
+          </div>
+          <div class="work-columns">
+            <div><h4>Checklist</h4><div id="appointmentChecklist" class="checklist-box"></div></div>
+            <div><h4>Job Details</h4><div id="workDetails" class="detail-stack"></div></div>
+          </div>
+          <div class="attachment-row">
+            <label class="secondary file-button android-only">📷 Add Before/After Photo<input type="file" id="appointmentPhotoInput" accept="image/*" capture="environment" hidden /></label>
+            <label class="secondary file-button android-only">🎤 Add Voice Note<input type="file" id="appointmentAudioInput" accept="audio/*" capture hidden /></label>
+            <button type="button" class="secondary" id="addWrittenNoteBtn">📝 Add Note</button>
+          </div>
+          <div id="appointmentAttachments" class="attachment-list"></div>
+        </section>
+        <label class="check-row"><input type="checkbox" id="createNextOnComplete" checked /><span>When marked completed, create the next appointment using this customer’s frequency.</span></label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="danger ghost" id="deleteAppointmentBtn" hidden>Delete</button><span class="spacer"></span><button value="cancel" class="secondary">Cancel</button><button type="submit" class="primary">Save Appointment</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="templateDialog" class="dialog small-dialog">
+    <form method="dialog" id="templateForm">
+      <div class="dialog-head"><div><p class="eyebrow">Messages</p><h2>Edit Text Templates</h2></div><button class="icon-btn" value="cancel" aria-label="Close">×</button></div>
+      <div class="dialog-body form-grid single">
+        <label>Day-Before<textarea id="modalTemplateDayBefore" rows="5"></textarea></label>
+        <label>On My Way<textarea id="modalTemplateOnMyWay" rows="4"></textarea></label>
+        <label>Cleaning Complete<textarea id="modalTemplateComplete" rows="4"></textarea></label>
+      </div>
+      <div class="dialog-actions"><span class="spacer"></span><button value="cancel" class="secondary">Cancel</button><button type="submit" class="primary">Save Templates</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
