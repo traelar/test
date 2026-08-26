@@ -1,0 +1,8 @@
+{
+  "appId": "com.clearchoice.cleaningmanager",
+  "appName": "Clear Choice Cleaning",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
