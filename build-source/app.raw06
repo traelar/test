@@ -1,0 +1,31 @@
+'#exportCalendarBtn').addEventListener('click',exportCalendar);
+    $('#composeCustomer').addEventListener('change',updateCompose); $('#composeTemplate').addEventListener('change',updateCompose); $('#composeMessage').addEventListener('input',refreshComposeEligibility); $('#markTextSent').addEventListener('click',markTextSent);
+    $('#openSmsLink').addEventListener('click',e=>{const c=customerById($('#composeCustomer').value);if(!c||c.textConsent!=='opted_in'||!normalizePhone(c.phone)){e.preventDefault();toast('Texting is blocked until the customer is opted in with a phone number.');}}); $('#copyTextBtn').addEventListener('click',copyPreparedText);
+    $('#editTemplatesBtn').addEventListener('click',()=>{$('#modalTemplateDayBefore').value=state.settings.templates.day_before;$('#modalTemplateOnMyWay').value=state.settings.templates.on_my_way;$('#modalTemplateComplete').value=state.settings.templates.complete;$('#templateDialog').showModal()});
+    $('#templateForm').addEventListener('submit',e=>{e.preventDefault();state.settings.templates.day_before=$('#modalTemplateDayBefore').value.trim();state.settings.templates.on_my_way=$('#modalTemplateOnMyWay').value.trim();state.settings.templates.complete=$('#modalTemplateComplete').value.trim();$('#templateDialog').close();saveState();toast('Templates saved.');});
+    $('#saveSettingsBtn').addEventListener('click',saveSettings); $('#exportData').addEventListener('click',exportBackup); $('#importData').addEventListener('change',e=>{if(e.target.files?.[0])importBackup(e.target.files[0]);e.target.value=''}); $('#resetData').addEventListener('click',resetApp);
+    $('#cloudSignUp').addEventListener('click',cloudSignUp); $('#cloudSignIn').addEventListener('click',cloudSignIn); $('#cloudSyncNow').addEventListener('click',syncCloud); $('#cloudSignOut').addEventListener('click',cloudSignOut);
+    document.addEventListener('click',e=>{
+      const card=e.target.closest('[data-edit-customer]'); if(card){openCustomerDialog(card.dataset.editCustomer);return;}
+      const appt=e.target.closest('[data-edit-appointment-btn]'); if(appt){e.stopPropagation();openAppointmentDialog(appt.dataset.editAppointmentBtn);return;}
+      const row=e.target.closest('[data-edit-appointment]'); if(row && !e.target.closest('button')){openAppointmentDialog(row.dataset.editAppointment);return;}
+      const cal=e.target.closest('[data-calendar-date]'); if(cal){openAppointmentDialog('',cal.dataset.calendarDate);return;}
+      const compose=e.target.closest('[data-compose]'); if(compose&&!compose.disabled){openComposeForCustomer(compose.dataset.compose);return;}
+      const quickText=e.target.closest('[data-text-customer]'); if(quickText){e.stopPropagation();openComposeForCustomer(quickText.dataset.textCustomer);}
+    });
+    $('input[name="textConsent"]')?.form?.addEventListener('change',e=>{if(e.target.name==='textConsent'&&!$('#customerConsentDate').value)$('#customerConsentDate').value=todayISO();});
+
+    window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('#installBtn').hidden=false;});
+    $('#installBtn').addEventListener('click',async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$('#installBtn').hidden=true;});
+    window.addEventListener('appinstalled',()=>{$('#installBtn').hidden=true;toast('Clear Choice installed.');});
+    window.addEventListener('focus',()=>{if(cloudConfigured()&&loadAuth()?.access_token)syncCloud().catch(()=>{});});
+  }
+
+  async function init() {
+    bindEvents(); renderAll();
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+    if (cloudConfigured() && loadAuth()?.access_token) syncCloud().catch(console.warn);
+  }
+
+  init();
+})();
