@@ -1,4 +1,4 @@
-name: Build Clear Choice v1.2.4 Release
+name: Build Clear Choice v1.2.5 Release
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
 
 jobs:
   android:
-    name: Android v1.2.4 Release APK
+    name: Android v1.2.5 Release APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and verify v1.2.4 source
+      - name: Reassemble and verify v1.2.5 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -27,11 +27,12 @@ jobs:
           python build-source/v123-settings-protect.py
           sed -i 's/512x512/256x256/' manifest.json
           python build-source/v124-auto-route.py
+          python build-source/v125-sync-safety.py
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
           node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
-          test "$(node -p "require('./package.json').version")" = "1.2.4"
+          test "$(node -p "require('./package.json').version")" = "1.2.5"
           grep -Fq "computeRoutePlan" app.js
           grep -Fq "recalculateRouteDate" app.js
           grep -Fq "plannedDriveMinutes" app.js
@@ -40,8 +41,12 @@ jobs:
           grep -Fq "recalculateTodayRouteBtn" index.html
           grep -Fq "Exit Appointment" index.html
           grep -Fq "safe-area-inset-bottom" styles.css
-          grep -Fq "clear-choice-v124" service-worker.js
-          grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
+          grep -Fq "clear-choice-v125" service-worker.js
+          grep -Fq "mergeCloudStates" app.js
+          grep -Fq "markCloudDeletion" app.js
+          grep -Fq "cloudRecovery" app.js
+          grep -Fq "uploadCloudState" app.js
+          grep -Fq "Cloud safety pull failed; upload postponed" app.js
           grep -Fq "await restorePersistentState()" app.js
           grep -Fq "await restorePersistentAuth()" app.js
           grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
@@ -63,8 +68,8 @@ jobs:
           cp index.html styles.css app.js config.js manifest.json brand-logo.png service-worker.js www/
           npx cap add android
           npx cap sync android
-          sed -i 's/versionCode 1/versionCode 124/' android/app/build.gradle
-          sed -i 's/versionName "1.0"/versionName "1.2.4"/' android/app/build.gradle
+          sed -i 's/versionCode 1/versionCode 125/' android/app/build.gradle
+          sed -i 's/versionName "1.0"/versionName "1.2.5"/' android/app/build.gradle
           cp brand-logo.png android/app/src/main/res/drawable/brand_logo.png
           python - <<'PY'
           from pathlib import Path
@@ -88,24 +93,24 @@ jobs:
           ./gradlew assembleRelease
           cd ..
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.4-aligned-unsigned.apk
+          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.5-aligned-unsigned.apk
           cp "$BT/lib/apksigner.jar" apksigner.jar
-          test -s Clear-Choice-Cleaning-Android-v1.2.4-aligned-unsigned.apk
+          test -s Clear-Choice-Cleaning-Android-v1.2.5-aligned-unsigned.apk
           test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-v1.2.4-Release-Unsigned
+          name: Clear-Choice-Cleaning-v1.2.5-Release-Unsigned
           path: |
-            Clear-Choice-Cleaning-Android-v1.2.4-aligned-unsigned.apk
+            Clear-Choice-Cleaning-Android-v1.2.5-aligned-unsigned.apk
             apksigner.jar
           if-no-files-found: error
 
   windows:
-    name: Windows v1.2.4 EXE
+    name: Windows v1.2.5 EXE
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and verify v1.2.4 source
+      - name: Reassemble and verify v1.2.5 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -122,12 +127,13 @@ jobs:
           python build-source/v123-settings-protect.py
           sed -i 's/512x512/256x256/' manifest.json
           python build-source/v124-auto-route.py
+          python build-source/v125-sync-safety.py
           sed -i 's/\r$//' app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
           node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
-          test "$(node -p "require('./package.json').version")" = "1.2.4"
+          test "$(node -p "require('./package.json').version")" = "1.2.5"
           grep -Fq "computeRoutePlan" app.js
           grep -Fq "recalculateRouteDate" app.js
           grep -Fq "plannedDriveMinutes" app.js
@@ -136,8 +142,12 @@ jobs:
           grep -Fq "recalculateTodayRouteBtn" index.html
           grep -Fq "Exit Appointment" index.html
           grep -Fq "safe-area-inset-bottom" styles.css
-          grep -Fq "clear-choice-v124" service-worker.js
-          grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
+          grep -Fq "clear-choice-v125" service-worker.js
+          grep -Fq "mergeCloudStates" app.js
+          grep -Fq "markCloudDeletion" app.js
+          grep -Fq "cloudRecovery" app.js
+          grep -Fq "uploadCloudState" app.js
+          grep -Fq "Cloud safety pull failed; upload postponed" app.js
           grep -Fq "await restorePersistentState()" app.js
           grep -Fq "await restorePersistentAuth()" app.js
           grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
@@ -150,6 +160,6 @@ jobs:
         run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-Windows-v1.2.4
+          name: Clear-Choice-Cleaning-Windows-v1.2.5
           path: dist/*.exe
           if-no-files-found: error
