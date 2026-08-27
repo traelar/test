@@ -14,6 +14,7 @@ jobs:
       - name: Reassemble and patch verified v1.2.1 source
         shell: bash
         run: |
+          export PYTHONUTF8=1
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
           cp build-source/v120-styles.raw00 styles.css
@@ -39,6 +40,7 @@ jobs:
       - name: Prepare Android project
         shell: bash
         run: |
+          export PYTHONUTF8=1
           rm -rf www android
           mkdir -p www
           cp index.html styles.css app.js config.js manifest.json icon.svg service-worker.js www/
@@ -88,6 +90,7 @@ jobs:
       - name: Reassemble and patch verified v1.2.1 source
         shell: bash
         run: |
+          export PYTHONUTF8=1
           sed -i 's/\r$//' build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 build-source/v120-styles.raw00
           cat build-source/v120-app.raw00 build-source/v120-app.raw01 build-source/v120-app.raw02 build-source/v120-app.raw03 build-source/v120-app.raw04 build-source/v120-app.raw05 build-source/v120-app.raw06 build-source/v120-app.raw07 > app.js
           cat build-source/v120-index.raw00 build-source/v120-index.raw01 build-source/v120-index.raw02 > index.html
