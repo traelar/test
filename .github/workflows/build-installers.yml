@@ -98,6 +98,7 @@ jobs:
           python build-source/v121-normalize.py
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
+          sed -i 's/\r$//' app.js index.html styles.css config.js package.json
           node --check app.js
           sha256sum app.js index.html styles.css config.js package.json
           test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
