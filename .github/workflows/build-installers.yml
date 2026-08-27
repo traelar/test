@@ -22,22 +22,27 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           python build-source/v122-patch.py
-          base64 -d build-source/brand-logo.b64 > brand-logo.png
+          cat build-source/logo.b64.00 build-source/logo256.01 build-source/logo256.02 build-source/logo256.03 build-source/logo256.04 build-source/logo256.05 | base64 -d > brand-logo.png
           python build-source/v123-final.py
-          sed -i 's/512x512/128x128/' manifest.json
+          python build-source/v123-settings-protect.py
+          sed -i 's/512x512/256x256/' manifest.json
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
-          test "$(sha256sum app.js | awk '{print $1}')" = "9b7cbc4bcd6ea0c174383aea3b3b2519b874584b23204c4b84b9c135a51015dd"
+          sha256sum app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js brand-logo.png
           test "$(sha256sum index.html | awk '{print $1}')" = "b4118b388e9c5f3cfed868554652cf0754b7e2d4ea51b6ba91e8e3046e163af6"
           test "$(sha256sum styles.css | awk '{print $1}')" = "fc709e827c37a7ad487bd8b795a48273a24e1c6f03c473d7bfecf6b7e2568ef3"
-          test "$(sha256sum electron-main.cjs | awk '{print $1}')" = "f9bc59a1e2f8bf02d6aef4a56873c5e6db63c0b5c9944c73b31cbf97a729b40f"
           test "$(sha256sum preload.cjs | awk '{print $1}')" = "c93a5560bfbad1c5bd4ff81864ffa5b7665817d05c628beadfc9eb9161a14170"
           test "$(sha256sum package.json | awk '{print $1}')" = "efc0098aee26828588c53def994faa169ef30f2ba521556aa525de9dc1c90883"
-          test "$(sha256sum manifest.json | awk '{print $1}')" = "f949889772a3522c8cdd082d894989c54d559873cd9119d5a3a72a05b7be0c6b"
           test "$(sha256sum service-worker.js | awk '{print $1}')" = "6899083a3543a05c04618b09e78ac6ffb75ebe5080e00c1480a09c9b156e2740"
-          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "4fc99956f31a044bf8ed35a042d7fe484da747b10f6c81e2a9c0a182ec1396c3"
+          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "8ea343b2dafdd8ad873a292770e4e6f87a5813b42ec7ddf31a12336f322d0ae4"
           test "$(node -p "require('./package.json').version")" = "1.2.3"
+          grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
+          grep -Fq "await restorePersistentState()" app.js
+          grep -Fq "await restorePersistentAuth()" app.js
+          grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
+          grep -Fq '"sizes": "256x256"' manifest.json
+          test "$(stat -c%s brand-logo.png)" -gt 20000
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -71,6 +76,7 @@ jobs:
           p.write_text(s,encoding='utf-8')
           PY
           grep -q 'android.permission.ACCESS_COARSE_LOCATION' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.ACCESS_FINE_LOCATION' android/app/src/main/AndroidManifest.xml
           grep -q '@drawable/brand_logo' android/app/src/main/AndroidManifest.xml
       - name: Build aligned release APK
         shell: bash
@@ -83,6 +89,7 @@ jobs:
           "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.3-aligned-unsigned.apk
           cp "$BT/lib/apksigner.jar" apksigner.jar
           test -s Clear-Choice-Cleaning-Android-v1.2.3-aligned-unsigned.apk
+          test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
           name: Clear-Choice-Cleaning-v1.2.3-Release-Unsigned
@@ -108,23 +115,28 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           python build-source/v122-patch.py
-          base64 -d build-source/brand-logo.b64 > brand-logo.png
+          cat build-source/logo.b64.00 build-source/logo256.01 build-source/logo256.02 build-source/logo256.03 build-source/logo256.04 build-source/logo256.05 | base64 -d > brand-logo.png
           python build-source/v123-final.py
-          sed -i 's/512x512/128x128/' manifest.json
+          python build-source/v123-settings-protect.py
+          sed -i 's/512x512/256x256/' manifest.json
           sed -i 's/\r$//' app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
-          test "$(sha256sum app.js | awk '{print $1}')" = "9b7cbc4bcd6ea0c174383aea3b3b2519b874584b23204c4b84b9c135a51015dd"
+          sha256sum app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js brand-logo.png
           test "$(sha256sum index.html | awk '{print $1}')" = "b4118b388e9c5f3cfed868554652cf0754b7e2d4ea51b6ba91e8e3046e163af6"
           test "$(sha256sum styles.css | awk '{print $1}')" = "fc709e827c37a7ad487bd8b795a48273a24e1c6f03c473d7bfecf6b7e2568ef3"
-          test "$(sha256sum electron-main.cjs | awk '{print $1}')" = "f9bc59a1e2f8bf02d6aef4a56873c5e6db63c0b5c9944c73b31cbf97a729b40f"
           test "$(sha256sum preload.cjs | awk '{print $1}')" = "c93a5560bfbad1c5bd4ff81864ffa5b7665817d05c628beadfc9eb9161a14170"
           test "$(sha256sum package.json | awk '{print $1}')" = "efc0098aee26828588c53def994faa169ef30f2ba521556aa525de9dc1c90883"
-          test "$(sha256sum manifest.json | awk '{print $1}')" = "f949889772a3522c8cdd082d894989c54d559873cd9119d5a3a72a05b7be0c6b"
           test "$(sha256sum service-worker.js | awk '{print $1}')" = "6899083a3543a05c04618b09e78ac6ffb75ebe5080e00c1480a09c9b156e2740"
-          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "4fc99956f31a044bf8ed35a042d7fe484da747b10f6c81e2a9c0a182ec1396c3"
+          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "8ea343b2dafdd8ad873a292770e4e6f87a5813b42ec7ddf31a12336f322d0ae4"
           test "$(node -p "require('./package.json').version")" = "1.2.3"
+          grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
+          grep -Fq "await restorePersistentState()" app.js
+          grep -Fq "await restorePersistentAuth()" app.js
+          grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
+          grep -Fq '"sizes": "256x256"' manifest.json
+          test "$(stat -c%s brand-logo.png)" -gt 20000
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
