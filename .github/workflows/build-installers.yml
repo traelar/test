@@ -1,4 +1,4 @@
-name: Build Clear Choice v1.2.1 Release
+name: Build Clear Choice v1.2.2 Release
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
 
 jobs:
   android:
-    name: Android v1.2.1 Release APK
+    name: Android v1.2.2 Release APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and patch verified v1.2.1 source
+      - name: Reassemble and patch verified v1.2.2 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -21,13 +21,14 @@ jobs:
           python build-source/v121-normalize.py
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
+          python build-source/v122-patch.py
           node --check app.js
           sha256sum app.js index.html styles.css config.js package.json
-          test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
-          test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
-          test "$(sha256sum styles.css | awk '{print $1}')" = "763b5990fa7e8407612ad9a728ada205450c46e6bab0eba3929e0c2c247b9e79"
+          test "$(sha256sum app.js | awk '{print $1}')" = "4c5a03ffd74d2de8c307738a015b75cd946098620e4cc60f62c477472b9eed04"
+          test "$(sha256sum index.html | awk '{print $1}')" = "4ca2c009f683859a5d99f51db55424922611a18a739cc88a31c4bf257bcc6d0c"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "54f90cc7da6444516a84272bba7d3abb42397ec87ca78040153ec49ea24608ad"
           test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
-          test "$(node -p "require('./package.json').version")" = "1.2.1"
+          test "$(node -p "require('./package.json').version")" = "1.2.2"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -46,8 +47,8 @@ jobs:
           cp index.html styles.css app.js config.js manifest.json icon.svg service-worker.js www/
           npx cap add android
           npx cap sync android
-          sed -i 's/versionCode 1/versionCode 121/' android/app/build.gradle
-          sed -i 's/versionName "1.0"/versionName "1.2.1"/' android/app/build.gradle
+          sed -i 's/versionCode 1/versionCode 122/' android/app/build.gradle
+          sed -i 's/versionName "1.0"/versionName "1.2.2"/' android/app/build.gradle
           python - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
@@ -70,24 +71,24 @@ jobs:
           ./gradlew assembleRelease
           cd ..
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
+          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.2-aligned-unsigned.apk
           cp "$BT/lib/apksigner.jar" apksigner.jar
-          test -s Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
+          test -s Clear-Choice-Cleaning-Android-v1.2.2-aligned-unsigned.apk
           test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-v1.2.1-Release-Unsigned
+          name: Clear-Choice-Cleaning-v1.2.2-Release-Unsigned
           path: |
-            Clear-Choice-Cleaning-Android-v1.2.1-aligned-unsigned.apk
+            Clear-Choice-Cleaning-Android-v1.2.2-aligned-unsigned.apk
             apksigner.jar
           if-no-files-found: error
 
   windows:
-    name: Windows v1.2.1 EXE
+    name: Windows v1.2.2 EXE
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and patch verified v1.2.1 source
+      - name: Reassemble and patch verified v1.2.2 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -98,14 +99,15 @@ jobs:
           python build-source/v121-normalize.py
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
+          python build-source/v122-patch.py
           sed -i 's/\r$//' app.js index.html styles.css config.js package.json
           node --check app.js
           sha256sum app.js index.html styles.css config.js package.json
-          test "$(sha256sum app.js | awk '{print $1}')" = "cf23b0a7d9408ac496a1147680e83ef01102db5b6430d9877f78f59ad0d2beff"
-          test "$(sha256sum index.html | awk '{print $1}')" = "bfa07a9acd7bc0894963c27b59b06410de2f7b97f38b3910e0b55e6a0430698d"
-          test "$(sha256sum styles.css | awk '{print $1}')" = "763b5990fa7e8407612ad9a728ada205450c46e6bab0eba3929e0c2c247b9e79"
+          test "$(sha256sum app.js | awk '{print $1}')" = "4c5a03ffd74d2de8c307738a015b75cd946098620e4cc60f62c477472b9eed04"
+          test "$(sha256sum index.html | awk '{print $1}')" = "4ca2c009f683859a5d99f51db55424922611a18a739cc88a31c4bf257bcc6d0c"
+          test "$(sha256sum styles.css | awk '{print $1}')" = "54f90cc7da6444516a84272bba7d3abb42397ec87ca78040153ec49ea24608ad"
           test "$(sha256sum config.js | awk '{print $1}')" = "d648ec88a11323e419e91a26c762fd1369ec6ea7ae02cc7f43b0799cf9534703"
-          test "$(node -p "require('./package.json').version")" = "1.2.1"
+          test "$(node -p "require('./package.json').version")" = "1.2.2"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -115,6 +117,6 @@ jobs:
         run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-Windows-v1.2.1
+          name: Clear-Choice-Cleaning-Windows-v1.2.2
           path: dist/*.exe
           if-no-files-found: error
