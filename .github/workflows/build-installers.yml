@@ -22,13 +22,14 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           python build-source/v122-patch.py
-          cat build-source/logo.b64.00 build-source/logo256.01 build-source/logo256.02 build-source/logo256.03 build-source/logo256.04 build-source/logo256.05 | base64 -d > brand-logo.png
+          cat build-source/final-logo.00 build-source/final-logo.01 build-source/final-logo.02 build-source/final-logo.03 build-source/final-logo.04 build-source/final-logo.05 | base64 -d > brand-logo.png
           python build-source/v123-final.py
           python build-source/v123-settings-protect.py
           sed -i 's/512x512/256x256/' manifest.json
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
+          node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
           sha256sum app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js brand-logo.png
           test "$(sha256sum app.js | awk '{print $1}')" = "fcda42a882be985c2bb8448ab56b206b4bac598ab8448eed8e54e2715d36a0be"
           test "$(sha256sum index.html | awk '{print $1}')" = "b4118b388e9c5f3cfed868554652cf0754b7e2d4ea51b6ba91e8e3046e163af6"
@@ -38,14 +39,14 @@ jobs:
           test "$(sha256sum package.json | awk '{print $1}')" = "efc0098aee26828588c53def994faa169ef30f2ba521556aa525de9dc1c90883"
           test "$(sha256sum manifest.json | awk '{print $1}')" = "e9c4a620280d2512e1f4cf2f97765773baef8e548d66b9d55feaf5d30103e691"
           test "$(sha256sum service-worker.js | awk '{print $1}')" = "1ca44e3efe6836eb928edd018134106a3d4b65cc040688cabf76e7cc295c1377"
-          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "7c7f925ff4ed9ccf169bfbc5e2ac8591006c592f107f4189b01df8515c8e6e5d"
+          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "ef5ba5f53b42f30da626fefd4371325d153ba3e9a3d6e00d7b93e03b8b3598d9"
           test "$(node -p "require('./package.json').version")" = "1.2.3"
           grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
           grep -Fq "await restorePersistentState()" app.js
           grep -Fq "await restorePersistentAuth()" app.js
           grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
           grep -Fq '"sizes": "256x256"' manifest.json
-          test "$(stat -c%s brand-logo.png)" -gt 20000
+          test "$(stat -c%s brand-logo.png)" -gt 15000
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -118,7 +119,7 @@ jobs:
           python build-source/v121-patch1.py
           python build-source/v121-patch2.py
           python build-source/v122-patch.py
-          cat build-source/logo.b64.00 build-source/logo256.01 build-source/logo256.02 build-source/logo256.03 build-source/logo256.04 build-source/logo256.05 | base64 -d > brand-logo.png
+          cat build-source/final-logo.00 build-source/final-logo.01 build-source/final-logo.02 build-source/final-logo.03 build-source/final-logo.04 build-source/final-logo.05 | base64 -d > brand-logo.png
           python build-source/v123-final.py
           python build-source/v123-settings-protect.py
           sed -i 's/512x512/256x256/' manifest.json
@@ -126,6 +127,7 @@ jobs:
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
+          node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
           sha256sum app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js brand-logo.png
           test "$(sha256sum app.js | awk '{print $1}')" = "fcda42a882be985c2bb8448ab56b206b4bac598ab8448eed8e54e2715d36a0be"
           test "$(sha256sum index.html | awk '{print $1}')" = "b4118b388e9c5f3cfed868554652cf0754b7e2d4ea51b6ba91e8e3046e163af6"
@@ -135,14 +137,14 @@ jobs:
           test "$(sha256sum package.json | awk '{print $1}')" = "efc0098aee26828588c53def994faa169ef30f2ba521556aa525de9dc1c90883"
           test "$(sha256sum manifest.json | awk '{print $1}')" = "e9c4a620280d2512e1f4cf2f97765773baef8e548d66b9d55feaf5d30103e691"
           test "$(sha256sum service-worker.js | awk '{print $1}')" = "1ca44e3efe6836eb928edd018134106a3d4b65cc040688cabf76e7cc295c1377"
-          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "7c7f925ff4ed9ccf169bfbc5e2ac8591006c592f107f4189b01df8515c8e6e5d"
+          test "$(sha256sum brand-logo.png | awk '{print $1}')" = "ef5ba5f53b42f30da626fefd4371325d153ba3e9a3d6e00d7b93e03b8b3598d9"
           test "$(node -p "require('./package.json').version")" = "1.2.3"
           grep -Fq "JSON.stringify(s?.settings||{})!==JSON.stringify(base.settings)" app.js
           grep -Fq "await restorePersistentState()" app.js
           grep -Fq "await restorePersistentAuth()" app.js
           grep -Fq "s.settings&&Object.keys(s.settings).length" electron-main.cjs
           grep -Fq '"sizes": "256x256"' manifest.json
-          test "$(stat -c%s brand-logo.png)" -gt 20000
+          test "$(stat -c%s brand-logo.png)" -gt 15000
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
