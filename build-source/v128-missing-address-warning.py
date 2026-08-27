@@ -5,7 +5,8 @@ app=(root/'app.js').read_text(encoding='utf-8')
 pkg=json.loads((root/'package.json').read_text(encoding='utf-8'))
 sw=(root/'service-worker.js').read_text(encoding='utf-8')
 
-old="""  async function navigateToCustomer(c){
+if "title:'No Address Saved'" not in app:
+    old="""  async function navigateToCustomer(c){
     const street=String(c?.address||'').trim();
     if(!street){toast('Add the customer’s street address before navigating.');return false;}
     const address=[street,c?.city,c?.state,c?.zip].map(v=>String(v||'').trim()).filter(Boolean).join(', ');
@@ -16,7 +17,7 @@ old="""  async function navigateToCustomer(c){
     return ok;
   }
 """
-new="""  async function navigateToCustomer(c){
+    new="""  async function navigateToCustomer(c){
     if(!c){toast('Customer record could not be found.');return false;}
     const street=String(c.address||'').trim();
     const city=String(c.city||'').trim(),region=String(c.state||'').trim(),zip=String(c.zip||'').trim();
@@ -34,8 +35,10 @@ new="""  async function navigateToCustomer(c){
     return ok;
   }
 """
-if old not in app: raise SystemExit('navigateToCustomer target missing')
-app=app.replace(old,new,1)
+    if old not in app: raise SystemExit('navigateToCustomer target missing')
+    app=app.replace(old,new,1)
+else:
+    print('missing-address warning already present; keeping it')
 
 pkg['version']='1.2.8'
 sw=sw.replace('clear-choice-v127','clear-choice-v128').replace('v1.2.7','v1.2.8')
