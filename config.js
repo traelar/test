@@ -1,6 +1,7 @@
-// Copy this file to config.js and paste your Supabase project values below.
-// The app works without Supabase; cloud sync simply stays disabled.
+// Clear Choice Cleaning client configuration.
+// Supabase publishable client values are safe for the app client; never put a secret/service-role key here.
 window.CLEAR_CHOICE_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: ""
+  supabaseUrl: "https://gyiykhjgiicszmoigjaw.supabase.co",
+  supabaseAnonKey: "sb_publishable_e2dFnZZO5zA6oopLJ8_3Uw_w1VQ6sv6",
+  googleMapsApiKey: ""
 };
