@@ -1,4 +1,4 @@
-name: Build Clear Choice v1.2.6 Release
+name: Build Clear Choice v1.2.7 Release
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
 
 jobs:
   android:
-    name: Android v1.2.6 Release APK
+    name: Android v1.2.7 Release APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and verify v1.2.6 source
+      - name: Reassemble and verify v1.2.7 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -29,13 +29,17 @@ jobs:
           python build-source/v124-auto-route.py
           python build-source/v125-sync-safety.py
           python build-source/v126-s25-controls.py
+          python build-source/v127-vehicle-persistence.py
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
           node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
-          node -e "const p=require('./package.json');if(p.version!=='1.2.6'||p.dependencies['@capacitor/app-launcher']!=='latest-7')process.exit(1)"
+          node -e "const p=require('./package.json');if(p.version!=='1.2.7'||p.dependencies['@capacitor/app-launcher']!=='latest-7')process.exit(1)"
           grep -Fq "mergeCloudStates" app.js
           grep -Fq "markCloudDeletion" app.js
+          grep -Fq "mergedVehicles" app.js
+          grep -Fq "selectedVehicle" app.js
+          grep -Fq "set as your current vehicle" app.js
           grep -Fq "selectedScheduleDate" app.js
           grep -Fq "scheduleAppointmentHtml" app.js
           grep -Fq "launchAndroidUrl" app.js
@@ -45,7 +49,7 @@ jobs:
           grep -Fq "selectedDayPanel" index.html
           grep -Fq "addSelectedDayAppointment" index.html
           grep -Fq "max(env(safe-area-inset-bottom),52px)" styles.css
-          grep -Fq "clear-choice-v126" service-worker.js
+          grep -Fq "clear-choice-v127" service-worker.js
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -64,8 +68,8 @@ jobs:
           cp index.html styles.css app.js config.js manifest.json brand-logo.png service-worker.js www/
           npx cap add android
           npx cap sync android
-          sed -i 's/versionCode 1/versionCode 126/' android/app/build.gradle
-          sed -i 's/versionName "1.0"/versionName "1.2.6"/' android/app/build.gradle
+          sed -i 's/versionCode 1/versionCode 127/' android/app/build.gradle
+          sed -i 's/versionName "1.0"/versionName "1.2.7"/' android/app/build.gradle
           cp brand-logo.png android/app/src/main/res/drawable/brand_logo.png
           python - <<'PY'
           from pathlib import Path
@@ -90,24 +94,24 @@ jobs:
           ./gradlew assembleRelease
           cd ..
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.6-aligned-unsigned.apk
+          "$BT/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk Clear-Choice-Cleaning-Android-v1.2.7-aligned-unsigned.apk
           cp "$BT/lib/apksigner.jar" apksigner.jar
-          test -s Clear-Choice-Cleaning-Android-v1.2.6-aligned-unsigned.apk
+          test -s Clear-Choice-Cleaning-Android-v1.2.7-aligned-unsigned.apk
           test -s apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-v1.2.6-Release-Unsigned
+          name: Clear-Choice-Cleaning-v1.2.7-Release-Unsigned
           path: |
-            Clear-Choice-Cleaning-Android-v1.2.6-aligned-unsigned.apk
+            Clear-Choice-Cleaning-Android-v1.2.7-aligned-unsigned.apk
             apksigner.jar
           if-no-files-found: error
 
   windows:
-    name: Windows v1.2.6 EXE
+    name: Windows v1.2.7 EXE
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble and verify v1.2.6 source
+      - name: Reassemble and verify v1.2.7 source
         shell: bash
         run: |
           export PYTHONUTF8=1
@@ -126,14 +130,18 @@ jobs:
           python build-source/v124-auto-route.py
           python build-source/v125-sync-safety.py
           python build-source/v126-s25-controls.py
+          python build-source/v127-vehicle-persistence.py
           sed -i 's/\r$//' app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
           node -e "const fs=require('fs');const b=fs.readFileSync('brand-logo.png');if(b.length<24||b.readUInt32BE(16)!==256||b.readUInt32BE(20)!==256)process.exit(1)"
-          node -e "const p=require('./package.json');if(p.version!=='1.2.6'||p.dependencies['@capacitor/app-launcher']!=='latest-7')process.exit(1)"
+          node -e "const p=require('./package.json');if(p.version!=='1.2.7'||p.dependencies['@capacitor/app-launcher']!=='latest-7')process.exit(1)"
           grep -Fq "mergeCloudStates" app.js
           grep -Fq "markCloudDeletion" app.js
+          grep -Fq "mergedVehicles" app.js
+          grep -Fq "selectedVehicle" app.js
+          grep -Fq "set as your current vehicle" app.js
           grep -Fq "selectedScheduleDate" app.js
           grep -Fq "scheduleAppointmentHtml" app.js
           grep -Fq "launchAndroidUrl" app.js
@@ -141,7 +149,7 @@ jobs:
           grep -Fq "Job control" app.js
           grep -Fq "selectedDayPanel" index.html
           grep -Fq "max(env(safe-area-inset-bottom),52px)" styles.css
-          grep -Fq "clear-choice-v126" service-worker.js
+          grep -Fq "clear-choice-v127" service-worker.js
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -151,6 +159,6 @@ jobs:
         run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: Clear-Choice-Cleaning-Windows-v1.2.6
+          name: Clear-Choice-Cleaning-Windows-v1.2.7
           path: dist/*.exe
           if-no-files-found: error
