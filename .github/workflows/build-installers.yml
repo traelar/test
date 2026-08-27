@@ -32,6 +32,7 @@ jobs:
           python build-source/v127-vehicle-persistence.py
           python build-source/v128-missing-address-warning.py
           python build-source/v130-polish.py
+          python build-source/v130-consent-fix.py
           node --check app.js
           node --check electron-main.cjs
           node --check preload.cjs
@@ -45,6 +46,8 @@ jobs:
           grep -Fq "pasteMapsKey" app.js
           grep -Fq "testMapsSetup" app.js
           grep -Fq "CONFIG.googleMapsApiKey" app.js
+          grep -Fq "customerTextConsent" app.js
+          grep -Fq 'data-consent-choice="opted_in"' index.html
           grep -Fq "mapsKeyStatus" index.html
           grep -Fq "Google Voice business line" index.html
           grep -Fq "Clear Choice midnight theme" styles.css
@@ -150,6 +153,7 @@ jobs:
           python build-source/v127-vehicle-persistence.py
           python build-source/v128-missing-address-warning.py
           python build-source/v130-polish.py
+          python build-source/v130-consent-fix.py
           sed -i 's/\r$//' app.js index.html styles.css electron-main.cjs preload.cjs package.json manifest.json service-worker.js config.js
           node --check app.js
           node --check electron-main.cjs
@@ -158,6 +162,8 @@ jobs:
           grep -Fq "openGoogleVoiceText" app.js
           grep -Fq "pasteMapsKey" app.js
           grep -Fq "No Address Saved" app.js
+          grep -Fq "customerTextConsent" app.js
+          grep -Fq 'data-consent-choice="opted_in"' index.html
           grep -Fq "Clear Choice midnight theme" styles.css
           grep -Fq "gyiykhjgiicszmoigjaw.supabase.co" config.js
           grep -Fq "clear-choice-v130" service-worker.js
