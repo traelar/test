@@ -6,7 +6,7 @@
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.VitalityAdmin"
         android:label="Vitality Admin"
-        android:icon="@drawable/ic_vitality_admin">
+        android:icon="@drawable/vitality_logo">
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"
