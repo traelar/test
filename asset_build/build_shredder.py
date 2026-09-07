@@ -415,20 +415,28 @@ ground = box("preview_ground", (0, 0, -0.06), (12, 10, 0.10), ground_mat, bevel=
 
 bpy.ops.object.light_add(type="AREA", location=(-4.5, -5.5, 7.0))
 key = bpy.context.object
-key.data.energy = 1250
+key.data.energy = 2200
 key.data.shape = "DISK"
 key.data.size = 5.0
 bpy.ops.object.light_add(type="AREA", location=(4.0, 2.5, 5.2))
 fill = bpy.context.object
-fill.data.energy = 900
+fill.data.energy = 1550
 fill.data.size = 4.0
 bpy.ops.object.light_add(type="AREA", location=(0.0, 4.0, 7.5))
 rim = bpy.context.object
-rim.data.energy = 1050
+rim.data.energy = 1850
 rim.data.size = 3.0
 bpy.ops.object.light_add(type="SUN", location=(0, 0, 8))
-bpy.context.object.data.energy = 1.25
-bpy.context.scene.world.color = (0.025, 0.032, 0.045)
+sun = bpy.context.object
+sun.data.energy = 2.0
+sun.rotation_euler = (math.radians(28), math.radians(-22), math.radians(-32))
+bpy.context.scene.world.color = (0.07, 0.08, 0.10)
+
+def aim_light(light, target=(0.0, 0.0, 1.8)):
+    light.rotation_euler = (Vector(target) - light.location).to_track_quat("-Z", "Y").to_euler()
+
+for studio_light in (key, fill, rim):
+    aim_light(studio_light)
 
 bpy.ops.object.camera_add(location=(-8.7, -9.1, 6.3))
 camera = bpy.context.object
@@ -444,6 +452,8 @@ scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
 scene.cycles.samples = 28
 scene.cycles.use_denoising = True
+scene.view_settings.look = "AgX - Medium High Contrast"
+scene.view_settings.exposure = 0.8
 scene.render.resolution_x = 900
 scene.render.resolution_y = 700
 scene.render.resolution_percentage = 100
