@@ -1,0 +1,76 @@
+name: Build VRP Scrap Shredder
+
+on:
+  push:
+    branches:
+      - codex-shredder-build-20260907
+    paths:
+      - 'asset_build/**'
+      - '.github/workflows/build-vrp-scrap-shredder.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout build files
+        uses: actions/checkout@v4
+
+      - name: Install .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Download Blender 4.3.2
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://download.blender.org/release/Blender4.3/blender-4.3.2-windows-x64.zip' -OutFile blender.zip
+          Expand-Archive blender.zip -DestinationPath tools
+
+      - name: Fetch Sollumz and CodeWalker
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v2.4.2 https://github.com/Skylumz/Sollumz.git tools/Sollumz
+          git clone --depth 1 https://github.com/dexyfex/CodeWalker.git tools/CodeWalker
+
+      - name: Build mesh, LODs, collision and CodeWalker XML
+        shell: pwsh
+        env:
+          SOLLUMZ_PATH: ${{ github.workspace }}/tools/Sollumz
+          SHREDDER_OUT: ${{ github.workspace }}/out
+        run: |
+          $blender = Get-ChildItem tools -Filter blender.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          & $blender --background --factory-startup --python asset_build/build_shredder.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile native GTA assets with CodeWalker Core
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out/package/vrp-scrap-shredder/stream | Out-Null
+          dotnet run --project asset_build/converter/Converter.csproj --configuration Release -- out/xml out/package/vrp-scrap-shredder/stream
+
+      - name: Assemble and validate FiveM resource
+        shell: pwsh
+        run: |
+          Copy-Item asset_build/fivem/fxmanifest.lua out/package/vrp-scrap-shredder/fxmanifest.lua
+          Copy-Item asset_build/fivem/README.md out/package/vrp-scrap-shredder/README.md
+          Copy-Item out/asset_stats.json out/package/vrp-scrap-shredder/asset_stats.json
+          Copy-Item -Recurse out/previews out/package/vrp-scrap-shredder/previews
+          Copy-Item -Recurse out/source out/package/vrp-scrap-shredder/source
+          $ydr = Get-Item out/package/vrp-scrap-shredder/stream/vrp_scrap_shredder.ydr
+          $ytyp = Get-Item out/package/vrp-scrap-shredder/stream/vrp_scrap_shredder.ytyp
+          if ($ydr.Length -lt 4096) { throw 'YDR is unexpectedly small' }
+          if ($ytyp.Length -lt 256) { throw 'YTYP is unexpectedly small' }
+          Compress-Archive -Path out/package/vrp-scrap-shredder -DestinationPath out/vrp-scrap-shredder.zip -CompressionLevel Optimal
+
+      - name: Upload finished resource
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrp-scrap-shredder
+          path: out/vrp-scrap-shredder.zip
+          if-no-files-found: error
+          retention-days: 14
