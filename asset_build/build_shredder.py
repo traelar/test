@@ -74,6 +74,10 @@ def make_texture(name, color, rust=0.0, grime=0.0, scratches=0.0, size=256):
                 b = min(1.0, b + 0.10)
             pixels[i:i + 4] = (clamp(r), clamp(g), clamp(b), 1.0)
     image.pixels.foreach_set(pixels)
+    # Flush generated pixels before Cycles or the Sollumz texture exporter samples
+    # the image. Without this, Blender's background renderer can retain the
+    # newly-created image's black GPU buffer even though the saved PNG is valid.
+    image.update()
     image.file_format = "PNG"
     image.filepath_raw = str(TEXTURE_OUT / f"{name}.png")
     image.save()
@@ -102,15 +106,15 @@ def make_material(name, color, metallic=0.0, roughness=0.55, rust=0.0, grime=0.0
     return mat
 
 
-MAT_BLUE = make_material("shredder_blue", (0.055, 0.13, 0.17), 0.72, 0.33, 0.045, 0.025, 0.30)
-MAT_YELLOW = make_material("safety_yellow", (0.93, 0.51, 0.025), 0.45, 0.39, 0.030, 0.018, 0.20)
-MAT_STEEL = make_material("cutter_steel", (0.17, 0.19, 0.20), 0.90, 0.22, 0.055, 0.060, 0.38)
-MAT_DARK = make_material("machine_dark", (0.025, 0.032, 0.036), 0.76, 0.28, 0.020, 0.055, 0.12)
+MAT_BLUE = make_material("shredder_blue", (0.075, 0.29, 0.47), 0.48, 0.37, 0.035, 0.018, 0.22)
+MAT_YELLOW = make_material("safety_yellow", (1.00, 0.59, 0.035), 0.18, 0.43, 0.022, 0.012, 0.14)
+MAT_STEEL = make_material("cutter_steel", (0.31, 0.35, 0.39), 0.78, 0.25, 0.045, 0.045, 0.30)
+MAT_DARK = make_material("machine_dark", (0.055, 0.070, 0.080), 0.55, 0.34, 0.015, 0.035, 0.10)
 MAT_RUBBER = make_material("belt_rubber", (0.018, 0.021, 0.022), 0.05, 0.80, 0.0, 0.05, 0.08)
-MAT_RED = make_material("emergency_red", (0.61, 0.025, 0.018), 0.35, 0.34, 0.015, 0.01, 0.05)
-MAT_SILVER = make_material("brushed_metal", (0.43, 0.47, 0.49), 0.93, 0.20, 0.015, 0.02, 0.18)
-MAT_WHITE = make_material("label_white", (0.80, 0.80, 0.72), 0.10, 0.48, 0.01, 0.01, 0.02)
-MAT_GREEN = make_material("indicator_green", (0.03, 0.55, 0.12), 0.18, 0.24, 0.0, 0.0, 0.0)
+MAT_RED = make_material("emergency_red", (0.90, 0.025, 0.015), 0.12, 0.38, 0.010, 0.008, 0.04)
+MAT_SILVER = make_material("brushed_metal", (0.57, 0.63, 0.69), 0.82, 0.23, 0.012, 0.014, 0.14)
+MAT_WHITE = make_material("label_white", (0.94, 0.94, 0.88), 0.05, 0.52, 0.006, 0.006, 0.01)
+MAT_GREEN = make_material("indicator_green", (0.025, 0.82, 0.14), 0.08, 0.28, 0.0, 0.0, 0.0)
 
 
 def finish_mesh(obj, mat, bevel=0.03, smooth=False, add=True):
@@ -453,7 +457,7 @@ scene.cycles.device = "CPU"
 scene.cycles.samples = 28
 scene.cycles.use_denoising = True
 scene.view_settings.look = "AgX - Medium High Contrast"
-scene.view_settings.exposure = 0.8
+scene.view_settings.exposure = 1.15
 scene.render.resolution_x = 900
 scene.render.resolution_y = 700
 scene.render.resolution_percentage = 100
