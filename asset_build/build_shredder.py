@@ -345,6 +345,24 @@ for part in render_parts:
     if part.type == "MESH":
         smart_uv(part)
 
+# Give every part the same material-slot table before joining. Blender's
+# background join can otherwise keep only the active object's slot zero and
+# silently render/export the entire machine as that one material.
+visual_materials = list(material_cache.values())
+for part in render_parts:
+    if part.type != "MESH":
+        continue
+    old_slots = list(part.data.materials)
+    remapped_indices = []
+    for polygon in part.data.polygons:
+        source_material = old_slots[polygon.material_index]
+        remapped_indices.append(visual_materials.index(source_material))
+    part.data.materials.clear()
+    for material in visual_materials:
+        part.data.materials.append(material)
+    for polygon, material_index in zip(part.data.polygons, remapped_indices):
+        polygon.material_index = material_index
+
 bpy.ops.object.select_all(action="DESELECT")
 for part in render_parts:
     part.select_set(True)
