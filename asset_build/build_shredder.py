@@ -20,9 +20,8 @@ for folder in (XML_OUT, PREVIEW_OUT, SOURCE_OUT, TEXTURE_OUT):
 
 SOLLUMZ_PATH = Path(os.environ["SOLLUMZ_PATH"]).resolve()
 sys.path.insert(0, str(SOLLUMZ_PATH.parent))
+bpy.ops.preferences.addon_enable(module="Sollumz")
 import Sollumz
-
-Sollumz.register()
 
 from Sollumz.sollumz_properties import LODLevel, SollumType
 from Sollumz.tools.boundhelper import convert_obj_to_bvh
