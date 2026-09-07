@@ -44,7 +44,7 @@ jobs:
           SHREDDER_OUT: ${{ github.workspace }}/out
         run: |
           $blender = Get-ChildItem tools -Filter blender.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
-          & $blender --background --factory-startup --python asset_build/build_shredder.py
+          & $blender --background --factory-startup --python-exit-code 1 --python asset_build/build_shredder.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile native GTA assets with CodeWalker Core
