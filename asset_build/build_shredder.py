@@ -487,8 +487,8 @@ for lod_mesh in (medium_mesh, low_mesh):
 drawable = convert_obj_to_drawable(model)
 drawable.name = ASSET_NAME
 model.name = f"{ASSET_NAME}.model"
-model.sz_lods.get_lod(LODLevel.MEDIUM).mesh = medium_mesh
-model.sz_lods.get_lod(LODLevel.LOW).mesh = low_mesh
+model.sollumz_lods.set_lod_mesh(LODLevel.MEDIUM, medium_mesh)
+model.sollumz_lods.set_lod_mesh(LODLevel.LOW, low_mesh)
 drawable.drawable_properties.lod_dist_high = 120
 drawable.drawable_properties.lod_dist_med = 220
 drawable.drawable_properties.lod_dist_low = 340
