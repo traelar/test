@@ -440,7 +440,10 @@ def point_camera(target=(0.0, 0.0, 1.8)):
 
 
 scene = bpy.context.scene
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.engine = "CYCLES"
+scene.cycles.device = "CPU"
+scene.cycles.samples = 28
+scene.cycles.use_denoising = True
 scene.render.resolution_x = 900
 scene.render.resolution_y = 700
 scene.render.resolution_percentage = 100
