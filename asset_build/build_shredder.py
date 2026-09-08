@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v22"
+ASSET_NAME = "industrial_scrap_shredder_v23"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -41,6 +41,7 @@ render_parts = []
 rotor_parts = [[], []]
 input_slat_parts = []
 output_slat_parts = []
+scrap_chunk_parts = []
 material_cache = {}
 
 
@@ -113,7 +114,7 @@ MAT_BLUE = make_material("shredder_blue", (0.040, 0.145, 0.205), 0.34, 0.56, 0.0
 MAT_YELLOW = make_material("safety_yellow", (0.72, 0.405, 0.030), 0.12, 0.58, 0.032, 0.060, 0.10)
 MAT_STEEL = make_material("cutter_steel", (0.245, 0.275, 0.300), 0.72, 0.34, 0.045, 0.085, 0.20)
 MAT_DARK = make_material("machine_dark", (0.032, 0.041, 0.046), 0.42, 0.50, 0.020, 0.090, 0.07)
-MAT_RUBBER = make_material("belt_rubber", (0.018, 0.021, 0.022), 0.05, 0.80, 0.0, 0.05, 0.08)
+MAT_RUBBER = make_material("belt_rubber", (0.025, 0.031, 0.034), 0.04, 0.78, 0.0, 0.018, 0.0)
 MAT_RED = make_material("emergency_red", (0.62, 0.018, 0.012), 0.10, 0.48, 0.020, 0.020, 0.04)
 MAT_SILVER = make_material("brushed_metal", (0.40, 0.445, 0.480), 0.78, 0.34, 0.035, 0.040, 0.16)
 MAT_WHITE = make_material("label_white", (0.94, 0.94, 0.88), 0.05, 0.52, 0.006, 0.006, 0.01)
@@ -295,24 +296,30 @@ for sx in (-1, 1):
 # Twin shafts, cutter discs and interlocking teeth.
 for shaft_idx, x in enumerate((-0.39, 0.39)):
     rotor_parts[shaft_idx].append(
-        cylinder("main_shaft", (x, 0.0, 2.72), 0.16, 2.30, MAT_STEEL,
+        cylinder("main_shaft", (x, 0.0, 2.44), 0.16, 2.30, MAT_STEEL,
                  rotation=(math.radians(90), 0, 0), vertices=16)
     )
     for disc_idx in range(11):
         y = -1.02 + disc_idx * 0.204
         phase = (disc_idx % 2) * math.radians(30) + shaft_idx * math.radians(30)
         rotor_parts[shaft_idx].append(
-            cylinder("cutter_disc", (x, y, 2.72), 0.39, 0.13, MAT_STEEL,
+            cylinder("cutter_disc", (x, y, 2.44), 0.39, 0.13, MAT_STEEL,
                      rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.014)
         )
         for tooth_idx in range(6):
             angle = phase + tooth_idx * math.tau / 6.0
             tx = x + math.cos(angle) * 0.36
-            tz = 2.72 + math.sin(angle) * 0.36
+            tz = 2.44 + math.sin(angle) * 0.36
             rotor_parts[shaft_idx].append(
                 box("cutter_tooth", (tx, y, tz), (0.24, 0.145, 0.13), MAT_SILVER,
                     rotation=(0.0, -angle, 0.0), bevel=0.014)
             )
+
+# Fixed guards hide the cutter envelope from both exterior chamber faces while
+# leaving the interlocking teeth visible from the open hopper above.
+for y in (-1.20, 1.20):
+    box("cutter_throat_guard", (0.0, y, 2.86), (2.58, 0.16, 0.46),
+        MAT_DARK, bevel=0.024)
 
 # Side gearboxes, electric motors and hydraulic details.
 for x in (-0.62, 0.62):
@@ -412,12 +419,11 @@ input_mount_point = point_on_input(2.62, -0.18)
 box("input_hopper_saddle", input_mount_point,
     (0.30, 2.14, 0.20), MAT_DARK, bevel=0.018)
 for y in (-1.02, 1.02):
-    beam("input_hopper_mount", (-1.70, y, 3.91),
-         (input_mount_point.x, y, input_mount_point.z + 0.02),
-         width=0.13, depth=0.14, mat=MAT_YELLOW, bevel=0.012)
-    box("input_hopper_bearing_plate",
+    box("input_hopper_receiver", (-1.80, y, 4.07),
+        (0.42, 0.20, 0.28), MAT_DARK, bevel=0.018)
+    box("input_hopper_clamp",
         (input_mount_point.x, y, input_mount_point.z + 0.12),
-        (0.34, 0.10, 0.42), MAT_YELLOW, bevel=0.018)
+        (0.34, 0.20, 0.36), MAT_BLUE, bevel=0.018)
 
 # Discharge conveyor and chute to the right.
 out_angle = math.radians(11.0)
@@ -491,6 +497,19 @@ for i in range(11):
     box("hazard_stripe", (x, -1.30, 1.53), (0.14, 0.045, 0.30), MAT_YELLOW if i % 2 == 0 else MAT_DARK,
         rotation=(0.0, math.radians(24), 0.0), bevel=0.008)
 
+# Lightweight native output fragment used by the gameplay script. Keeping the
+# debris model inside this resource avoids dependencies on uncertain map props.
+scrap_chunk_parts.append(
+    box("output_scrap_plate", (0.0, 0.0, 0.0), (0.34, 0.16, 0.075),
+        MAT_STEEL, rotation=(math.radians(12), math.radians(-18), math.radians(21)),
+        bevel=0.012)
+)
+scrap_chunk_parts.append(
+    box("output_scrap_flange", (0.04, -0.01, 0.055), (0.20, 0.08, 0.16),
+        MAT_DARK, rotation=(math.radians(-8), math.radians(28), math.radians(-16)),
+        bevel=0.010)
+)
+
 
 def smart_uv(obj):
     bpy.ops.object.select_all(action="DESELECT")
@@ -554,16 +573,19 @@ def merge_parts(asset_name, parts, origin=(0.0, 0.0, 0.0)):
     return merged
 
 
-component_parts = rotor_parts[0] + rotor_parts[1] + input_slat_parts + output_slat_parts
+component_parts = (rotor_parts[0] + rotor_parts[1] + input_slat_parts +
+                   output_slat_parts + scrap_chunk_parts)
 component_ids = {part.as_pointer() for part in component_parts}
 body_parts = [part for part in render_parts if part.as_pointer() not in component_ids]
 
 model = merge_parts(ASSET_NAME, body_parts)
-rotor_a_model = merge_parts(f"{ASSET_NAME}_rotor_a", rotor_parts[0], (-0.39, 0.0, 2.72))
-rotor_b_model = merge_parts(f"{ASSET_NAME}_rotor_b", rotor_parts[1], (0.39, 0.0, 2.72))
+rotor_a_model = merge_parts(f"{ASSET_NAME}_rotor_a", rotor_parts[0], (-0.39, 0.0, 2.44))
+rotor_b_model = merge_parts(f"{ASSET_NAME}_rotor_b", rotor_parts[1], (0.39, 0.0, 2.44))
 input_slat_model = merge_parts(f"{ASSET_NAME}_belt_in", input_slat_parts)
 output_slat_model = merge_parts(f"{ASSET_NAME}_belt_out", output_slat_parts)
-models = [model, rotor_a_model, rotor_b_model, input_slat_model, output_slat_model]
+scrap_chunk_model = merge_parts(f"{ASSET_NAME}_chunk", scrap_chunk_parts)
+models = [model, rotor_a_model, rotor_b_model, input_slat_model, output_slat_model,
+          scrap_chunk_model]
 model_names = [source_model.name for source_model in models]
 
 # Preserve an assembled, editable source GLB before adding GTA hierarchy objects.
@@ -757,7 +779,11 @@ collision_box("col_hopper_back", (0.0, 1.29, 3.42), (3.48, 0.13, 1.48), rotation
 collision_box("col_hopper_left", (-1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotation=(0, -hopper_slope, 0))
 collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotation=(0, hopper_slope, 0))
 
-collision_box("col_input_belt", input_center, (input_length + 0.06, 1.88, 0.20), rotation=(0, conv_angle, 0))
+# A dedicated walk surface sits at cleat height. The previous collision volume
+# was centered on the rubber carcass, which let ped capsules settle visibly
+# through the belt before contacting it.
+collision_box("col_input_walk_surface", (input_center.x, 0.0, input_center.z + 0.10),
+              (input_length - 0.20, 1.74, 0.10), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
     collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
@@ -774,7 +800,8 @@ for support_point in input_support_points:
     collision_box("col_input_top_saddle", (support_point.x, 0.0, support_point.z - 0.04),
                   (0.20, 2.00, 0.18))
 collision_box("col_input_hopper_saddle", input_mount_point, (0.32, 2.16, 0.22))
-collision_box("col_output_belt", (2.55, 0.0, 0.92), (2.85, 1.82, 0.20), rotation=(0, out_angle, 0))
+collision_box("col_output_walk_surface", (2.55, 0.0, 1.01),
+              (2.65, 1.70, 0.10), rotation=(0, out_angle, 0))
 for local_x in (-0.25, 1.05):
     support_x = 2.55 + math.cos(out_angle) * local_x
     support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
@@ -846,7 +873,8 @@ stats = {
     "materials": len(visual_materials),
     "component_material_slots": sum(material_counts.values()),
     "embedded_textures": len(visual_materials),
-    "animated_components": model_names[1:],
+    "animated_components": model_names[1:5],
+    "output_piece_model": f"{ASSET_NAME}_chunk",
     "collision_material": "METAL_HOLLOW_MEDIUM",
     "sollumz": "2.4.2",
     "blender": bpy.app.version_string,
