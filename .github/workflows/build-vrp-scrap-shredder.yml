@@ -63,6 +63,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item asset_build/fivem/fxmanifest.lua out/package/vrp-scrap-shredder/fxmanifest.lua
+          Copy-Item asset_build/fivem/client.lua out/package/vrp-scrap-shredder/client.lua
           Copy-Item asset_build/fivem/README.md out/package/vrp-scrap-shredder/README.md
           Copy-Item out/asset_stats.json out/package/vrp-scrap-shredder/asset_stats.json
           Copy-Item -Recurse out/previews out/package/vrp-scrap-shredder/previews
