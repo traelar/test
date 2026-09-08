@@ -38,6 +38,9 @@ for datablocks in (bpy.data.meshes, bpy.data.curves, bpy.data.materials, bpy.dat
     pass
 
 render_parts = []
+rotor_parts = [[], []]
+input_slat_parts = []
+output_slat_parts = []
 material_cache = {}
 
 
@@ -45,7 +48,7 @@ def clamp(v):
     return max(0.0, min(1.0, v))
 
 
-def make_texture(name, color, rust=0.0, grime=0.0, scratches=0.0, size=256):
+def make_texture(name, color, rust=0.0, grime=0.0, scratches=0.0, size=512):
     image = bpy.data.images.new(name, width=size, height=size, alpha=True)
     pixels = [0.0] * (size * size * 4)
     cr, cg, cb = color
@@ -106,13 +109,13 @@ def make_material(name, color, metallic=0.0, roughness=0.55, rust=0.0, grime=0.0
     return mat
 
 
-MAT_BLUE = make_material("shredder_blue", (0.075, 0.29, 0.47), 0.48, 0.37, 0.035, 0.018, 0.22)
-MAT_YELLOW = make_material("safety_yellow", (1.00, 0.59, 0.035), 0.18, 0.43, 0.022, 0.012, 0.14)
-MAT_STEEL = make_material("cutter_steel", (0.31, 0.35, 0.39), 0.78, 0.25, 0.045, 0.045, 0.30)
-MAT_DARK = make_material("machine_dark", (0.055, 0.070, 0.080), 0.55, 0.34, 0.015, 0.035, 0.10)
+MAT_BLUE = make_material("shredder_blue", (0.040, 0.145, 0.205), 0.34, 0.56, 0.070, 0.065, 0.16)
+MAT_YELLOW = make_material("safety_yellow", (0.72, 0.405, 0.030), 0.12, 0.58, 0.055, 0.055, 0.12)
+MAT_STEEL = make_material("cutter_steel", (0.245, 0.275, 0.300), 0.72, 0.34, 0.075, 0.080, 0.24)
+MAT_DARK = make_material("machine_dark", (0.032, 0.041, 0.046), 0.42, 0.50, 0.035, 0.085, 0.08)
 MAT_RUBBER = make_material("belt_rubber", (0.018, 0.021, 0.022), 0.05, 0.80, 0.0, 0.05, 0.08)
-MAT_RED = make_material("emergency_red", (0.90, 0.025, 0.015), 0.12, 0.38, 0.010, 0.008, 0.04)
-MAT_SILVER = make_material("brushed_metal", (0.57, 0.63, 0.69), 0.82, 0.23, 0.012, 0.014, 0.14)
+MAT_RED = make_material("emergency_red", (0.62, 0.018, 0.012), 0.10, 0.48, 0.020, 0.020, 0.04)
+MAT_SILVER = make_material("brushed_metal", (0.40, 0.445, 0.480), 0.78, 0.34, 0.035, 0.040, 0.16)
 MAT_WHITE = make_material("label_white", (0.94, 0.94, 0.88), 0.05, 0.52, 0.006, 0.006, 0.01)
 MAT_GREEN = make_material("indicator_green", (0.025, 0.82, 0.14), 0.08, 0.28, 0.0, 0.0, 0.0)
 
@@ -166,6 +169,19 @@ def pipe(name, start, end, radius=0.035, mat=MAT_YELLOW, vertices=8, add=True):
     return finish_mesh(obj, mat, bevel=0.012, smooth=True, add=add)
 
 
+def beam(name, start, end, width=0.10, depth=0.10, mat=MAT_DARK, bevel=0.012, add=True):
+    a = Vector(start)
+    b = Vector(end)
+    direction = b - a
+    bpy.ops.mesh.primitive_cube_add(location=(a + b) * 0.5)
+    obj = bpy.context.object
+    obj.name = name
+    obj.dimensions = (width, depth, direction.length)
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = direction.to_track_quat("Z", "Y")
+    return finish_mesh(obj, mat, bevel=bevel, add=add)
+
+
 def prism(name, vertices, faces, mat, bevel=0.02, add=True):
     mesh = bpy.data.meshes.new(f"{name}_mesh")
     mesh.from_pydata(vertices, [], faces)
@@ -206,8 +222,11 @@ def add_text(name, body, location, size, mat, rotation=(math.radians(90), 0.0, 0
     obj.data.align_x = "CENTER"
     obj.data.align_y = "CENTER"
     obj.data.size = size
-    obj.data.extrude = extrude
-    obj.data.bevel_depth = 0.0025
+    font_path = Path("C:/Windows/Fonts/arialbd.ttf")
+    if font_path.exists():
+        obj.data.font = bpy.data.fonts.load(str(font_path))
+    obj.data.extrude = min(extrude, 0.005)
+    obj.data.bevel_depth = 0.0008
     obj.data.materials.append(mat)
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.convert(target="MESH")
@@ -239,19 +258,41 @@ for y in (-1.53, 1.53):
 for x in (-1.77, 1.77):
     box("hopper_top_rim", (x, 0.0, 4.10), (0.15, 3.20, 0.16), MAT_YELLOW, bevel=0.035)
 
+# Structural corner channels cover the four wall seams and eliminate daylight
+# gaps where the separately formed hopper panels meet.
+for sx in (-1, 1):
+    for sy in (-1, 1):
+        beam(
+            "hopper_corner_channel",
+            (sx * 1.205, sy * 1.085, 2.75),
+            (sx * 1.735, sy * 1.495, 4.12),
+            width=0.13,
+            depth=0.13,
+            mat=MAT_DARK,
+            bevel=0.016,
+        )
+
 # Twin shafts, cutter discs and interlocking teeth.
 for shaft_idx, x in enumerate((-0.39, 0.39)):
-    cylinder("main_shaft", (x, 0.0, 2.72), 0.16, 2.62, MAT_SILVER, rotation=(math.radians(90), 0, 0), vertices=16)
+    rotor_parts[shaft_idx].append(
+        cylinder("main_shaft", (x, 0.0, 2.72), 0.16, 2.62, MAT_SILVER,
+                 rotation=(math.radians(90), 0, 0), vertices=16)
+    )
     for disc_idx in range(11):
         y = -1.02 + disc_idx * 0.204
         phase = (disc_idx % 2) * math.radians(30) + shaft_idx * math.radians(30)
-        cylinder("cutter_disc", (x, y, 2.72), 0.39, 0.13, MAT_STEEL, rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.014)
+        rotor_parts[shaft_idx].append(
+            cylinder("cutter_disc", (x, y, 2.72), 0.39, 0.13, MAT_STEEL,
+                     rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.014)
+        )
         for tooth_idx in range(6):
             angle = phase + tooth_idx * math.tau / 6.0
             tx = x + math.cos(angle) * 0.36
             tz = 2.72 + math.sin(angle) * 0.36
-            box("cutter_tooth", (tx, y, tz), (0.24, 0.145, 0.13), MAT_SILVER,
-                rotation=(0.0, -angle, 0.0), bevel=0.022)
+            rotor_parts[shaft_idx].append(
+                box("cutter_tooth", (tx, y, tz), (0.24, 0.145, 0.13), MAT_SILVER,
+                    rotation=(0.0, -angle, 0.0), bevel=0.014)
+            )
 
 # Side gearboxes, electric motors and hydraulic details.
 for x in (-0.62, 0.62):
@@ -271,18 +312,59 @@ for x in (-1.10, 1.10):
     cylinder("hydraulic_rod", (x, -1.86, 1.66), 0.038, 0.25, MAT_SILVER,
              rotation=(math.radians(90), 0, 0), vertices=10, bevel=0.008)
 
-# Input conveyor at left.
-conv_angle = math.radians(-7.0)
-box("input_belt", (-2.88, 0.0, 1.09), (3.45, 1.86, 0.13), MAT_RUBBER, rotation=(0, conv_angle, 0), bevel=0.025)
+# Long inclined feed conveyor. Its upper roller discharges over the hopper so
+# players can place scrap at ground level instead of reaching into the machine.
+conv_angle = math.radians(-32.0)
+input_center = Vector((-3.55, 0.0, 2.25))
+input_length = 6.50
+
+def point_on_input(local_x, z_offset=0.0):
+    return Vector((
+        input_center.x + math.cos(conv_angle) * local_x,
+        0.0,
+        input_center.z - math.sin(conv_angle) * local_x + z_offset,
+    ))
+
+box("input_belt", input_center, (input_length, 1.86, 0.14), MAT_RUBBER,
+    rotation=(0, conv_angle, 0), bevel=0.018)
 for y in (-1.02, 1.02):
-    box("input_side_rail", (-2.90, y, 1.25), (3.60, 0.14, 0.42), MAT_BLUE,
-        rotation=(0, conv_angle, 0), bevel=0.04)
-for x, z in ((-4.52, 0.88), (-1.25, 1.29)):
-    cylinder("conveyor_roller", (x, 0.0, z), 0.17, 1.94, MAT_SILVER,
-             rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.015)
-for x in (-4.25, -3.00, -1.65):
+    box("input_side_rail", (input_center.x, y, input_center.z + 0.14),
+        (input_length + 0.12, 0.14, 0.44), MAT_BLUE,
+        rotation=(0, conv_angle, 0), bevel=0.022)
+for local_x in (-3.08, 3.08):
+    roller_pos = point_on_input(local_x)
+    cylinder("input_conveyor_roller", roller_pos, 0.19, 1.94, MAT_SILVER,
+             rotation=(math.radians(90), 0, 0), vertices=20, bevel=0.012)
+
+# Repeating steel cleats are exported as a separate visual prop. The client
+# shifts the complete pattern by one pitch and wraps it for seamless motion.
+input_slat_pitch = 0.265
+for index in range(25):
+    local_x = -3.12 + index * input_slat_pitch
+    slat_pos = point_on_input(local_x, 0.105)
+    input_slat_parts.append(
+        box("input_moving_cleat", slat_pos, (0.055, 1.72, 0.045), MAT_STEEL,
+            rotation=(0, conv_angle, 0), bevel=0.008)
+    )
+
+# Four rigid portal frames, each with feet and a cross member, connect the
+# inclined conveyor to the ground. No floating or diagonally detached legs.
+for support_index, local_x in enumerate((-2.60, -1.45, -0.25, 1.05)):
+    support_point = point_on_input(local_x, -0.14)
     for y in (-0.88, 0.88):
-        pipe("conveyor_leg", (x, y, 0.24), (x + 0.16, y, 0.93), 0.065, MAT_DARK, vertices=8)
+        leg_height = max(0.22, support_point.z - 0.16)
+        box("input_support_leg", (support_point.x, y, 0.12 + leg_height * 0.5),
+            (0.14, 0.14, leg_height), MAT_DARK, bevel=0.012)
+        box("input_support_foot", (support_point.x, y, 0.055),
+            (0.42, 0.38, 0.11), MAT_STEEL, bevel=0.018)
+    box("input_support_crossmember", (support_point.x, 0.0, 0.31),
+        (0.14, 1.88, 0.14), MAT_DARK, bevel=0.010)
+    if support_index > 0:
+        previous = point_on_input((-2.60, -1.45, -0.25, 1.05)[support_index - 1], -0.27)
+        for y in (-0.88, 0.88):
+            beam("input_support_brace", (previous.x, y, 0.34),
+                 (support_point.x, y, max(0.40, support_point.z - 0.08)),
+                 width=0.075, depth=0.075, mat=MAT_DARK, bevel=0.008)
 
 # Discharge conveyor and chute to the right.
 out_angle = math.radians(11.0)
@@ -293,6 +375,29 @@ for y in (-0.99, 0.99):
 box("output_chute", (1.40, 0.0, 1.42), (0.70, 2.08, 0.75), MAT_DARK, bevel=0.055)
 cylinder("output_roller", (3.86, 0.0, 1.17), 0.17, 1.92, MAT_SILVER,
          rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.015)
+
+output_slat_pitch = 0.265
+for index in range(12):
+    local_x = -1.34 + index * output_slat_pitch
+    slat_x = 2.55 + math.cos(out_angle) * local_x
+    slat_z = 0.92 - math.sin(out_angle) * local_x + 0.095
+    output_slat_parts.append(
+        box("output_moving_cleat", (slat_x, 0.0, slat_z),
+            (0.055, 1.68, 0.042), MAT_STEEL,
+            rotation=(0, out_angle, 0), bevel=0.007)
+    )
+
+for local_x in (-0.25, 1.05):
+    support_x = 2.55 + math.cos(out_angle) * local_x
+    support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
+    for y in (-0.84, 0.84):
+        leg_height = max(0.24, support_z - 0.15)
+        box("output_support_leg", (support_x, y, 0.12 + leg_height * 0.5),
+            (0.14, 0.14, leg_height), MAT_DARK, bevel=0.012)
+        box("output_support_foot", (support_x, y, 0.055),
+            (0.40, 0.36, 0.11), MAT_STEEL, bevel=0.016)
+    box("output_support_crossmember", (support_x, 0.0, 0.30),
+        (0.14, 1.80, 0.14), MAT_DARK, bevel=0.010)
 
 # Control cabinet, indicators, emergency stop and vents.
 box("control_cabinet", (1.82, -1.43, 2.02), (0.82, 0.30, 1.16), MAT_YELLOW, bevel=0.055)
@@ -320,8 +425,8 @@ for x in (-1.18, -0.60, 0.0, 0.60, 1.18):
     for z in (1.79, 2.56):
         cylinder("panel_bolt", (x, -1.295, z), 0.037, 0.035, MAT_SILVER,
                  rotation=(math.radians(90), 0, 0), vertices=8, bevel=0.005)
-add_text("brand_badge", "VRP INDUSTRIAL", (0.0, -1.315, 2.33), 0.24, MAT_WHITE)
-add_text("machine_badge", "SCRAP SHREDDER", (0.0, -1.32, 2.02), 0.19, MAT_YELLOW)
+add_text("brand_badge", "INDUSTRIAL", (0.0, -1.315, 2.33), 0.245, MAT_WHITE)
+add_text("machine_badge", "SCRAP SHREDDER", (0.0, -1.32, 2.02), 0.185, MAT_YELLOW)
 
 # Hazard stripes on the lower front apron.
 for i in range(11):
@@ -342,50 +447,72 @@ def smart_uv(obj):
 
 
 # Merge explicitly instead of using Blender's background join operator. The
-# latter can collapse all source objects onto one material slot on headless
-# Windows builds. Building the combined mesh ourselves preserves every face's
-# intended paint, metal, rubber, and safety material deterministically.
+# animated rotors and moving cleat patterns remain separate lightweight models.
 visual_materials = list(material_cache.values())
-combined_vertices = []
-combined_faces = []
-combined_material_indices = []
-combined_smoothing = []
-for part in render_parts:
-    if part.type != "MESH":
-        continue
-    vertex_offset = len(combined_vertices)
-    combined_vertices.extend(part.matrix_world @ vertex.co for vertex in part.data.vertices)
-    source_slots = list(part.data.materials)
-    for polygon in part.data.polygons:
-        combined_faces.append(tuple(vertex_offset + index for index in polygon.vertices))
-        source_material = source_slots[polygon.material_index]
-        combined_material_indices.append(visual_materials.index(source_material))
-        combined_smoothing.append(polygon.use_smooth)
 
-combined_mesh = bpy.data.meshes.new(f"{ASSET_NAME}_mesh")
-combined_mesh.from_pydata(combined_vertices, [], combined_faces)
-combined_mesh.update()
-for material in visual_materials:
-    combined_mesh.materials.append(material)
-for polygon, material_index, use_smooth in zip(
-    combined_mesh.polygons, combined_material_indices, combined_smoothing
-):
-    polygon.material_index = material_index
-    polygon.use_smooth = use_smooth
+def merge_parts(asset_name, parts, origin=(0.0, 0.0, 0.0)):
+    origin = Vector(origin)
+    combined_vertices = []
+    combined_faces = []
+    combined_material_indices = []
+    combined_smoothing = []
+    used_material_indices = []
+    for part in parts:
+        if part.type != "MESH":
+            continue
+        vertex_offset = len(combined_vertices)
+        combined_vertices.extend(part.matrix_world @ vertex.co - origin for vertex in part.data.vertices)
+        source_slots = list(part.data.materials)
+        for polygon in part.data.polygons:
+            combined_faces.append(tuple(vertex_offset + index for index in polygon.vertices))
+            source_material = source_slots[polygon.material_index]
+            global_material_index = visual_materials.index(source_material)
+            if global_material_index not in used_material_indices:
+                used_material_indices.append(global_material_index)
+            combined_material_indices.append(used_material_indices.index(global_material_index))
+            combined_smoothing.append(polygon.use_smooth)
 
-model = bpy.data.objects.new(ASSET_NAME, combined_mesh)
-bpy.context.collection.objects.link(model)
-for part in render_parts:
-    bpy.data.objects.remove(part, do_unlink=True)
-smart_uv(model)
+    combined_mesh = bpy.data.meshes.new(f"{asset_name}_mesh")
+    combined_mesh.from_pydata(combined_vertices, [], combined_faces)
+    combined_mesh.update()
+    for material_index in used_material_indices:
+        combined_mesh.materials.append(visual_materials[material_index])
+    for polygon, material_index, use_smooth in zip(
+        combined_mesh.polygons, combined_material_indices, combined_smoothing
+    ):
+        polygon.material_index = material_index
+        polygon.use_smooth = use_smooth
 
-# Triangulate once and preserve a source GLB before adding GTA hierarchy objects.
-tri = model.modifiers.new("Game triangulation", "TRIANGULATE")
-bpy.context.view_layer.objects.active = model
-bpy.ops.object.modifier_apply(modifier=tri.name)
+    merged = bpy.data.objects.new(asset_name, combined_mesh)
+    bpy.context.collection.objects.link(merged)
+    merged.location = origin
+    for part in parts:
+        bpy.data.objects.remove(part, do_unlink=True)
+    smart_uv(merged)
+    tri = merged.modifiers.new("Game triangulation", "TRIANGULATE")
+    bpy.context.view_layer.objects.active = merged
+    merged.select_set(True)
+    bpy.ops.object.modifier_apply(modifier=tri.name)
+    merged.select_set(False)
+    return merged
 
+
+component_parts = rotor_parts[0] + rotor_parts[1] + input_slat_parts + output_slat_parts
+component_ids = {part.as_pointer() for part in component_parts}
+body_parts = [part for part in render_parts if part.as_pointer() not in component_ids]
+
+model = merge_parts(ASSET_NAME, body_parts)
+rotor_a_model = merge_parts(f"{ASSET_NAME}_rotor_a", rotor_parts[0], (-0.39, 0.0, 2.72))
+rotor_b_model = merge_parts(f"{ASSET_NAME}_rotor_b", rotor_parts[1], (0.39, 0.0, 2.72))
+input_slat_model = merge_parts(f"{ASSET_NAME}_belt_in", input_slat_parts)
+output_slat_model = merge_parts(f"{ASSET_NAME}_belt_out", output_slat_parts)
+models = [model, rotor_a_model, rotor_b_model, input_slat_model, output_slat_model]
+model_names = [source_model.name for source_model in models]
+
+# Preserve an assembled, editable source GLB before adding GTA hierarchy objects.
 bpy.ops.object.select_all(action="DESELECT")
-model.select_set(True)
+for source_model in models:
+    source_model.select_set(True)
 bpy.context.view_layer.objects.active = model
 bpy.ops.export_scene.gltf(
     filepath=str(SOURCE_OUT / f"{ASSET_NAME}.glb"),
@@ -413,8 +540,14 @@ def make_decimated_mesh(source_obj, name, ratio):
     return mesh
 
 
-medium_mesh = make_decimated_mesh(model, f"{ASSET_NAME}_medium", 0.56)
-low_mesh = make_decimated_mesh(model, f"{ASSET_NAME}_low", 0.24)
+lod_meshes = {}
+for source_model in models:
+    lod_meshes[source_model.name] = (
+        make_decimated_mesh(source_model, f"{source_model.name}_medium", 0.58),
+        make_decimated_mesh(source_model, f"{source_model.name}_low", 0.27),
+    )
+
+medium_mesh, low_mesh = lod_meshes[ASSET_NAME]
 
 
 # Neutral studio preview environment.
@@ -423,7 +556,7 @@ ground_mat.diffuse_color = (0.055, 0.060, 0.065, 1.0)
 ground_mat.use_nodes = True
 ground_mat.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (0.055, 0.060, 0.065, 1.0)
 ground_mat.node_tree.nodes.get("Principled BSDF").inputs["Roughness"].default_value = 0.88
-ground = box("preview_ground", (0, 0, -0.06), (12, 10, 0.10), ground_mat, bevel=0.0, add=False)
+ground = box("preview_ground", (-1.0, 0, -0.06), (16, 11, 0.10), ground_mat, bevel=0.0, add=False)
 
 bpy.ops.object.light_add(type="AREA", location=(-4.5, -5.5, 7.0))
 key = bpy.context.object
@@ -450,7 +583,7 @@ def aim_light(light, target=(0.0, 0.0, 1.8)):
 for studio_light in (key, fill, rim):
     aim_light(studio_light)
 
-bpy.ops.object.camera_add(location=(-8.7, -9.1, 6.3))
+bpy.ops.object.camera_add(location=(-10.8, -11.5, 6.4))
 camera = bpy.context.object
 bpy.context.scene.camera = camera
 
@@ -465,7 +598,7 @@ scene.cycles.device = "CPU"
 scene.cycles.samples = 28
 scene.cycles.use_denoising = True
 scene.view_settings.look = "AgX - Medium High Contrast"
-scene.view_settings.exposure = 1.15
+scene.view_settings.exposure = 0.75
 scene.render.resolution_x = 900
 scene.render.resolution_y = 700
 scene.render.resolution_percentage = 100
@@ -475,12 +608,17 @@ scene.render.image_settings.color_mode = "RGBA"
 scene.render.image_settings.color_depth = "8"
 scene.render.resolution_percentage = 100
 scene.render.filepath = str(PREVIEW_OUT / f"{ASSET_NAME}_hero.png")
-point_camera()
+point_camera((-1.25, 0.0, 2.15))
 bpy.ops.render.render(write_still=True)
 
 camera.location = (-0.2, -8.1, 8.6)
 point_camera((0.0, 0.0, 2.0))
 scene.render.filepath = str(PREVIEW_OUT / f"{ASSET_NAME}_cutters.png")
+bpy.ops.render.render(write_still=True)
+
+camera.location = (-10.4, -8.8, 2.75)
+point_camera((-1.20, 0.0, 2.05))
+scene.render.filepath = str(PREVIEW_OUT / f"{ASSET_NAME}_structure.png")
 bpy.ops.render.render(write_still=True)
 
 # Remove preview-only scene elements from exports and source blend.
@@ -490,31 +628,52 @@ for obj in list(bpy.data.objects):
     if obj.type == "LIGHT":
         bpy.data.objects.remove(obj, do_unlink=True)
 
-# Convert every visual material to a GTA shader and embed its diffuse texture.
-converted_materials = []
-for source_mat in list(model.data.materials):
-    converter = MaterialConverter(model, source_mat)
-    gta_mat = converter.auto_convert()
-    diffuse = gta_mat.node_tree.nodes.get("DiffuseSampler")
-    if diffuse is None or diffuse.image is None:
-        raise RuntimeError(f"Sollumz did not create a diffuse sampler for {source_mat.name}")
-    diffuse.texture_properties.embedded = True
-    converted_materials.append(gta_mat)
+# Component meshes were positioned for the assembled preview. Their GTA props
+# need a zeroed object transform so AttachEntityToEntity uses the intended
+# origin (the two rotor meshes are already centered on their shaft axes).
+for component_model in (rotor_a_model, rotor_b_model):
+    component_model.location = (0.0, 0.0, 0.0)
 
-for lod_mesh in (medium_mesh, low_mesh):
-    lod_mesh.materials.clear()
-    for mat in converted_materials:
-        lod_mesh.materials.append(mat)
 
-drawable = convert_obj_to_drawable(model)
-drawable.name = ASSET_NAME
-model.name = f"{ASSET_NAME}.model"
-model.sollumz_lods.set_lod_mesh(LODLevel.MEDIUM, medium_mesh)
-model.sollumz_lods.set_lod_mesh(LODLevel.LOW, low_mesh)
-drawable.drawable_properties.lod_dist_high = 120
-drawable.drawable_properties.lod_dist_med = 220
-drawable.drawable_properties.lod_dist_low = 340
-drawable.drawable_properties.lod_dist_vlow = 520
+def convert_model_to_drawable(source_model):
+    source_name = source_model.name
+    component_medium, component_low = lod_meshes[source_name]
+    converted_materials = []
+    for source_mat in list(source_model.data.materials):
+        converter = MaterialConverter(source_model, source_mat)
+        gta_mat = converter.auto_convert()
+        diffuse = gta_mat.node_tree.nodes.get("DiffuseSampler")
+        if diffuse is None or diffuse.image is None:
+            raise RuntimeError(f"Sollumz did not create a diffuse sampler for {source_mat.name}")
+        diffuse.texture_properties.embedded = True
+        converted_materials.append(gta_mat)
+
+    for lod_mesh in (component_medium, component_low):
+        lod_mesh.materials.clear()
+        for mat in converted_materials:
+            lod_mesh.materials.append(mat)
+
+    component_drawable = convert_obj_to_drawable(source_model)
+    component_drawable.name = source_name
+    source_model.name = f"{source_name}.model"
+    source_model.sollumz_lods.set_lod_mesh(LODLevel.MEDIUM, component_medium)
+    source_model.sollumz_lods.set_lod_mesh(LODLevel.LOW, component_low)
+    component_drawable.drawable_properties.lod_dist_high = 110
+    component_drawable.drawable_properties.lod_dist_med = 190
+    component_drawable.drawable_properties.lod_dist_low = 280
+    component_drawable.drawable_properties.lod_dist_vlow = 380
+    return component_drawable, len(converted_materials)
+
+
+drawables = []
+material_counts = {}
+for source_model in models:
+    source_name = source_model.name
+    component_drawable, material_count = convert_model_to_drawable(source_model)
+    drawables.append(component_drawable)
+    material_counts[source_name] = material_count
+
+drawable = drawables[0]
 
 # Low-cost embedded static collision assembled from a few large metal volumes.
 collision_parts = []
@@ -523,11 +682,46 @@ def collision_box(name, location, dimensions, rotation=(0.0, 0.0, 0.0)):
     collision_parts.append(obj)
     return obj
 
-collision_box("col_chamber", (0.0, 0.0, 1.90), (2.95, 2.72, 2.80))
-collision_box("col_input", (-2.90, 0.0, 0.72), (3.65, 2.20, 0.95), rotation=(0, conv_angle, 0))
-collision_box("col_output", (2.60, 0.0, 0.67), (2.90, 2.12, 0.82), rotation=(0, out_angle, 0))
+# Open collision shell: items can travel up the feed belt and fall through the
+# hopper into the animated cutter throat instead of landing on an invisible box.
+collision_box("col_chamber_front", (0.0, -1.29, 2.05), (2.95, 0.18, 1.55))
+collision_box("col_chamber_back", (0.0, 1.29, 2.05), (2.95, 0.18, 1.55))
+collision_box("col_chamber_left", (-1.42, 0.0, 2.05), (0.18, 2.55, 1.55))
+collision_box("col_chamber_right", (1.42, 0.0, 2.05), (0.18, 2.55, 1.55))
+collision_box("col_chamber_floor", (0.0, 0.0, 1.33), (2.70, 2.42, 0.36))
+
+hopper_slope = math.radians(17.0)
+collision_box("col_hopper_front", (0.0, -1.29, 3.42), (3.48, 0.13, 1.48), rotation=(hopper_slope, 0, 0))
+collision_box("col_hopper_back", (0.0, 1.29, 3.42), (3.48, 0.13, 1.48), rotation=(-hopper_slope, 0, 0))
+collision_box("col_hopper_left", (-1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotation=(0, -hopper_slope, 0))
+collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotation=(0, hopper_slope, 0))
+
+collision_box("col_input_belt", input_center, (input_length + 0.06, 1.88, 0.20), rotation=(0, conv_angle, 0))
+for y in (-1.02, 1.02):
+    collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.14),
+                  (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
+for local_x in (-2.60, -1.45, -0.25, 1.05):
+    support_point = point_on_input(local_x, -0.14)
+    for y in (-0.88, 0.88):
+        leg_height = max(0.22, support_point.z - 0.16)
+        collision_box("col_input_support", (support_point.x, y, 0.12 + leg_height * 0.5),
+                      (0.16, 0.16, leg_height))
+collision_box("col_output_belt", (2.55, 0.0, 0.92), (2.85, 1.82, 0.20), rotation=(0, out_angle, 0))
+for local_x in (-0.25, 1.05):
+    support_x = 2.55 + math.cos(out_angle) * local_x
+    support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
+    for y in (-0.84, 0.84):
+        leg_height = max(0.24, support_z - 0.15)
+        collision_box("col_output_support", (support_x, y, 0.12 + leg_height * 0.5),
+                      (0.16, 0.16, leg_height))
 collision_box("col_drive", (0.0, 1.68, 1.80), (2.10, 0.78, 1.95))
-collision_box("col_hopper", (0.0, 0.0, 3.45), (3.55, 3.12, 1.30))
+
+# Ladder rails and rungs now contribute actual collision instead of being
+# visual-only tubes.
+collision_box("col_ladder_left", (1.49, 1.58, 1.45), (0.14, 0.14, 2.52))
+collision_box("col_ladder_right", (1.49, 2.02, 1.45), (0.14, 0.14, 2.52))
+for z in (0.55, 0.92, 1.29, 1.66, 2.03, 2.40):
+    collision_box("col_ladder_rung", (1.49, 1.80, z), (0.14, 0.56, 0.10))
 
 bpy.ops.object.select_all(action="DESELECT")
 for obj in collision_parts:
@@ -550,32 +744,39 @@ for flag_name in (
     setattr(bvh.composite_flags2, flag_name, True)
 bvh.parent = drawable
 
-# Persist editable source and export CodeWalker XML through Sollumz.
+# Persist editable source and export every CodeWalker XML drawable through Sollumz.
 bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE_OUT / f"{ASSET_NAME}.blend"))
-ydr_xml = XML_OUT / f"{ASSET_NAME}.ydr.xml"
-if not export_ydr(drawable, str(ydr_xml)):
-    raise RuntimeError("Sollumz YDR export failed")
+for component_name, component_drawable in zip(model_names, drawables):
+    ydr_xml = XML_OUT / f"{component_name}.ydr.xml"
+    if not export_ydr(component_drawable, str(ydr_xml)):
+        raise RuntimeError(f"Sollumz YDR export failed for {component_name}")
 
-ytyp = ytyp_from_objects([drawable])
+ytyp = ytyp_from_objects(drawables)
 ytyp.name = ASSET_NAME
 for archetype in ytyp.archetypes:
     archetype.lod_dist = 360
     archetype.hd_texture_dist = 170
-    archetype.name = ASSET_NAME
-    archetype.asset_name = ASSET_NAME
+    archetype.asset_name = archetype.name
 ytyp.write_xml(str(XML_OUT / f"{ASSET_NAME}.ytyp.xml"))
+
+component_triangles = {}
+for component_name, source_model in zip(model_names, models):
+    component_medium, component_low = lod_meshes[component_name]
+    component_triangles[component_name] = {
+        "high": len(source_model.data.polygons),
+        "medium": len(component_medium.polygons),
+        "low": len(component_low.polygons),
+    }
 
 stats = {
     "asset": ASSET_NAME,
-    "dimensions_m": {"length": 8.25, "width": 4.08, "height": 4.18},
-    "triangles": {
-        "high": len(model.data.polygons),
-        "medium": len(medium_mesh.polygons),
-        "low": len(low_mesh.polygons),
-        "collision": len(collision_mesh.data.polygons),
-    },
-    "materials": len(converted_materials),
-    "embedded_textures": len(converted_materials),
+    "dimensions_m": {"length": 10.45, "width": 4.08, "height": 4.22},
+    "triangles": component_triangles,
+    "collision_triangles": len(collision_mesh.data.polygons),
+    "materials": len(visual_materials),
+    "component_material_slots": sum(material_counts.values()),
+    "embedded_textures": len(visual_materials),
+    "animated_components": model_names[1:],
     "collision_material": "METAL_HOLLOW_MEDIUM",
     "sollumz": "2.4.2",
     "blender": bpy.app.version_string,

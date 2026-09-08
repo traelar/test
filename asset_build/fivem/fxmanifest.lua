@@ -2,8 +2,8 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'Vitality Roleplay'
-description 'VRP industrial scrap shredder prop'
-version '1.1.0'
+description 'Animated industrial scrap shredder prop'
+version '2.0.0'
 
 client_script 'client.lua'
 
