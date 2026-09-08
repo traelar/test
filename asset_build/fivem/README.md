@@ -2,10 +2,10 @@
 
 Drop this resource into your FiveM resources folder and add `ensure vrp-scrap-shredder` to `server.cfg`.
 
-- Model/spawn name: `vrp_scrap_shredder`
-- Approximate size: 10.45 m long, 4.08 m wide, 4.22 m tall
+- Model/spawn name: `industrial_scrap_shredder`
+- Approximate size: 10.70 m long, 4.08 m wide, 4.72 m tall
 - Includes high, medium, and low visual LODs
-- Includes an inclined ground-level feed conveyor into the hopper
+- Includes an inclined ground-level feed conveyor that clears the hopper wall and drops through the open top
 - Includes attached portal-frame supports and sealed hopper corner channels
 - Includes an open collision shell, conveyor collision, and ladder collision
 - Includes animated input/output belt cleats and counter-rotating cutters
