@@ -2,19 +2,20 @@
 
 Drop this resource into your FiveM resources folder and add `ensure vrp-scrap-shredder` to `server.cfg`.
 
-- Model/spawn name: `industrial_scrap_shredder_v23`
+- Model/spawn name: `industrial_scrap_shredder_v24`
 - Approximate size: 10.70 m long, 4.08 m wide, 4.72 m tall
 - Includes high, medium, and low visual LODs
 - Includes an inclined ground-level feed conveyor that clears the hopper wall and drops through the open top
 - Includes attached portal-frame supports and sealed hopper corner channels
 - Includes five conveyor portal frames, X-bracing, foundation rails, a hopper saddle, and four chamber pedestals
-- Includes an open collision shell, conveyor collision, and ladder collision
+- Includes an open collision shell plus conveyor, ladder, and control-cabinet collision
 - Includes animated input/output belt cleats and counter-rotating cutters
 - Belt cleats remain inside their rollers throughout the full animation cycle
 - Carries the local player and dynamic props up the intake belt while running
 - Converts props entering the cutter throat into temporary scrap pieces on the output belt
 - Includes its own lightweight native scrap-fragment model for the output pieces
 - Uses a synchronized control-panel target with automatic `ox_target` or `qb-target` detection
+- Uses a compact waist-height control cabinet with an enlarged forward target zone
 - Textures are embedded in the YDR; no separate YTD is required
 
 ## Test commands
@@ -25,8 +26,8 @@ Drop this resource into your FiveM resources folder and add `ensure vrp-scrap-sh
 - `/toggleshredder` - fallback power toggle when no supported target resource is running
 
 The spawn location is printed to the F8 console as a ready-to-copy `vector4`.
-Only one test shredder is kept per player, and it is cleaned up when the
-resource stops. To disable the test commands on a live server, add this to
+Only one test shredder is kept per player. Its animated components and generated
+scrap pieces are removed with it and when the resource stops. To disable the test commands on a live server, add this to
 `server.cfg`:
 
 ```cfg
