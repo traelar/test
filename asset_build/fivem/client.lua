@@ -1,9 +1,9 @@
 local MODEL_NAMES = {
-    base = 'industrial_scrap_shredder',
-    rotorA = 'industrial_scrap_shredder_rotor_a',
-    rotorB = 'industrial_scrap_shredder_rotor_b',
-    beltIn = 'industrial_scrap_shredder_belt_in',
-    beltOut = 'industrial_scrap_shredder_belt_out'
+    base = 'industrial_scrap_shredder_v22',
+    rotorA = 'industrial_scrap_shredder_v22_rotor_a',
+    rotorB = 'industrial_scrap_shredder_v22_rotor_b',
+    beltIn = 'industrial_scrap_shredder_v22_belt_in',
+    beltOut = 'industrial_scrap_shredder_v22_belt_out'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.72)

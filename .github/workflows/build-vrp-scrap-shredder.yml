@@ -72,17 +72,17 @@ jobs:
           Copy-Item -Recurse out/previews out/package/vrp-scrap-shredder/previews
           Copy-Item -Recurse out/source out/package/vrp-scrap-shredder/source
           $requiredYdr = @(
-            'industrial_scrap_shredder.ydr',
-            'industrial_scrap_shredder_rotor_a.ydr',
-            'industrial_scrap_shredder_rotor_b.ydr',
-            'industrial_scrap_shredder_belt_in.ydr',
-            'industrial_scrap_shredder_belt_out.ydr'
+            'industrial_scrap_shredder_v22.ydr',
+            'industrial_scrap_shredder_v22_rotor_a.ydr',
+            'industrial_scrap_shredder_v22_rotor_b.ydr',
+            'industrial_scrap_shredder_v22_belt_in.ydr',
+            'industrial_scrap_shredder_v22_belt_out.ydr'
           )
           foreach ($fileName in $requiredYdr) {
             $ydr = Get-Item (Join-Path 'out/package/vrp-scrap-shredder/stream' $fileName)
             if ($ydr.Length -lt 1024) { throw "$fileName is unexpectedly small" }
           }
-          $ytyp = Get-Item out/package/vrp-scrap-shredder/stream/industrial_scrap_shredder.ytyp
+          $ytyp = Get-Item out/package/vrp-scrap-shredder/stream/industrial_scrap_shredder_v22.ytyp
           if ($ytyp.Length -lt 256) { throw 'YTYP is unexpectedly small' }
           Compress-Archive -Path out/package/vrp-scrap-shredder -DestinationPath out/vrp-scrap-shredder.zip -CompressionLevel Optimal
 

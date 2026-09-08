@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder"
+ASSET_NAME = "industrial_scrap_shredder_v22"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -243,6 +243,22 @@ for x in (-2.70, -0.85, 0.85, 2.70):
     for y in (-1.23, 1.23):
         box("foot_pad", (x, y, 0.06), (0.50, 0.50, 0.12), MAT_STEEL, bevel=0.035)
 
+# Four load-bearing pedestals transfer the chamber into the base skids. These
+# close the previous daylight gap that made the complete machine appear to
+# float above its foundation.
+for x in (-1.05, 1.05):
+    for y in (-1.05, 1.05):
+        box("machine_pedestal", (x, y, 0.75), (0.24, 0.24, 0.86),
+            MAT_DARK, bevel=0.018)
+for y in (-1.05, 1.05):
+    box("machine_support_saddle", (0.0, y, 1.12), (2.48, 0.28, 0.22),
+        MAT_DARK, bevel=0.020)
+for x in (-1.05, 1.05):
+    for y in (-1.05, 1.05):
+        beam("machine_pedestal_gusset", (x, y, 0.38),
+             (x * 0.82, y, 1.08), width=0.10, depth=0.12,
+             mat=MAT_DARK, bevel=0.010)
+
 # Central machine chamber and reinforced corner columns.
 box("shredder_chamber", (0.0, 0.0, 2.18), (2.82, 2.55, 1.15), MAT_BLUE, bevel=0.085)
 box("chamber_lower", (0.0, 0.0, 1.42), (2.60, 2.38, 0.48), MAT_DARK, bevel=0.045)
@@ -279,7 +295,7 @@ for sx in (-1, 1):
 # Twin shafts, cutter discs and interlocking teeth.
 for shaft_idx, x in enumerate((-0.39, 0.39)):
     rotor_parts[shaft_idx].append(
-        cylinder("main_shaft", (x, 0.0, 2.72), 0.16, 2.62, MAT_SILVER,
+        cylinder("main_shaft", (x, 0.0, 2.72), 0.16, 2.30, MAT_STEEL,
                  rotation=(math.radians(90), 0, 0), vertices=16)
     )
     for disc_idx in range(11):
@@ -337,38 +353,71 @@ for y in (-1.02, 1.02):
         rotation=(0, conv_angle, 0), bevel=0.022)
 for local_x in (-3.08, 3.08):
     roller_pos = point_on_input(local_x)
-    cylinder("input_conveyor_roller", roller_pos, 0.19, 1.94, MAT_SILVER,
+    cylinder("input_conveyor_roller", roller_pos, 0.17, 1.90, MAT_STEEL,
              rotation=(math.radians(90), 0, 0), vertices=20, bevel=0.012)
 
 # Repeating steel cleats are exported as a separate visual prop. The client
 # shifts the complete pattern by one pitch and wraps it for seamless motion.
 input_slat_pitch = 0.265
-for index in range(25):
-    local_x = -3.12 + index * input_slat_pitch
+# Leave one complete animation pitch inside each roller. Translating the old
+# edge-to-edge pattern pushed its final cleat into open air above the hopper.
+for index in range(22):
+    local_x = -2.82 + index * input_slat_pitch
     slat_pos = point_on_input(local_x, 0.105)
     input_slat_parts.append(
         box("input_moving_cleat", slat_pos, (0.055, 1.72, 0.045), MAT_STEEL,
             rotation=(0, conv_angle, 0), bevel=0.008)
     )
 
-# Four rigid portal frames, each with feet and a cross member, connect the
-# inclined conveyor to the ground. No floating or diagonally detached legs.
-for support_index, local_x in enumerate((-2.60, -1.45, -0.25, 1.05)):
-    support_point = point_on_input(local_x, -0.14)
+# Five rigid portal frames, each with feet, ground ties and a top saddle,
+# transfer the inclined conveyor into a continuous foundation frame.
+INPUT_SUPPORT_LOCAL_X = (-2.85, -1.65, -0.45, 0.75, 1.80)
+input_support_points = [point_on_input(local_x, -0.14)
+                        for local_x in INPUT_SUPPORT_LOCAL_X]
+for y in (-0.88, 0.88):
+    rail_start = input_support_points[0].x - 0.30
+    rail_end = input_support_points[-1].x + 0.34
+    box("input_foundation_rail", ((rail_start + rail_end) * 0.5, y, 0.15),
+        (rail_end - rail_start, 0.22, 0.20), MAT_DARK, bevel=0.018)
+
+for support_index, support_point in enumerate(input_support_points):
     for y in (-0.88, 0.88):
-        leg_height = max(0.22, support_point.z - 0.16)
-        box("input_support_leg", (support_point.x, y, 0.12 + leg_height * 0.5),
+        leg_bottom = 0.22
+        leg_top = support_point.z - 0.03
+        leg_height = max(0.22, leg_top - leg_bottom)
+        box("input_support_leg", (support_point.x, y, leg_bottom + leg_height * 0.5),
             (0.14, 0.14, leg_height), MAT_DARK, bevel=0.012)
         box("input_support_foot", (support_point.x, y, 0.055),
             (0.42, 0.38, 0.11), MAT_STEEL, bevel=0.018)
-    box("input_support_crossmember", (support_point.x, 0.0, 0.31),
-        (0.14, 1.88, 0.14), MAT_DARK, bevel=0.010)
+    box("input_support_top_saddle", (support_point.x, 0.0, support_point.z - 0.04),
+        (0.18, 1.98, 0.16), MAT_DARK, bevel=0.010)
+    box("input_support_ground_tie", (support_point.x, 0.0, 0.24),
+        (0.18, 1.86, 0.14), MAT_DARK, bevel=0.010)
     if support_index > 0:
-        previous = point_on_input((-2.60, -1.45, -0.25, 1.05)[support_index - 1], -0.27)
+        previous = input_support_points[support_index - 1]
         for y in (-0.88, 0.88):
-            beam("input_support_brace", (previous.x, y, 0.34),
-                 (support_point.x, y, max(0.40, support_point.z - 0.08)),
+            beam("input_support_x_brace", (previous.x, y, 0.30),
+                 (support_point.x, y, support_point.z - 0.12),
                  width=0.075, depth=0.075, mat=MAT_DARK, bevel=0.008)
+            beam("input_support_x_brace", (previous.x, y, previous.z - 0.12),
+                 (support_point.x, y, 0.30),
+                 width=0.075, depth=0.075, mat=MAT_DARK, bevel=0.008)
+
+# Tie the conveyor foundation into the shredder skid, then clamp the elevated
+# discharge end to a reinforced saddle on the hopper rim. This removes the
+# unsupported cantilever and makes the conveyor one continuous assembly.
+box("input_foundation_machine_tie", (-2.35, 0.0, 0.21),
+    (0.30, 2.50, 0.20), MAT_DARK, bevel=0.018)
+input_mount_point = point_on_input(2.62, -0.18)
+box("input_hopper_saddle", input_mount_point,
+    (0.30, 2.14, 0.20), MAT_DARK, bevel=0.018)
+for y in (-1.02, 1.02):
+    beam("input_hopper_mount", (-1.70, y, 3.91),
+         (input_mount_point.x, y, input_mount_point.z + 0.02),
+         width=0.13, depth=0.14, mat=MAT_YELLOW, bevel=0.012)
+    box("input_hopper_bearing_plate",
+        (input_mount_point.x, y, input_mount_point.z + 0.12),
+        (0.34, 0.10, 0.42), MAT_YELLOW, bevel=0.018)
 
 # Discharge conveyor and chute to the right.
 out_angle = math.radians(11.0)
@@ -377,12 +426,14 @@ for y in (-0.99, 0.99):
     box("output_side_rail", (2.55, y, 1.06), (2.84, 0.14, 0.38), MAT_BLUE,
         rotation=(0, out_angle, 0), bevel=0.04)
 box("output_chute", (1.40, 0.0, 1.42), (0.70, 2.08, 0.75), MAT_DARK, bevel=0.055)
-cylinder("output_roller", (3.86, 0.0, 1.17), 0.17, 1.92, MAT_SILVER,
+cylinder("output_roller", (3.86, 0.0, 1.17), 0.16, 1.88, MAT_STEEL,
          rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.015)
 
 output_slat_pitch = 0.265
-for index in range(12):
-    local_x = -1.34 + index * output_slat_pitch
+# The compact discharge belt needs a shorter pattern so neither terminal cleat
+# can leave the side rails during the one-pitch animation cycle.
+for index in range(9):
+    local_x = -1.15 + index * output_slat_pitch
     slat_x = 2.55 + math.cos(out_angle) * local_x
     slat_z = 0.92 - math.sin(out_angle) * local_x + 0.095
     output_slat_parts.append(
@@ -400,8 +451,10 @@ for local_x in (-0.25, 1.05):
             (0.14, 0.14, leg_height), MAT_DARK, bevel=0.012)
         box("output_support_foot", (support_x, y, 0.055),
             (0.40, 0.36, 0.11), MAT_STEEL, bevel=0.016)
-    box("output_support_crossmember", (support_x, 0.0, 0.30),
-        (0.14, 1.80, 0.14), MAT_DARK, bevel=0.010)
+    box("output_support_top_saddle", (support_x, 0.0, support_z - 0.03),
+        (0.18, 1.86, 0.15), MAT_DARK, bevel=0.010)
+    box("output_support_ground_tie", (support_x, 0.0, 0.24),
+        (0.18, 1.76, 0.14), MAT_DARK, bevel=0.010)
 
 # Control cabinet, indicators, emergency stop and vents.
 box("control_cabinet", (1.82, -1.43, 2.02), (0.82, 0.30, 1.16), MAT_YELLOW, bevel=0.055)
@@ -693,6 +746,10 @@ collision_box("col_chamber_back", (0.0, 1.29, 2.05), (2.95, 0.18, 1.55))
 collision_box("col_chamber_left", (-1.42, 0.0, 2.05), (0.18, 2.55, 1.55))
 collision_box("col_chamber_right", (1.42, 0.0, 2.05), (0.18, 2.55, 1.55))
 collision_box("col_chamber_floor", (0.0, 0.0, 1.33), (2.70, 2.42, 0.36))
+for x in (-1.05, 1.05):
+    for y in (-1.05, 1.05):
+        collision_box("col_machine_pedestal", (x, y, 0.75),
+                      (0.26, 0.26, 0.86))
 
 hopper_slope = math.radians(17.0)
 collision_box("col_hopper_front", (0.0, -1.29, 3.42), (3.48, 0.13, 1.48), rotation=(hopper_slope, 0, 0))
@@ -704,12 +761,19 @@ collision_box("col_input_belt", input_center, (input_length + 0.06, 1.88, 0.20),
 for y in (-1.02, 1.02):
     collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
-for local_x in (-2.60, -1.45, -0.25, 1.05):
-    support_point = point_on_input(local_x, -0.14)
+for y in (-0.88, 0.88):
+    collision_box("col_input_foundation", ((rail_start + rail_end) * 0.5, y, 0.15),
+                  (rail_end - rail_start, 0.24, 0.20))
+for support_point in input_support_points:
     for y in (-0.88, 0.88):
-        leg_height = max(0.22, support_point.z - 0.16)
-        collision_box("col_input_support", (support_point.x, y, 0.12 + leg_height * 0.5),
+        leg_bottom = 0.22
+        leg_top = support_point.z - 0.03
+        leg_height = max(0.22, leg_top - leg_bottom)
+        collision_box("col_input_support", (support_point.x, y, leg_bottom + leg_height * 0.5),
                       (0.16, 0.16, leg_height))
+    collision_box("col_input_top_saddle", (support_point.x, 0.0, support_point.z - 0.04),
+                  (0.20, 2.00, 0.18))
+collision_box("col_input_hopper_saddle", input_mount_point, (0.32, 2.16, 0.22))
 collision_box("col_output_belt", (2.55, 0.0, 0.92), (2.85, 1.82, 0.20), rotation=(0, out_angle, 0))
 for local_x in (-0.25, 1.05):
     support_x = 2.55 + math.cos(out_angle) * local_x
@@ -718,6 +782,8 @@ for local_x in (-0.25, 1.05):
         leg_height = max(0.24, support_z - 0.15)
         collision_box("col_output_support", (support_x, y, 0.12 + leg_height * 0.5),
                       (0.16, 0.16, leg_height))
+    collision_box("col_output_top_saddle", (support_x, 0.0, support_z - 0.03),
+                  (0.20, 1.88, 0.17))
 collision_box("col_drive", (0.0, 1.68, 1.80), (2.10, 0.78, 1.95))
 
 # Ladder rails and rungs now contribute actual collision instead of being
