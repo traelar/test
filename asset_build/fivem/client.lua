@@ -1,14 +1,14 @@
 local MODEL_NAMES = {
-    base = 'vrp_scrap_shredder',
-    rotorA = 'vrp_scrap_shredder_rotor_a',
-    rotorB = 'vrp_scrap_shredder_rotor_b',
-    beltIn = 'vrp_scrap_shredder_belt_in',
-    beltOut = 'vrp_scrap_shredder_belt_out'
+    base = 'industrial_scrap_shredder',
+    rotorA = 'industrial_scrap_shredder_rotor_a',
+    rotorB = 'industrial_scrap_shredder_rotor_b',
+    beltIn = 'industrial_scrap_shredder_belt_in',
+    beltOut = 'industrial_scrap_shredder_belt_out'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.72)
 local ROTOR_B_OFFSET = vector3(0.39, 0.0, 2.72)
-local INPUT_ANGLE = math.rad(-32.0)
+local INPUT_ANGLE = math.rad(-38.5)
 local OUTPUT_ANGLE = math.rad(11.0)
 local BELT_PITCH = 0.265
 local assemblies = {}
