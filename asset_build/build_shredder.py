@@ -109,10 +109,10 @@ def make_material(name, color, metallic=0.0, roughness=0.55, rust=0.0, grime=0.0
     return mat
 
 
-MAT_BLUE = make_material("shredder_blue", (0.040, 0.145, 0.205), 0.34, 0.56, 0.070, 0.065, 0.16)
-MAT_YELLOW = make_material("safety_yellow", (0.72, 0.405, 0.030), 0.12, 0.58, 0.055, 0.055, 0.12)
-MAT_STEEL = make_material("cutter_steel", (0.245, 0.275, 0.300), 0.72, 0.34, 0.075, 0.080, 0.24)
-MAT_DARK = make_material("machine_dark", (0.032, 0.041, 0.046), 0.42, 0.50, 0.035, 0.085, 0.08)
+MAT_BLUE = make_material("shredder_blue", (0.040, 0.145, 0.205), 0.34, 0.56, 0.042, 0.070, 0.14)
+MAT_YELLOW = make_material("safety_yellow", (0.72, 0.405, 0.030), 0.12, 0.58, 0.032, 0.060, 0.10)
+MAT_STEEL = make_material("cutter_steel", (0.245, 0.275, 0.300), 0.72, 0.34, 0.045, 0.085, 0.20)
+MAT_DARK = make_material("machine_dark", (0.032, 0.041, 0.046), 0.42, 0.50, 0.020, 0.090, 0.07)
 MAT_RUBBER = make_material("belt_rubber", (0.018, 0.021, 0.022), 0.05, 0.80, 0.0, 0.05, 0.08)
 MAT_RED = make_material("emergency_red", (0.62, 0.018, 0.012), 0.10, 0.48, 0.020, 0.020, 0.04)
 MAT_SILVER = make_material("brushed_metal", (0.40, 0.445, 0.480), 0.78, 0.34, 0.035, 0.040, 0.16)
@@ -257,6 +257,10 @@ for y in (-1.53, 1.53):
     box("hopper_top_rim", (0.0, y, 4.10), (3.62, 0.15, 0.16), MAT_YELLOW, bevel=0.035)
 for x in (-1.77, 1.77):
     box("hopper_top_rim", (x, 0.0, 4.10), (0.15, 3.20, 0.16), MAT_YELLOW, bevel=0.035)
+for x in (-1.77, 1.77):
+    for y in (-1.53, 1.53):
+        box("hopper_corner_cap", (x, y, 4.105), (0.22, 0.22, 0.17),
+            MAT_YELLOW, bevel=0.026)
 
 # Structural corner channels cover the four wall seams and eliminate daylight
 # gaps where the separately formed hopper panels meet.
