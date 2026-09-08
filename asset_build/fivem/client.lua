@@ -1,10 +1,10 @@
 local MODEL_NAMES = {
-    base = 'industrial_scrap_shredder_v23',
-    rotorA = 'industrial_scrap_shredder_v23_rotor_a',
-    rotorB = 'industrial_scrap_shredder_v23_rotor_b',
-    beltIn = 'industrial_scrap_shredder_v23_belt_in',
-    beltOut = 'industrial_scrap_shredder_v23_belt_out',
-    chunk = 'industrial_scrap_shredder_v23_chunk'
+    base = 'industrial_scrap_shredder_v24',
+    rotorA = 'industrial_scrap_shredder_v24_rotor_a',
+    rotorB = 'industrial_scrap_shredder_v24_rotor_b',
+    beltIn = 'industrial_scrap_shredder_v24_belt_in',
+    beltOut = 'industrial_scrap_shredder_v24_belt_out',
+    chunk = 'industrial_scrap_shredder_v24_chunk'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.44)
@@ -30,6 +30,12 @@ local MODEL_HASHES = {}
 for _, modelName in pairs(MODEL_NAMES) do
     MODEL_HASHES[joaat(modelName)] = true
 end
+local SCRAP_CHUNK_HASHES = {
+    [joaat(MODEL_NAMES.chunk)] = true,
+    -- Lets the new cleanup remove debris left behind by the v2.3 test build.
+    [joaat('industrial_scrap_shredder_v23_chunk')] = true
+}
+MODEL_HASHES[joaat('industrial_scrap_shredder_v23_chunk')] = true
 
 local function notify(message)
     BeginTextCommandThefeedPost('STRING')
@@ -69,7 +75,17 @@ end
 
 local function safeDelete(entity)
     if entity and DoesEntityExist(entity) then
+        if NetworkGetEntityIsNetworked(entity) and not NetworkHasControlOfEntity(entity) then
+            NetworkRequestControlOfEntity(entity)
+            local timeout = GetGameTimer() + 350
+            while DoesEntityExist(entity) and not NetworkHasControlOfEntity(entity) and
+                GetGameTimer() < timeout do
+                Wait(0)
+                NetworkRequestControlOfEntity(entity)
+            end
+        end
         SetEntityAsMissionEntity(entity, true, true)
+        DeleteObject(entity)
         DeleteEntity(entity)
     end
 end
@@ -125,14 +141,16 @@ local function registerTarget(base)
         return
     end
 
-    local center = GetOffsetFromEntityInWorldCoords(base, 1.82, -1.62, 2.04)
+    -- The box is intentionally wider/deeper than the physical cabinet and sits
+    -- slightly in front of it so normal standing angles acquire the target.
+    local center = GetOffsetFromEntityInWorldCoords(base, 1.82, -1.74, 1.57)
     local heading = GetEntityHeading(base)
     local zoneName = ('industrial_shredder_panel_%s'):format(base)
 
     if GetResourceState('ox_target') == 'started' then
         local zoneId = exports.ox_target:addBoxZone({
             coords = center,
-            size = vector3(0.95, 0.75, 1.35),
+            size = vector3(0.92, 1.05, 1.12),
             rotation = heading,
             debug = GetConvarInt('vrp_shredder_target_debug', 0) == 1,
             options = {
@@ -140,7 +158,7 @@ local function registerTarget(base)
                     name = zoneName,
                     icon = 'fa-solid fa-power-off',
                     label = 'Toggle industrial shredder',
-                    distance = 2.0,
+                    distance = 3.0,
                     canInteract = function()
                         return DoesEntityExist(base)
                     end,
@@ -152,12 +170,12 @@ local function registerTarget(base)
         })
         targetZones[base] = { provider = 'ox', id = zoneId }
     elseif GetResourceState('qb-target') == 'started' then
-        exports['qb-target']:AddBoxZone(zoneName, center, 0.95, 0.75, {
+        exports['qb-target']:AddBoxZone(zoneName, center, 0.92, 1.05, {
             name = zoneName,
             heading = heading,
             debugPoly = GetConvarInt('vrp_shredder_target_debug', 0) == 1,
-            minZ = center.z - 0.68,
-            maxZ = center.z + 0.68
+            minZ = center.z - 0.56,
+            maxZ = center.z + 0.56
         }, {
             options = {
                 {
@@ -168,7 +186,7 @@ local function registerTarget(base)
                     base = base
                 }
             },
-            distance = 2.0
+            distance = 3.0
         })
         targetZones[base] = { provider = 'qb', id = zoneName }
     end
@@ -269,7 +287,10 @@ local function spawnOutputPieces(base, sourceModel)
                 ActivatePhysics(piece)
                 SetEntityRotation(piece, math.random(0, 359) + 0.0,
                     math.random(0, 359) + 0.0, math.random(0, 359) + 0.0, 2, true)
-                outputPieces[piece] = GetGameTimer() + lifetime
+                outputPieces[piece] = {
+                    expiresAt = GetGameTimer() + lifetime,
+                    base = base
+                }
                 carryEntity(piece, base, OUTPUT_ANGLE, 2.15 + index * 0.08)
             end
             SetModelAsNoLongerNeeded(model)
@@ -339,11 +360,40 @@ local function updateAssembly(assembly, deltaTime)
     attachComponent(assembly.beltOut, assembly.base, outputX, 0.0, outputZ, 0.0)
 end
 
+local function cleanupOutputPieces(base)
+    local baseCoords = DoesEntityExist(base) and GetEntityCoords(base) or nil
+
+    for piece, data in pairs(outputPieces) do
+        local owner = type(data) == 'table' and data.base or nil
+        if owner == base then
+            safeDelete(piece)
+            outputPieces[piece] = nil
+        end
+    end
+
+    -- Also catches networked/untracked chunks and debris left by v2.3. The
+    -- model filter prevents unrelated world objects from ever being touched.
+    if baseCoords then
+        for _, object in ipairs(GetGamePool('CObject')) do
+            if DoesEntityExist(object) and SCRAP_CHUNK_HASHES[GetEntityModel(object)] and
+                #(GetEntityCoords(object) - baseCoords) <= 16.0 then
+                safeDelete(object)
+                outputPieces[object] = nil
+            end
+        end
+    end
+end
+
 local function deleteAnimatedShredder(base)
     removeTarget(base)
+    cleanupOutputPieces(base)
     local assembly = assemblies[base]
     if not assembly then
         safeDelete(base)
+        observedBases[base] = nil
+        if spawnedTestBase == base then
+            spawnedTestBase = nil
+        end
         return
     end
 
@@ -353,6 +403,7 @@ local function deleteAnimatedShredder(base)
     safeDelete(assembly.beltOut)
     safeDelete(assembly.base)
     assemblies[base] = nil
+    observedBases[base] = nil
 
     if spawnedTestBase == base then
         spawnedTestBase = nil
@@ -490,7 +541,8 @@ CreateThread(function()
             end
         end
 
-        for piece, expiresAt in pairs(outputPieces) do
+        for piece, data in pairs(outputPieces) do
+            local expiresAt = type(data) == 'table' and data.expiresAt or data
             if not DoesEntityExist(piece) then
                 outputPieces[piece] = nil
             elseif now >= expiresAt then
