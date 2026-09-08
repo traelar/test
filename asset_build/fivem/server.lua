@@ -1,4 +1,4 @@
-local SHREDDER_MODEL = joaat('industrial_scrap_shredder_v23')
+local SHREDDER_MODEL = joaat('industrial_scrap_shredder_v24')
 
 RegisterNetEvent('vrp-scrap-shredder:server:toggle', function(netId)
     local playerId = source
