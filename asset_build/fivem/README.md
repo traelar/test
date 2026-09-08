@@ -1,47 +1,91 @@
-# Industrial Scrap Shredder
+# Industrial Scrap Shredder v2.5
 
-Drop this resource into your FiveM resources folder and add `ensure vrp-scrap-shredder` to `server.cfg`.
+Requires `ox_lib`, `ox_inventory`, and either `ox_target` or `qb-target`.
+Add `ensure vrp-scrap-shredder` after those resources in `server.cfg`.
 
-- Model/spawn name: `industrial_scrap_shredder_v24`
-- Approximate size: 10.70 m long, 4.08 m wide, 4.72 m tall
-- Includes high, medium, and low visual LODs
-- Includes an inclined ground-level feed conveyor that clears the hopper wall and drops through the open top
-- Includes attached portal-frame supports and sealed hopper corner channels
-- Includes five conveyor portal frames, X-bracing, foundation rails, a hopper saddle, and four chamber pedestals
-- Includes an open collision shell plus conveyor, ladder, and control-cabinet collision
-- Includes animated input/output belt cleats and counter-rotating cutters
-- Belt cleats remain inside their rollers throughout the full animation cycle
-- Carries the local player and dynamic props up the intake belt while running
-- Converts props entering the cutter throat into temporary scrap pieces on the output belt
-- Includes its own lightweight native scrap-fragment model for the output pieces
-- Uses a synchronized control-panel target with automatic `ox_target` or `qb-target` detection
-- Uses a compact waist-height control cabinet with an enlarged forward target zone
-- Textures are embedded in the YDR; no separate YTD is required
+## Main features
+
+- Native FiveM `industrial_scrap_shredder_v24` model with LODs and collision
+- Animated input/output belts and counter-rotating cutters
+- Functional conveyors that carry players and dynamic props
+- Compact collidable control cabinet with silent synchronized power toggle
+- Distance-faded industrial shredder loop while powered
+- Admin ghost-placement creator with ground snapping and Q/E rotation
+- Persistent placements stored in FiveM resource KVP across restarts
+- In-game recipe creator supporting multiple inventory items and prop models
+- Server-authoritative ox_inventory removal and collection
+- Physical input prop travels up the belt and disappears into the cutters
+- A configurable processed-scrap prop exits the other belt and must be collected
+
+## Admin creator
+
+Grant access in `server.cfg`:
+
+```cfg
+add_ace group.admin command.shreddercreator allow
+add_ace group.admin command.placeshredder allow
+add_ace group.admin command.removeshredder allow
+```
+
+Commands:
+
+- `/shreddercreator` – opens placement, removal, and recipe management
+- `/placeshredder` – opens ghost placement directly
+- `/removeshredder` – permanently removes the nearest saved shredder
+
+During ghost placement, aim where the machine should sit. The preview snaps to
+the ground beneath the aim point. Use `Q` and `E` to rotate, hold Shift for
+faster rotation, press Enter to save, or Backspace to cancel. Saved machines
+return automatically after resource/server restarts and restart powered off.
+
+## Recipe creator
+
+Open `/shreddercreator` and choose **Manage processing recipes**. Each recipe
+stores:
+
+- Recipe ID and display label
+- Input ox_inventory item name
+- Input prop model shown on the feed belt
+- Output ox_inventory item name and label
+- Output scrap prop model shown on the discharge belt
+- Minimum and maximum output quantity
+
+The item names must exist in ox_inventory. Base-game GTA prop names work
+directly. A custom prop model must be streamed by this resource or another
+started resource. The included `industrial_scrap_shredder_v24_chunk` is a
+ready-to-use generic scrap output model.
+
+When powered on, players target the bottom of the intake conveyor and choose a
+configured recipe. One input item is removed server-side, its configured model
+travels through the machine, and the configured output model travels out the
+other side. Players must target that physical result and choose
+**Collect processed scrap** before receiving the output item.
+
+Recipes and placements are saved through resource KVP, so no database table is
+required. `config.lua` contains optional default recipes and sound/gameplay
+settings; recipes created in game become the saved authoritative list.
 
 ## Test commands
 
-- `/spawnshredder` - spawns one animated shredder about 8 meters in front of you
-- `/spawnshredder 180` - spawns it with a specific heading
-- `/deleteshredder` - removes the shredder spawned by your command
-- `/toggleshredder` - fallback power toggle when no supported target resource is running
+- `/spawnshredder` – temporary test machine about 8 meters in front of you
+- `/spawnshredder 180` – temporary test machine with a chosen heading
+- `/deleteshredder` – removes the temporary test machine and its debris
+- `/toggleshredder` – fallback power toggle when no target resource is running
 
-The spawn location is printed to the F8 console as a ready-to-copy `vector4`.
-Only one test shredder is kept per player. Its animated components and generated
-scrap pieces are removed with it and when the resource stops. To disable the test commands on a live server, add this to
-`server.cfg`:
+`/spawnshredder` does not persist. Use the admin creator for permanent machines.
+Disable test commands on a live server with:
 
 ```cfg
 setr vrp_shredder_test_commands 0
 ```
 
-## Control panel and conveyor gameplay
+## Performance and settings
 
-The machine spawns switched off. Target its control panel and select
-`Toggle industrial shredder`; `ox_target` and `qb-target` are detected
-automatically. The synchronized power state controls the belt animation,
-cutters, player transport, prop transport, shredding and output pieces.
+World-object scans only run within 70 meters of a powered machine at a 220 ms
+interval. Debris is capped at 48 pieces. Audio updates at 350 ms while active
+and only the nearest configured number of machines can play simultaneously.
 
-Optional `server.cfg` settings:
+Settings are documented in `config.lua`. Existing gameplay convars:
 
 ```cfg
 setr vrp_shredder_carry_players 1
@@ -52,38 +96,20 @@ setr vrp_shredder_piece_lifetime_ms 45000
 setr vrp_shredder_target_debug 0
 ```
 
-For performance, world-object scans run only within 70 meters of a powered
-shredder, at a 220 ms interval. Output debris is capped at 48 pieces and is
-automatically cleaned up. Unattached dynamic objects and script-created mission
-props are transported; frozen map scenery is ignored.
-
-Gameplay resources can listen for the local event below to award materials or
-run custom effects. `sourceModel` is the original model hash.
-
-```lua
-AddEventHandler('vrp-scrap-shredder:shredded', function(shredder, sourceModel, pieceCount)
-    -- Add your server-authoritative reward request here.
-end)
-```
-
 ## Script integration
-
-Create the complete animated assembly from another client resource:
 
 ```lua
 local shredder, err = exports['vrp-scrap-shredder']:CreateAnimatedShredder(
-    vector3(x, y, z),
-    heading,
-    false -- set true only when one client should network the assembly
+    vector3(x, y, z), heading, false
 )
-```
 
-Delete an assembly with:
-
-```lua
 exports['vrp-scrap-shredder']:DeleteAnimatedShredder(shredder)
 ```
 
-Rewards, inventory removal, particles and sound remain intentionally separate
-so your scrap-yard resource can validate them server-side. The included carrier
-only moves nearby dynamic objects and the local player.
+Generic dynamic props still fire the local compatibility event:
+
+```lua
+AddEventHandler('vrp-scrap-shredder:shredded', function(shredder, sourceModel, pieceCount, recipeId)
+    -- recipeId is supplied for configured processing and nil for generic props.
+end)
+```

@@ -24,7 +24,10 @@ local spawnedTestBase
 local observedBases = {}
 local targetZones = {}
 local outputPieces = {}
+local placementBases = {}
+local scrapEntities = {}
 local playerShredCooldown = 0
+local requestPlaceScrap
 
 local MODEL_HASHES = {}
 for _, modelName in pairs(MODEL_NAMES) do
@@ -100,26 +103,29 @@ local function toggleShredder(base)
         return
     end
 
-    if NetworkGetEntityIsNetworked(base) then
+    local assembly = assemblies[base]
+    if assembly and assembly.placementId then
+        TriggerServerEvent('vrp-scrap-shredder:server:togglePlacement', assembly.placementId)
+    elseif NetworkGetEntityIsNetworked(base) then
         TriggerServerEvent('vrp-scrap-shredder:server:toggle', NetworkGetNetworkIdFromEntity(base))
     else
         local enabled = not isShredderEnabled(base)
         Entity(base).state:set('shredderEnabled', enabled, false)
-        notify(enabled and 'Industrial shredder switched ~g~ON~s~.' or
-            'Industrial shredder switched ~r~OFF~s~.')
     end
 end
 
-RegisterNetEvent('vrp-scrap-shredder:client:toggleResult', function(netId, enabled)
-    local base = NetworkGetEntityFromNetworkId(netId)
-    if base ~= 0 and DoesEntityExist(base) then
-        notify(enabled and 'Industrial shredder switched ~g~ON~s~.' or
-            'Industrial shredder switched ~r~OFF~s~.')
-    end
+RegisterNetEvent('vrp-scrap-shredder:client:notify', function(message)
+    notify(message)
 end)
 
 RegisterNetEvent('vrp-scrap-shredder:client:targetToggle', function(data)
     toggleShredder(data and (data.base or data.entity))
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:targetPlaceRecipe', function(data)
+    if requestPlaceScrap then
+        requestPlaceScrap(data and (data.base or data.entity), data and data.recipeId)
+    end
 end)
 
 local function removeTarget(base)
@@ -129,9 +135,13 @@ local function removeTarget(base)
     end
 
     if zone.provider == 'ox' and GetResourceState('ox_target') == 'started' then
-        exports.ox_target:removeZone(zone.id)
+        for _, zoneId in ipairs(zone.ids) do
+            exports.ox_target:removeZone(zoneId)
+        end
     elseif zone.provider == 'qb' and GetResourceState('qb-target') == 'started' then
-        exports['qb-target']:RemoveZone(zone.id)
+        for _, zoneId in ipairs(zone.ids) do
+            exports['qb-target']:RemoveZone(zoneId)
+        end
     end
     targetZones[base] = nil
 end
@@ -146,9 +156,12 @@ local function registerTarget(base)
     local center = GetOffsetFromEntityInWorldCoords(base, 1.82, -1.74, 1.57)
     local heading = GetEntityHeading(base)
     local zoneName = ('industrial_shredder_panel_%s'):format(base)
+    local feedZoneName = ('industrial_shredder_feed_%s'):format(base)
+    local recipes = ShredderConfig and ShredderConfig.Recipes or {}
 
     if GetResourceState('ox_target') == 'started' then
-        local zoneId = exports.ox_target:addBoxZone({
+        local zoneIds = {}
+        zoneIds[#zoneIds + 1] = exports.ox_target:addBoxZone({
             coords = center,
             size = vector3(0.92, 1.05, 1.12),
             rotation = heading,
@@ -168,7 +181,34 @@ local function registerTarget(base)
                 }
             }
         })
-        targetZones[base] = { provider = 'ox', id = zoneId }
+        local feedOptions = {}
+        for _, recipe in ipairs(recipes) do
+            if recipe.enabled ~= false then
+                local recipeId = recipe.id
+                feedOptions[#feedOptions + 1] = {
+                    name = ('%s_%s'):format(feedZoneName, recipeId),
+                    icon = 'fa-solid fa-gears',
+                    label = ('Place %s on conveyor'):format(recipe.label or recipeId),
+                    distance = ShredderConfig.InteractionDistance or 3.0,
+                    canInteract = function()
+                        return DoesEntityExist(base) and isShredderEnabled(base)
+                    end,
+                    onSelect = function()
+                        requestPlaceScrap(base, recipeId)
+                    end
+                }
+            end
+        end
+        if #feedOptions > 0 then
+            zoneIds[#zoneIds + 1] = exports.ox_target:addBoxZone({
+                coords = GetOffsetFromEntityInWorldCoords(base, -6.18, 0.0, 0.82),
+                size = vector3(1.45, 2.35, 1.20),
+                rotation = heading,
+                debug = GetConvarInt('vrp_shredder_target_debug', 0) == 1,
+                options = feedOptions
+            })
+        end
+        targetZones[base] = { provider = 'ox', ids = zoneIds }
     elseif GetResourceState('qb-target') == 'started' then
         exports['qb-target']:AddBoxZone(zoneName, center, 0.92, 1.05, {
             name = zoneName,
@@ -188,7 +228,38 @@ local function registerTarget(base)
             },
             distance = 3.0
         })
-        targetZones[base] = { provider = 'qb', id = zoneName }
+        local zoneIds = { zoneName }
+        local feedOptions = {}
+        for _, recipe in ipairs(recipes) do
+            if recipe.enabled ~= false then
+                feedOptions[#feedOptions + 1] = {
+                    type = 'client',
+                    event = 'vrp-scrap-shredder:client:targetPlaceRecipe',
+                    icon = 'fas fa-gears',
+                    label = ('Place %s on conveyor'):format(recipe.label or recipe.id),
+                    base = base,
+                    recipeId = recipe.id,
+                    canInteract = function()
+                        return DoesEntityExist(base) and isShredderEnabled(base)
+                    end
+                }
+            end
+        end
+        if #feedOptions > 0 then
+            local feedCenter = GetOffsetFromEntityInWorldCoords(base, -6.18, 0.0, 0.82)
+            exports['qb-target']:AddBoxZone(feedZoneName, feedCenter, 1.45, 2.35, {
+                name = feedZoneName,
+                heading = heading,
+                debugPoly = GetConvarInt('vrp_shredder_target_debug', 0) == 1,
+                minZ = feedCenter.z - 0.60,
+                maxZ = feedCenter.z + 0.60
+            }, {
+                options = feedOptions,
+                distance = ShredderConfig.InteractionDistance or 3.0
+            })
+            zoneIds[#zoneIds + 1] = feedZoneName
+        end
+        targetZones[base] = { provider = 'qb', ids = zoneIds }
     end
 end
 
@@ -256,6 +327,119 @@ local function requestPieceModel(modelName)
     return HasModelLoaded(model) and model or nil
 end
 
+local function resolveMachine(machineType, machineId)
+    if machineType == 'placement' then
+        local base = placementBases[tonumber(machineId)]
+        return base and DoesEntityExist(base) and base or nil
+    elseif machineType == 'network' then
+        local base = NetworkGetEntityFromNetworkId(tonumber(machineId) or 0)
+        return base ~= 0 and DoesEntityExist(base) and base or nil
+    end
+    return nil
+end
+
+requestPlaceScrap = function(base, recipeId)
+    if not base or not DoesEntityExist(base) or not isShredderEnabled(base) then
+        notify('Switch the shredder on first.')
+        return
+    end
+
+    local assembly = assemblies[base]
+    if assembly and assembly.placementId then
+        TriggerServerEvent('vrp-scrap-shredder:server:placeRecipe',
+            recipeId, 'placement', assembly.placementId)
+    elseif NetworkGetEntityIsNetworked(base) then
+        TriggerServerEvent('vrp-scrap-shredder:server:placeRecipe',
+            recipeId, 'network', NetworkGetNetworkIdFromEntity(base))
+    else
+        notify('This shredder is not registered for inventory processing.')
+    end
+end
+
+RegisterNetEvent('vrp-scrap-shredder:client:spawnRecipeInput',
+    function(token, recipe, machineType, machineId)
+        local base = resolveMachine(machineType, machineId)
+        local model = recipe and requestPieceModel(recipe.inputModel)
+        if not base or not model then
+            TriggerServerEvent('vrp-scrap-shredder:server:cancelProcess', token)
+            notify('The configured input prop could not be spawned.')
+            return
+        end
+
+        local spawn = GetOffsetFromEntityInWorldCoords(base, -6.15, 0.0, 1.02)
+        local object = CreateObjectNoOffset(model, spawn.x, spawn.y, spawn.z, true, true, false)
+        SetModelAsNoLongerNeeded(model)
+        if not object or object == 0 then
+            TriggerServerEvent('vrp-scrap-shredder:server:cancelProcess', token)
+            notify('The configured input prop could not be spawned.')
+            return
+        end
+
+        SetEntityAsMissionEntity(object, true, true)
+        SetEntityDynamic(object, true)
+        ActivatePhysics(object)
+        Entity(object).state:set('shredderInputToken', token, true)
+        scrapEntities[object] = { token = token, base = base }
+        carryEntity(object, base, INPUT_ANGLE, 1.32)
+    end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:spawnProcessedOutput',
+    function(token, recipe, machineType, machineId, sourceModel)
+        local base = resolveMachine(machineType, machineId)
+        local modelName = recipe and recipe.outputModel or MODEL_NAMES.chunk
+        local model = requestPieceModel(modelName)
+        if not base or not model then
+            TriggerServerEvent('vrp-scrap-shredder:server:cancelOutput', token)
+            return
+        end
+
+        local spawn = GetOffsetFromEntityInWorldCoords(base, 1.50, 0.0, 1.38)
+        local piece = CreateObjectNoOffset(model, spawn.x, spawn.y, spawn.z, true, true, false)
+        SetModelAsNoLongerNeeded(model)
+        if not piece or piece == 0 then
+            TriggerServerEvent('vrp-scrap-shredder:server:cancelOutput', token)
+            return
+        end
+
+        SetEntityAsMissionEntity(piece, true, true)
+        SetEntityDynamic(piece, true)
+        ActivatePhysics(piece)
+        SetEntityRotation(piece, math.random(0, 359) + 0.0,
+            math.random(0, 359) + 0.0, math.random(0, 359) + 0.0, 2, true)
+        Entity(piece).state:set('shredderOutputToken', token, true)
+        outputPieces[piece] = {
+            expiresAt = GetGameTimer() +
+                ((ShredderConfig.OutputCollectTimeoutSeconds or 120) * 1000),
+            base = base,
+            collectible = true,
+            token = token
+        }
+        TriggerServerEvent('vrp-scrap-shredder:server:registerOutput',
+            token, NetworkGetNetworkIdFromEntity(piece))
+        carryEntity(piece, base, OUTPUT_ANGLE, 2.15)
+        TriggerEvent('vrp-scrap-shredder:shredded', base, sourceModel, 1, recipe.id)
+    end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:deleteProcessedOutput', function(netId)
+    local entity = NetworkGetEntityFromNetworkId(tonumber(netId) or 0)
+    if entity ~= 0 then
+        outputPieces[entity] = nil
+        safeDelete(entity)
+    end
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:targetCollectOutput', function(data)
+    local entity = data and (data.entity or data.target)
+    if not entity or not DoesEntityExist(entity) then
+        return
+    end
+    local token = Entity(entity).state.shredderOutputToken
+    if token then
+        TriggerServerEvent('vrp-scrap-shredder:server:collectOutput',
+            token, NetworkGetNetworkIdFromEntity(entity))
+    end
+end)
+
 local function countOutputPieces()
     local count = 0
     for entity in pairs(outputPieces) do
@@ -310,8 +494,14 @@ local function shredObject(object, base)
     end
 
     local sourceModel = GetEntityModel(object)
+    local recipeProcess = scrapEntities[object]
     safeDelete(object)
-    spawnOutputPieces(base, sourceModel)
+    scrapEntities[object] = nil
+    if recipeProcess then
+        TriggerServerEvent('vrp-scrap-shredder:server:processComplete', recipeProcess.token)
+    else
+        spawnOutputPieces(base, sourceModel)
+    end
 end
 
 local function attachComponent(entity, base, offsetX, offsetY, offsetZ, rotationY)
@@ -366,6 +556,9 @@ local function cleanupOutputPieces(base)
     for piece, data in pairs(outputPieces) do
         local owner = type(data) == 'table' and data.base or nil
         if owner == base then
+            if data.collectible and data.token then
+                TriggerServerEvent('vrp-scrap-shredder:server:cancelOutput', data.token)
+            end
             safeDelete(piece)
             outputPieces[piece] = nil
         end
@@ -384,10 +577,23 @@ local function cleanupOutputPieces(base)
     end
 end
 
+local function cleanupInputScrap(base)
+    for object, data in pairs(scrapEntities) do
+        if data.base == base then
+            TriggerServerEvent('vrp-scrap-shredder:server:cancelProcess', data.token)
+            safeDelete(object)
+            scrapEntities[object] = nil
+        end
+    end
+end
+
 local function deleteAnimatedShredder(base)
-    removeTarget(base)
-    cleanupOutputPieces(base)
     local assembly = assemblies[base]
+    removeTarget(base)
+    if not (assembly and assembly.preview) then
+        cleanupOutputPieces(base)
+        cleanupInputScrap(base)
+    end
     if not assembly then
         safeDelete(base)
         observedBases[base] = nil
@@ -397,6 +603,8 @@ local function deleteAnimatedShredder(base)
         return
     end
 
+    local placementId = assembly.placementId
+
     safeDelete(assembly.rotorA)
     safeDelete(assembly.rotorB)
     safeDelete(assembly.beltIn)
@@ -404,13 +612,16 @@ local function deleteAnimatedShredder(base)
     safeDelete(assembly.base)
     assemblies[base] = nil
     observedBases[base] = nil
+    if placementId then
+        placementBases[placementId] = nil
+    end
 
     if spawnedTestBase == base then
         spawnedTestBase = nil
     end
 end
 
-local function createAnimatedShredder(coords, heading, networked)
+local function createAnimatedShredder(coords, heading, networked, preview)
     local loaded, failedModel = requestModels()
     if not loaded then
         releaseModels()
@@ -441,7 +652,8 @@ local function createAnimatedShredder(coords, heading, networked)
         beltOut = createComponent(MODEL_NAMES.beltOut, base, networked),
         rotorAngle = 0.0,
         inputPhase = 0.0,
-        outputPhase = 0.0
+        outputPhase = 0.0,
+        preview = preview == true
     }
 
     if not assembly.rotorA or not assembly.rotorB or not assembly.beltIn or not assembly.beltOut then
@@ -456,14 +668,331 @@ local function createAnimatedShredder(coords, heading, networked)
 
     assemblies[base] = assembly
     Entity(base).state:set('shredderEnabled', false, networked)
-    registerTarget(base)
     updateAssembly(assembly, 0.0)
+    if preview then
+        SetEntityCollision(base, false, false)
+        SetEntityAlpha(base, 155, false)
+        for _, entity in ipairs({ assembly.rotorA, assembly.rotorB,
+            assembly.beltIn, assembly.beltOut }) do
+            SetEntityAlpha(entity, 155, false)
+        end
+    else
+        registerTarget(base)
+    end
     releaseModels()
     return base
 end
 
+local function spawnPlacement(placement)
+    if type(placement) ~= 'table' or type(placement.id) ~= 'number' then
+        return
+    end
+
+    local existing = placementBases[placement.id]
+    if existing and DoesEntityExist(existing) then
+        Entity(existing).state:set('shredderEnabled', placement.enabled == true, false)
+        return
+    end
+
+    local base, errorMessage = createAnimatedShredder(
+        vector3(placement.x + 0.0, placement.y + 0.0, placement.z + 0.0),
+        placement.heading + 0.0,
+        false
+    )
+    if not base then
+        print(('[industrial-scrap-shredder] Could not spawn saved placement %s: %s')
+            :format(placement.id, errorMessage or 'unknown error'))
+        return
+    end
+
+    assemblies[base].placementId = placement.id
+    placementBases[placement.id] = base
+    Entity(base).state:set('shredderEnabled', placement.enabled == true, false)
+end
+
+local function removePlacement(placementId)
+    local base = placementBases[tonumber(placementId)]
+    if base then
+        deleteAnimatedShredder(base)
+    end
+    placementBases[tonumber(placementId)] = nil
+end
+
+RegisterNetEvent('vrp-scrap-shredder:client:syncPlacements', function(placements)
+    local seen = {}
+    for _, placement in ipairs(type(placements) == 'table' and placements or {}) do
+        seen[placement.id] = true
+        spawnPlacement(placement)
+    end
+
+    local stale = {}
+    for placementId in pairs(placementBases) do
+        if not seen[placementId] then
+            stale[#stale + 1] = placementId
+        end
+    end
+    for i = 1, #stale do
+        removePlacement(stale[i])
+    end
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:addPlacement', function(placement)
+    spawnPlacement(placement)
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:removePlacement', function(placementId)
+    removePlacement(placementId)
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:setPlacementState', function(placementId, enabled)
+    local base = placementBases[tonumber(placementId)]
+    if base and DoesEntityExist(base) then
+        Entity(base).state:set('shredderEnabled', enabled == true, false)
+    end
+end)
+
 exports('CreateAnimatedShredder', createAnimatedShredder)
 exports('DeleteAnimatedShredder', deleteAnimatedShredder)
+
+CreateThread(function()
+    Wait(1500)
+    TriggerServerEvent('vrp-scrap-shredder:server:requestPlacements')
+end)
+
+local processedTargetRegistration
+local function removeProcessedTargets()
+    if not processedTargetRegistration then return end
+    if processedTargetRegistration.provider == 'ox' and
+        GetResourceState('ox_target') == 'started' then
+        exports.ox_target:removeModel(processedTargetRegistration.models,
+            { 'industrial_shredder_collect_output' })
+    elseif processedTargetRegistration.provider == 'qb' and
+        GetResourceState('qb-target') == 'started' then
+        exports['qb-target']:RemoveTargetModel(processedTargetRegistration.models,
+            { 'Collect processed scrap' })
+    end
+    processedTargetRegistration = nil
+end
+
+local function registerProcessedTargets()
+    removeProcessedTargets()
+    local models = {}
+    local seen = {}
+    for _, recipe in ipairs(ShredderConfig and ShredderConfig.Recipes or {}) do
+        local modelName = recipe.outputModel or MODEL_NAMES.chunk
+        if recipe.enabled ~= false and not seen[modelName] then
+            seen[modelName] = true
+            models[#models + 1] = modelName
+        end
+    end
+    if #models == 0 then
+        return
+    end
+
+    local option = {
+        name = 'industrial_shredder_collect_output',
+        icon = 'fa-solid fa-recycle',
+        label = 'Collect processed scrap',
+        distance = ShredderConfig.InteractionDistance or 3.0,
+        canInteract = function(entity)
+            return DoesEntityExist(entity) and Entity(entity).state.shredderOutputToken ~= nil
+        end,
+        onSelect = function(data)
+            TriggerEvent('vrp-scrap-shredder:client:targetCollectOutput', data)
+        end
+    }
+
+    if GetResourceState('ox_target') == 'started' then
+        exports.ox_target:addModel(models, { option })
+        processedTargetRegistration = { provider = 'ox', models = models }
+    elseif GetResourceState('qb-target') == 'started' then
+        exports['qb-target']:AddTargetModel(models, {
+            options = {
+                {
+                    type = 'client',
+                    event = 'vrp-scrap-shredder:client:targetCollectOutput',
+                    icon = 'fas fa-recycle',
+                    label = 'Collect processed scrap',
+                    canInteract = option.canInteract
+                }
+            },
+            distance = ShredderConfig.InteractionDistance or 3.0
+        })
+        processedTargetRegistration = { provider = 'qb', models = models }
+    end
+end
+
+CreateThread(function()
+    Wait(1800)
+    registerProcessedTargets()
+end)
+
+local function refreshRecipeTargets()
+    local bases = {}
+    for base in pairs(targetZones) do bases[#bases + 1] = base end
+    for i = 1, #bases do removeTarget(bases[i]) end
+    for base in pairs(observedBases) do
+        if DoesEntityExist(base) then registerTarget(base) end
+    end
+    registerProcessedTargets()
+end
+
+RegisterNetEvent('vrp-scrap-shredder:client:syncRecipes', function(recipes)
+    ShredderConfig.Recipes = type(recipes) == 'table' and recipes or {}
+    refreshRecipeTargets()
+end)
+
+local creatorPreview
+local function cameraDirection(rotation)
+    local z, x = math.rad(rotation.z), math.rad(rotation.x)
+    local cosX = math.abs(math.cos(x))
+    return vector3(-math.sin(z) * cosX, math.cos(z) * cosX, math.sin(x))
+end
+
+local function aimedGroundPoint(ignoreEntity)
+    local start = GetGameplayCamCoord()
+    local direction = cameraDirection(GetGameplayCamRot(2))
+    local finish = start + direction * 60.0
+    local ray = StartShapeTestRay(start.x, start.y, start.z,
+        finish.x, finish.y, finish.z, 511, ignoreEntity or PlayerPedId(), 7)
+    local _, hit, hitCoords = GetShapeTestResult(ray)
+    local point = hit == 1 and hitCoords or
+        GetOffsetFromEntityInWorldCoords(PlayerPedId(), 0.0, 8.0, 0.0)
+    local foundGround, groundZ = GetGroundZFor_3dCoord(point.x, point.y, point.z + 50.0, false)
+    if foundGround then point = vector3(point.x, point.y, groundZ) end
+    return point
+end
+
+local function showPlacementHelp()
+    BeginTextCommandDisplayHelp('STRING')
+    AddTextComponentSubstringPlayerName(
+        'Aim to move  |  ~INPUT_COVER~ / ~INPUT_CONTEXT~ rotate  |  ~INPUT_FRONTEND_ACCEPT~ place  |  ~INPUT_FRONTEND_CANCEL~ cancel')
+    EndTextCommandDisplayHelp(0, false, true, -1)
+end
+
+local function startCreatorPlacement()
+    if creatorPreview and DoesEntityExist(creatorPreview) then return end
+    local ped = PlayerPedId()
+    local point = GetOffsetFromEntityInWorldCoords(ped, 0.0, 8.0, 0.0)
+    local heading = GetEntityHeading(ped)
+    local base, errorMessage = createAnimatedShredder(point, heading, false, true)
+    if not base then notify(errorMessage or 'Could not create the placement preview.') return end
+    creatorPreview = base
+
+    CreateThread(function()
+        while creatorPreview == base and DoesEntityExist(base) do
+            Wait(0)
+            DisableControlAction(0, 44, true)
+            DisableControlAction(0, 38, true)
+            DisableControlAction(0, 191, true)
+            DisableControlAction(0, 194, true)
+            local speed = IsControlPressed(0, 21) and 110.0 or 42.0
+            if IsDisabledControlPressed(0, 44) then heading = (heading + speed * GetFrameTime()) % 360.0 end
+            if IsDisabledControlPressed(0, 38) then heading = (heading - speed * GetFrameTime()) % 360.0 end
+            local position = aimedGroundPoint(base)
+            SetEntityCoordsNoOffset(base, position.x, position.y, position.z, false, false, false)
+            SetEntityHeading(base, heading)
+            showPlacementHelp()
+
+            if IsDisabledControlJustPressed(0, 191) then
+                local final = GetEntityCoords(base)
+                creatorPreview = nil
+                deleteAnimatedShredder(base)
+                TriggerServerEvent('vrp-scrap-shredder:server:savePlacement',
+                    { x = final.x, y = final.y, z = final.z }, heading)
+                break
+            elseif IsDisabledControlJustPressed(0, 194) then
+                creatorPreview = nil
+                deleteAnimatedShredder(base)
+                break
+            end
+        end
+    end)
+end
+
+local function editRecipe(recipe)
+    local values = lib.inputDialog(recipe and 'Edit Shredder Recipe' or 'Add Shredder Recipe', {
+        { type = 'input', label = 'Recipe ID', description = 'Example: car_door', required = true,
+            default = recipe and recipe.id or '' },
+        { type = 'input', label = 'Display label', required = true,
+            default = recipe and recipe.label or '' },
+        { type = 'input', label = 'Input item name', required = true,
+            default = recipe and recipe.inputItem or '' },
+        { type = 'input', label = 'Input prop model', required = true,
+            default = recipe and recipe.inputModel or '' },
+        { type = 'input', label = 'Output item name', required = true,
+            default = recipe and recipe.outputItem or '' },
+        { type = 'input', label = 'Output item label', required = true,
+            default = recipe and (recipe.outputLabel or recipe.outputItem) or '' },
+        { type = 'input', label = 'Output scrap prop model', required = true,
+            default = recipe and recipe.outputModel or MODEL_NAMES.chunk },
+        { type = 'number', label = 'Minimum output amount', required = true, min = 1, max = 100,
+            default = recipe and recipe.outputMin or 1 },
+        { type = 'number', label = 'Maximum output amount', required = true, min = 1, max = 100,
+            default = recipe and recipe.outputMax or 1 }
+    })
+    if not values then return end
+    TriggerServerEvent('vrp-scrap-shredder:server:saveRecipe', {
+        originalId = recipe and recipe.id or nil,
+        id = values[1], label = values[2], inputItem = values[3], inputModel = values[4],
+        outputItem = values[5], outputLabel = values[6], outputModel = values[7],
+        outputMin = values[8], outputMax = values[9]
+    })
+end
+
+local function openRecipeManager()
+    local options = {
+        { title = 'Add recipe', icon = 'plus', onSelect = function() editRecipe(nil) end }
+    }
+    for _, entry in ipairs(ShredderConfig.Recipes or {}) do
+        local recipe = entry
+        options[#options + 1] = {
+            title = recipe.label or recipe.id,
+            description = ('%s / %s  →  %s / %s'):format(recipe.inputItem,
+                recipe.inputModel, recipe.outputItem, recipe.outputModel),
+            icon = 'gears',
+            onSelect = function()
+                lib.registerContext({ id = 'shredder_recipe_actions',
+                    title = recipe.label or recipe.id, menu = 'shredder_recipe_manager', options = {
+                        { title = 'Edit recipe', icon = 'pen', onSelect = function() editRecipe(recipe) end },
+                        { title = 'Delete recipe', icon = 'trash', onSelect = function()
+                            local answer = lib.alertDialog({ header = 'Delete recipe?',
+                                content = 'This permanently removes the recipe.', centered = true,
+                                cancel = true, labels = { confirm = 'Delete' } })
+                            if answer == 'confirm' then
+                                TriggerServerEvent('vrp-scrap-shredder:server:deleteRecipe', recipe.id)
+                            end
+                        end }
+                    } })
+                lib.showContext('shredder_recipe_actions')
+            end
+        }
+    end
+    lib.registerContext({ id = 'shredder_recipe_manager', title = 'Shredder Recipes',
+        menu = 'shredder_creator', options = options })
+    lib.showContext('shredder_recipe_manager')
+end
+
+local function openCreator()
+    lib.registerContext({ id = 'shredder_creator', title = 'Industrial Shredder Creator', options = {
+        { title = 'Place persistent shredder', description = 'Ghost placement with ground snapping',
+            icon = 'industry', onSelect = startCreatorPlacement },
+        { title = 'Remove nearest shredder', description = 'Permanently removes the nearest saved machine',
+            icon = 'trash', onSelect = function()
+                TriggerServerEvent('vrp-scrap-shredder:server:removeNearest')
+            end },
+        { title = 'Manage processing recipes', description = 'Configure inventory items and prop models',
+            icon = 'gears', onSelect = openRecipeManager }
+    } })
+    lib.showContext('shredder_creator')
+end
+
+RegisterNetEvent('vrp-scrap-shredder:client:openCreator', function(recipes)
+    if type(recipes) == 'table' then ShredderConfig.Recipes = recipes end
+    openCreator()
+end)
+
+RegisterNetEvent('vrp-scrap-shredder:client:startPlacement', startCreatorPlacement)
 
 CreateThread(function()
     while true do
@@ -497,14 +1026,15 @@ CreateThread(function()
         local nextObserved = {}
         local playerCoords = GetEntityCoords(PlayerPedId())
 
-        for base in pairs(assemblies) do
-            if DoesEntityExist(base) then
+        for base, assembly in pairs(assemblies) do
+            if DoesEntityExist(base) and not assembly.preview then
                 nextObserved[base] = true
             end
         end
 
         for _, object in ipairs(GetGamePool('CObject')) do
             if DoesEntityExist(object) and GetEntityModel(object) == joaat(MODEL_NAMES.base) and
+                not (assemblies[object] and assemblies[object].preview) and
                 #(playerCoords - GetEntityCoords(object)) <= INTERACTION_RADIUS then
                 nextObserved[object] = true
             end
@@ -546,6 +1076,9 @@ CreateThread(function()
             if not DoesEntityExist(piece) then
                 outputPieces[piece] = nil
             elseif now >= expiresAt then
+                if type(data) == 'table' and data.collectible and data.token then
+                    TriggerServerEvent('vrp-scrap-shredder:server:cancelOutput', data.token)
+                end
                 safeDelete(piece)
                 outputPieces[piece] = nil
             end
@@ -586,6 +1119,8 @@ CreateThread(function()
                 for _, object in ipairs(GetGamePool('CObject')) do
                     if DoesEntityExist(object) and not MODEL_HASHES[GetEntityModel(object)] and
                         not outputPieces[object] and not IsEntityAttached(object) and
+                        Entity(object).state.shredderOutputToken == nil and
+                        (Entity(object).state.shredderInputToken == nil or scrapEntities[object]) and
                         (not IsEntityPositionFrozen(object) or IsEntityAMissionEntity(object)) then
                         for index = 1, #activeBases do
                             local base = activeBases[index]
@@ -606,6 +1141,40 @@ CreateThread(function()
         end
 
         Wait(waitTime)
+    end
+end)
+
+CreateThread(function()
+    local wasActive = false
+    while true do
+        local sources = {}
+        if ShredderConfig.SoundEnabled ~= false then
+            local playerCoords = GetEntityCoords(PlayerPedId())
+            local maxDistance = ShredderConfig.SoundMaxDistance or 45.0
+            for base in pairs(observedBases) do
+                if DoesEntityExist(base) and isShredderEnabled(base) then
+                    local distance = #(playerCoords - GetEntityCoords(base))
+                    if distance < maxDistance then
+                        sources[#sources + 1] = { base = base, distance = distance }
+                    end
+                end
+            end
+            table.sort(sources, function(a, b) return a.distance < b.distance end)
+            local limit = math.max(1, ShredderConfig.MaxActiveSounds or 3)
+            while #sources > limit do table.remove(sources) end
+            for _, sourceData in ipairs(sources) do
+                local falloff = 1.0 - (sourceData.distance / maxDistance)
+                sourceData.id = tostring(sourceData.base)
+                sourceData.volume = (ShredderConfig.SoundVolume or 0.42) * falloff * falloff
+                sourceData.base, sourceData.distance = nil, nil
+            end
+        end
+
+        if #sources > 0 or wasActive then
+            SendNUIMessage({ action = 'syncShredderAudio', sources = sources })
+        end
+        wasActive = #sources > 0
+        Wait(wasActive and 350 or 1000)
     end
 end)
 
@@ -691,5 +1260,21 @@ AddEventHandler('onResourceStop', function(resourceName)
 
     for piece in pairs(outputPieces) do
         safeDelete(piece)
+    end
+
+    for object in pairs(scrapEntities) do
+        safeDelete(object)
+    end
+
+    if processedTargetRegistration then
+        if processedTargetRegistration.provider == 'ox' and
+            GetResourceState('ox_target') == 'started' then
+            exports.ox_target:removeModel(processedTargetRegistration.models,
+                { 'industrial_shredder_collect_output' })
+        elseif processedTargetRegistration.provider == 'qb' and
+            GetResourceState('qb-target') == 'started' then
+            exports['qb-target']:RemoveTargetModel(processedTargetRegistration.models,
+                { 'Collect processed scrap' })
+        end
     end
 end)
