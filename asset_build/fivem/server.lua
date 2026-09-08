@@ -1,4 +1,4 @@
-local SHREDDER_MODEL = joaat('industrial_scrap_shredder_v24')
+local SHREDDER_MODEL = joaat('industrial_scrap_shredder_v25')
 local PLACEMENT_KVP = 'persistent_placements_v1'
 local RECIPE_KVP = 'persistent_recipes_v1'
 local placements, recipes, recipesById, pendingProcesses = {}, {}, {}, {}

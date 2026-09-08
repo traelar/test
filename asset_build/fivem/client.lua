@@ -1,10 +1,10 @@
 local MODEL_NAMES = {
-    base = 'industrial_scrap_shredder_v24',
-    rotorA = 'industrial_scrap_shredder_v24_rotor_a',
-    rotorB = 'industrial_scrap_shredder_v24_rotor_b',
-    beltIn = 'industrial_scrap_shredder_v24_belt_in',
-    beltOut = 'industrial_scrap_shredder_v24_belt_out',
-    chunk = 'industrial_scrap_shredder_v24_chunk'
+    base = 'industrial_scrap_shredder_v25',
+    rotorA = 'industrial_scrap_shredder_v25_rotor_a',
+    rotorB = 'industrial_scrap_shredder_v25_rotor_b',
+    beltIn = 'industrial_scrap_shredder_v25_belt_in',
+    beltOut = 'industrial_scrap_shredder_v25_belt_out',
+    chunk = 'industrial_scrap_shredder_v25_chunk'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.44)
@@ -288,7 +288,7 @@ end
 local function isOnInputBelt(entity, base)
     local localCoords = entityLocalCoords(entity, base)
     local beltZ = inputBeltHeight(localCoords.x)
-    return localCoords.x >= -6.48 and localCoords.x <= -1.48 and
+    return localCoords.x >= -6.58 and localCoords.x <= -1.30 and
         math.abs(localCoords.y) <= 1.02 and
         localCoords.z >= beltZ - 0.22 and localCoords.z <= beltZ + 1.65
 end
@@ -312,6 +312,23 @@ end
 local function carryEntity(entity, base, angle, speed)
     local direction = localDirectionToWorld(base, math.cos(angle), 0.0, -math.sin(angle))
     SetEntityVelocity(entity, direction.x * speed, direction.y * speed, direction.z * speed)
+end
+
+local function carryPlayerSmooth(ped, base, angle, speed)
+    local direction = localDirectionToWorld(base, math.cos(angle), 0.0, -math.sin(angle))
+    local velocity = GetEntityVelocity(ped)
+    local blend = 0.16
+    -- Blend only the belt-plane horizontal motion. Preserving the ped's native
+    -- vertical velocity lets the continuous collision ramp lift and ground the
+    -- capsule naturally instead of forcing it upward once every scan tick.
+    local targetX = direction.x * speed
+    local targetY = direction.y * speed
+    SetEntityVelocity(
+        ped,
+        velocity.x + (targetX - velocity.x) * blend,
+        velocity.y + (targetY - velocity.y) * blend,
+        velocity.z
+    )
 end
 
 local function requestPieceModel(modelName)
@@ -1091,7 +1108,8 @@ CreateThread(function()
                 for index = 1, #activeBases do
                     local base = activeBases[index]
                     if isOnInputBelt(ped, base) then
-                        carryEntity(ped, base, INPUT_ANGLE, 1.42)
+                        carryPlayerSmooth(ped, base, INPUT_ANGLE, 1.42)
+                        waitTime = 0
                         break
                     elseif isInsideCutterThroat(ped, base) and now >= playerShredCooldown and
                         GetConvarInt('vrp_shredder_player_damage', 1) == 1 then

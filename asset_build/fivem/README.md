@@ -1,11 +1,11 @@
-# Industrial Scrap Shredder v2.5
+# Industrial Scrap Shredder v2.5.1
 
 Requires `ox_lib`, `ox_inventory`, and either `ox_target` or `qb-target`.
 Add `ensure vrp-scrap-shredder` after those resources in `server.cfg`.
 
 ## Main features
 
-- Native FiveM `industrial_scrap_shredder_v24` model with LODs and collision
+- Native FiveM `industrial_scrap_shredder_v25` model with LODs and collision
 - Animated input/output belts and counter-rotating cutters
 - Functional conveyors that carry players and dynamic props
 - Compact collidable control cabinet with silent synchronized power toggle
@@ -52,7 +52,7 @@ stores:
 
 The item names must exist in ox_inventory. Base-game GTA prop names work
 directly. A custom prop model must be streamed by this resource or another
-started resource. The included `industrial_scrap_shredder_v24_chunk` is a
+started resource. The included `industrial_scrap_shredder_v25_chunk` is a
 ready-to-use generic scrap output model.
 
 When powered on, players target the bottom of the intake conveyor and choose a

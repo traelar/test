@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v24"
+ASSET_NAME = "industrial_scrap_shredder_v25"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -58,16 +58,22 @@ def make_texture(name, color, rust=0.0, grime=0.0, scratches=0.0, size=512):
             i = (y * size + x) * 4
             seed = ((x * 73856093) ^ (y * 19349663) ^ (len(name) * 83492791)) & 0xFFFFFFFF
             fine = ((seed >> 8) & 255) / 255.0
-            broad = 0.5 + 0.5 * math.sin(x * 0.071 + math.sin(y * 0.037) * 3.0)
-            variation = (fine - 0.5) * 0.08 + (broad - 0.5) * 0.05
+            grain = 0.5 + 0.5 * math.sin(x * 0.83 + y * 0.047)
+            low_frequency = 0.5 + 0.5 * math.sin(x * 0.019 + y * 0.013)
+            # Keep the finish granular and directional. The former broad sine
+            # modulation stretched into soft coloured blobs on large panels,
+            # making the machine look hand-painted instead of fabricated steel.
+            variation = ((fine - 0.5) * 0.050 +
+                         (grain - 0.5) * 0.020 +
+                         (low_frequency - 0.5) * 0.012)
             r, g, b = cr + variation, cg + variation, cb + variation
-            rust_mask = ((seed & 1023) / 1023.0) < rust * (0.25 + 0.75 * broad)
+            rust_mask = ((seed & 4095) / 4095.0) < rust
             if rust_mask:
-                blend = 0.35 + 0.45 * ((seed >> 12) & 255) / 255.0
-                r = r * (1.0 - blend) + 0.34 * blend
-                g = g * (1.0 - blend) + 0.105 * blend
-                b = b * (1.0 - blend) + 0.025 * blend
-            grime_mask = (((seed >> 3) & 2047) / 2047.0) < grime * (0.4 + 0.6 * (y / size))
+                blend = 0.18 + 0.30 * ((seed >> 12) & 255) / 255.0
+                r = r * (1.0 - blend) + 0.25 * blend
+                g = g * (1.0 - blend) + 0.075 * blend
+                b = b * (1.0 - blend) + 0.018 * blend
+            grime_mask = (((seed >> 3) & 4095) / 4095.0) < grime * (0.25 + 0.75 * (y / size))
             if grime_mask:
                 r *= 0.55
                 g *= 0.57
@@ -110,10 +116,10 @@ def make_material(name, color, metallic=0.0, roughness=0.55, rust=0.0, grime=0.0
     return mat
 
 
-MAT_BLUE = make_material("shredder_blue", (0.040, 0.145, 0.205), 0.34, 0.56, 0.042, 0.070, 0.14)
-MAT_YELLOW = make_material("safety_yellow", (0.72, 0.405, 0.030), 0.12, 0.58, 0.032, 0.060, 0.10)
-MAT_STEEL = make_material("cutter_steel", (0.245, 0.275, 0.300), 0.72, 0.34, 0.045, 0.085, 0.20)
-MAT_DARK = make_material("machine_dark", (0.032, 0.041, 0.046), 0.42, 0.50, 0.020, 0.090, 0.07)
+MAT_BLUE = make_material("shredder_blue", (0.030, 0.105, 0.145), 0.52, 0.45, 0.014, 0.038, 0.22)
+MAT_YELLOW = make_material("safety_yellow", (0.56, 0.285, 0.018), 0.28, 0.48, 0.014, 0.032, 0.17)
+MAT_STEEL = make_material("cutter_steel", (0.225, 0.250, 0.270), 0.78, 0.39, 0.025, 0.052, 0.28)
+MAT_DARK = make_material("machine_dark", (0.025, 0.031, 0.034), 0.56, 0.45, 0.010, 0.050, 0.12)
 MAT_RUBBER = make_material("belt_rubber", (0.025, 0.031, 0.034), 0.04, 0.78, 0.0, 0.018, 0.0)
 MAT_RED = make_material("emergency_red", (0.62, 0.018, 0.012), 0.10, 0.48, 0.020, 0.020, 0.04)
 MAT_SILVER = make_material("brushed_metal", (0.40, 0.445, 0.480), 0.78, 0.34, 0.035, 0.040, 0.16)
@@ -358,11 +364,6 @@ for y in (-1.02, 1.02):
     box("input_side_rail", (input_center.x, y, input_center.z + 0.22),
         (input_length + 0.12, 0.14, 0.44), MAT_BLUE,
         rotation=(0, conv_angle, 0), bevel=0.022)
-for local_x in (-3.08, 3.08):
-    roller_pos = point_on_input(local_x)
-    cylinder("input_conveyor_roller", roller_pos, 0.17, 1.90, MAT_STEEL,
-             rotation=(math.radians(90), 0, 0), vertices=20, bevel=0.012)
-
 # Repeating steel cleats are exported as a separate visual prop. The client
 # shifts the complete pattern by one pitch and wraps it for seamless motion.
 input_slat_pitch = 0.265
@@ -432,8 +433,6 @@ for y in (-0.99, 0.99):
     box("output_side_rail", (2.55, y, 1.06), (2.84, 0.14, 0.38), MAT_BLUE,
         rotation=(0, out_angle, 0), bevel=0.04)
 box("output_chute", (1.40, 0.0, 1.42), (0.70, 2.08, 0.75), MAT_DARK, bevel=0.055)
-cylinder("output_roller", (3.86, 0.0, 1.17), 0.16, 1.88, MAT_STEEL,
-         rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.015)
 
 output_slat_pitch = 0.265
 # The compact discharge belt needs a shorter pattern so neither terminal cleat
@@ -462,6 +461,35 @@ for local_x in (-0.25, 1.05):
     box("output_support_ground_tie", (support_x, 0.0, 0.24),
         (0.18, 1.76, 0.14), MAT_DARK, bevel=0.010)
 
+# Cross-brace the two discharge portals and expose real fastener heads at the
+# conveyor saddles. These small fabricated details use less geometry than the
+# deleted decorative rollers and make the structure read as assembled steel.
+output_support_data = []
+for local_x in (-0.25, 1.05):
+    support_x = 2.55 + math.cos(out_angle) * local_x
+    support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
+    output_support_data.append((support_x, support_z))
+for y in (-0.84, 0.84):
+    beam("output_support_x_brace", (output_support_data[0][0], y, 0.30),
+         (output_support_data[1][0], y, output_support_data[1][1] - 0.10),
+         width=0.075, depth=0.075, mat=MAT_DARK, bevel=0.008)
+    beam("output_support_x_brace", (output_support_data[0][0], y,
+         output_support_data[0][1] - 0.10),
+         (output_support_data[1][0], y, 0.30),
+         width=0.075, depth=0.075, mat=MAT_DARK, bevel=0.008)
+
+for support_point in input_support_points:
+    for y in (-1.105, 1.105):
+        cylinder("input_saddle_fastener",
+                 (support_point.x, y, support_point.z - 0.04),
+                 0.052, 0.045, MAT_SILVER,
+                 rotation=(math.radians(90), 0, 0), vertices=12, bevel=0.006)
+for support_x, support_z in output_support_data:
+    for y in (-1.065, 1.065):
+        cylinder("output_saddle_fastener", (support_x, y, support_z - 0.03),
+                 0.052, 0.045, MAT_SILVER,
+                 rotation=(math.radians(90), 0, 0), vertices=12, bevel=0.006)
+
 # Compact waist/chest-height control cabinet. The previous cabinet was nearly
 # torso-sized and placed its controls above a natural interaction height.
 CONTROL_PANEL_CENTER = (1.82, -1.43, 1.56)
@@ -475,15 +503,11 @@ for i, (x, z, mat) in enumerate(((1.70, 1.73, MAT_GREEN), (1.70, 1.55, MAT_WHITE
 for z in (1.33, 1.40, 1.47):
     box("cabinet_vent", (1.82, -1.62, z), (0.35, 0.028, 0.022), MAT_SILVER, bevel=0.004)
 
-# Guards, handrails and ladder.
+# Fixed service guardrail.
 for x in (-0.95, 0.0, 0.95):
     pipe("guard_post", (x, 1.30, 2.77), (x, 1.30, 3.62), 0.038, MAT_YELLOW)
 pipe("guard_top", (-1.10, 1.30, 3.61), (1.10, 1.30, 3.61), 0.040, MAT_YELLOW)
 pipe("guard_mid", (-1.10, 1.30, 3.22), (1.10, 1.30, 3.22), 0.032, MAT_YELLOW)
-for z in (0.55, 0.92, 1.29, 1.66, 2.03, 2.40):
-    pipe("ladder_rung", (1.49, 1.55, z), (1.49, 2.05, z), 0.030, MAT_YELLOW)
-pipe("ladder_side", (1.49, 1.58, 0.25), (1.49, 1.58, 2.65), 0.045, MAT_YELLOW)
-pipe("ladder_side", (1.49, 2.02, 0.25), (1.49, 2.02, 2.65), 0.045, MAT_YELLOW)
 
 # Panel fasteners and readable industrial markings.
 for x in (-1.18, -0.60, 0.0, 0.60, 1.18):
@@ -785,7 +809,7 @@ collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotatio
 # was centered on the rubber carcass, which let ped capsules settle visibly
 # through the belt before contacting it.
 collision_box("col_input_walk_surface", (input_center.x, 0.0, input_center.z + 0.10),
-              (input_length - 0.20, 1.74, 0.10), rotation=(0, conv_angle, 0))
+              (input_length, 1.74, 0.10), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
     collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
@@ -816,13 +840,6 @@ for local_x in (-0.25, 1.05):
 collision_box("col_drive", (0.0, 1.68, 1.80), (2.10, 0.78, 1.95))
 # Solid low-cost cabinet collision matches the resized control panel.
 collision_box("col_control_cabinet", CONTROL_PANEL_CENTER, (0.68, 0.30, 0.86))
-
-# Ladder rails and rungs now contribute actual collision instead of being
-# visual-only tubes.
-collision_box("col_ladder_left", (1.49, 1.58, 1.45), (0.14, 0.14, 2.52))
-collision_box("col_ladder_right", (1.49, 2.02, 1.45), (0.14, 0.14, 2.52))
-for z in (0.55, 0.92, 1.29, 1.66, 2.03, 2.40):
-    collision_box("col_ladder_rung", (1.49, 1.80, z), (0.14, 0.56, 0.10))
 
 bpy.ops.object.select_all(action="DESELECT")
 for obj in collision_parts:
