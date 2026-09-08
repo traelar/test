@@ -3,8 +3,8 @@ game 'gta5'
 
 author 'Vitality Roleplay'
 description 'Animated industrial scrap shredder prop'
-version '2.5.2'
--- Cache-safe geometry rebuild: industrial_scrap_shredder_v26 model namespace.
+version '2.5.3'
+-- Cache-safe geometry rebuild: industrial_scrap_shredder_v27 model namespace.
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -17,13 +17,13 @@ server_script 'server.lua'
 ui_page 'html/index.html'
 
 files {
-    'stream/industrial_scrap_shredder_v26.ytyp',
+    'stream/industrial_scrap_shredder_v27.ytyp',
     'html/index.html',
     'html/app.js',
     'html/shredder_loop.ogg'
 }
 
-data_file 'DLC_ITYP_REQUEST' 'stream/industrial_scrap_shredder_v26.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/industrial_scrap_shredder_v27.ytyp'
 
 dependencies {
     'ox_lib',

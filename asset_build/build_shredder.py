@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v26"
+ASSET_NAME = "industrial_scrap_shredder_v27"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -425,12 +425,6 @@ box("input_foundation_machine_tie", (-2.35, 0.0, 0.21),
 input_mount_point = point_on_input(2.62, -0.18)
 box("input_hopper_saddle", input_mount_point,
     (0.30, 2.14, 0.20), MAT_DARK, bevel=0.018)
-for y in (-1.02, 1.02):
-    box("input_hopper_receiver", (-1.80, y, 4.07),
-        (0.42, 0.20, 0.28), MAT_DARK, bevel=0.018)
-    box("input_hopper_clamp",
-        (input_mount_point.x, y, input_mount_point.z + 0.12),
-        (0.34, 0.20, 0.36), MAT_BLUE, bevel=0.018)
 
 # Discharge conveyor and chute to the right.
 out_angle = math.radians(11.0)
@@ -848,8 +842,11 @@ collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotatio
 # A dedicated walk surface sits at cleat height. The previous collision volume
 # was centered on the rubber carcass, which let ped capsules settle visibly
 # through the belt before contacting it.
-collision_box("col_input_walk_surface", (input_center.x, 0.0, input_center.z + 0.04),
-              (input_length, 1.74, 0.22), rotation=(0, conv_angle, 0))
+# Stop the ramp immediately before the hopper side wall. Previously these two
+# BVH volumes overlapped, producing a collision seam where players entered.
+input_collision_center = point_on_input(-0.09, 0.04)
+collision_box("col_input_walk_surface", input_collision_center,
+              (input_length - 0.18, 1.74, 0.22), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
     collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
