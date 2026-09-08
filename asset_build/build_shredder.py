@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "vrp_scrap_shredder"
+ASSET_NAME = "industrial_scrap_shredder"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -318,9 +318,9 @@ for x in (-1.10, 1.10):
 
 # Long inclined feed conveyor. Its upper roller discharges over the hopper so
 # players can place scrap at ground level instead of reaching into the machine.
-conv_angle = math.radians(-32.0)
-input_center = Vector((-3.55, 0.0, 2.25))
-input_length = 6.50
+conv_angle = math.radians(-38.5)
+input_center = Vector((-3.95, 0.0, 2.60))
+input_length = 6.60
 
 def point_on_input(local_x, z_offset=0.0):
     return Vector((
@@ -332,7 +332,7 @@ def point_on_input(local_x, z_offset=0.0):
 box("input_belt", input_center, (input_length, 1.86, 0.14), MAT_RUBBER,
     rotation=(0, conv_angle, 0), bevel=0.018)
 for y in (-1.02, 1.02):
-    box("input_side_rail", (input_center.x, y, input_center.z + 0.14),
+    box("input_side_rail", (input_center.x, y, input_center.z + 0.22),
         (input_length + 0.12, 0.14, 0.44), MAT_BLUE,
         rotation=(0, conv_angle, 0), bevel=0.022)
 for local_x in (-3.08, 3.08):
@@ -702,7 +702,7 @@ collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotatio
 
 collision_box("col_input_belt", input_center, (input_length + 0.06, 1.88, 0.20), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
-    collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.14),
+    collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
 for local_x in (-2.60, -1.45, -0.25, 1.05):
     support_point = point_on_input(local_x, -0.14)
@@ -774,7 +774,7 @@ for component_name, source_model in zip(model_names, models):
 
 stats = {
     "asset": ASSET_NAME,
-    "dimensions_m": {"length": 10.45, "width": 4.08, "height": 4.22},
+    "dimensions_m": {"length": 10.70, "width": 4.08, "height": 4.72},
     "triangles": component_triangles,
     "collision_triangles": len(collision_mesh.data.polygons),
     "materials": len(visual_materials),
