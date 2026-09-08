@@ -3,7 +3,9 @@ game 'gta5'
 
 author 'Vitality Roleplay'
 description 'VRP industrial scrap shredder prop'
-version '1.0.0'
+version '1.1.0'
+
+client_script 'client.lua'
 
 files {
     'stream/vrp_scrap_shredder.ytyp'
