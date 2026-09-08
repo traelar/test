@@ -3,12 +3,12 @@ game 'gta5'
 
 author 'Vitality Roleplay'
 description 'Animated industrial scrap shredder prop'
-version '2.0.0'
+version '2.1.0'
 
 client_script 'client.lua'
 
 files {
-    'stream/vrp_scrap_shredder.ytyp'
+    'stream/industrial_scrap_shredder.ytyp'
 }
 
-data_file 'DLC_ITYP_REQUEST' 'stream/vrp_scrap_shredder.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/industrial_scrap_shredder.ytyp'
