@@ -1,10 +1,10 @@
 local MODEL_NAMES = {
-    base = 'industrial_scrap_shredder_v27',
-    rotorA = 'industrial_scrap_shredder_v27_rotor_a',
-    rotorB = 'industrial_scrap_shredder_v27_rotor_b',
-    beltIn = 'industrial_scrap_shredder_v27_belt_in',
-    beltOut = 'industrial_scrap_shredder_v27_belt_out',
-    chunk = 'industrial_scrap_shredder_v27_chunk'
+    base = 'industrial_scrap_shredder_v28',
+    rotorA = 'industrial_scrap_shredder_v28_rotor_a',
+    rotorB = 'industrial_scrap_shredder_v28_rotor_b',
+    beltIn = 'industrial_scrap_shredder_v28_belt_in',
+    beltOut = 'industrial_scrap_shredder_v28_belt_out',
+    chunk = 'industrial_scrap_shredder_v28_chunk'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.44)
@@ -40,12 +40,14 @@ local SCRAP_CHUNK_HASHES = {
     [joaat('industrial_scrap_shredder_v23_chunk')] = true,
     [joaat('industrial_scrap_shredder_v24_chunk')] = true,
     [joaat('industrial_scrap_shredder_v25_chunk')] = true,
-    [joaat('industrial_scrap_shredder_v26_chunk')] = true
+    [joaat('industrial_scrap_shredder_v26_chunk')] = true,
+    [joaat('industrial_scrap_shredder_v27_chunk')] = true
 }
 MODEL_HASHES[joaat('industrial_scrap_shredder_v23_chunk')] = true
 MODEL_HASHES[joaat('industrial_scrap_shredder_v24_chunk')] = true
 MODEL_HASHES[joaat('industrial_scrap_shredder_v25_chunk')] = true
 MODEL_HASHES[joaat('industrial_scrap_shredder_v26_chunk')] = true
+MODEL_HASHES[joaat('industrial_scrap_shredder_v27_chunk')] = true
 
 local function notify(message)
     BeginTextCommandThefeedPost('STRING')

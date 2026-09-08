@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v27"
+ASSET_NAME = "industrial_scrap_shredder_v28"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -360,9 +360,11 @@ def point_on_input(local_x, z_offset=0.0):
 
 box("input_belt", input_center, (input_length, 1.86, 0.14), MAT_RUBBER,
     rotation=(0, conv_angle, 0), bevel=0.018)
+input_side_rail_length = input_length - 0.28
+input_side_rail_center = point_on_input(-0.20, 0.22)
 for y in (-1.02, 1.02):
-    box("input_side_rail", (input_center.x, y, input_center.z + 0.22),
-        (input_length + 0.12, 0.14, 0.44), MAT_BLUE,
+    box("input_side_rail", (input_side_rail_center.x, y, input_side_rail_center.z),
+        (input_side_rail_length, 0.14, 0.44), MAT_BLUE,
         rotation=(0, conv_angle, 0), bevel=0.022)
 # Repeating steel cleats are exported as a separate visual prop. The client
 # shifts the complete pattern by one pitch and wraps it for seamless motion.
@@ -848,8 +850,10 @@ input_collision_center = point_on_input(-0.09, 0.04)
 collision_box("col_input_walk_surface", input_collision_center,
               (input_length - 0.18, 1.74, 0.22), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
-    collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
-                  (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
+    collision_box("col_input_rail",
+                  (input_side_rail_center.x, y, input_side_rail_center.z),
+                  (input_side_rail_length, 0.16, 0.46),
+                  rotation=(0, conv_angle, 0))
 for y in (-0.88, 0.88):
     collision_box("col_input_foundation", ((rail_start + rail_end) * 0.5, y, 0.15),
                   (rail_end - rail_start, 0.24, 0.20))
