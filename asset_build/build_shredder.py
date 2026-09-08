@@ -341,53 +341,43 @@ def smart_uv(obj):
     obj.select_set(False)
 
 
-for part in render_parts:
-    if part.type == "MESH":
-        smart_uv(part)
-
-# Give every part the same material-slot table before joining. Blender's
-# background join can otherwise keep only the active object's slot zero and
-# silently render/export the entire machine as that one material.
+# Merge explicitly instead of using Blender's background join operator. The
+# latter can collapse all source objects onto one material slot on headless
+# Windows builds. Building the combined mesh ourselves preserves every face's
+# intended paint, metal, rubber, and safety material deterministically.
 visual_materials = list(material_cache.values())
+combined_vertices = []
+combined_faces = []
+combined_material_indices = []
+combined_smoothing = []
 for part in render_parts:
     if part.type != "MESH":
         continue
-    old_slots = list(part.data.materials)
-    remapped_indices = []
+    vertex_offset = len(combined_vertices)
+    combined_vertices.extend(part.matrix_world @ vertex.co for vertex in part.data.vertices)
+    source_slots = list(part.data.materials)
     for polygon in part.data.polygons:
-        source_material = old_slots[polygon.material_index]
-        remapped_indices.append(visual_materials.index(source_material))
-    part.data.materials.clear()
-    for material in visual_materials:
-        part.data.materials.append(material)
-    for polygon, material_index in zip(part.data.polygons, remapped_indices):
-        polygon.material_index = material_index
+        combined_faces.append(tuple(vertex_offset + index for index in polygon.vertices))
+        source_material = source_slots[polygon.material_index]
+        combined_material_indices.append(visual_materials.index(source_material))
+        combined_smoothing.append(polygon.use_smooth)
 
-bpy.ops.object.select_all(action="DESELECT")
+combined_mesh = bpy.data.meshes.new(f"{ASSET_NAME}_mesh")
+combined_mesh.from_pydata(combined_vertices, [], combined_faces)
+combined_mesh.update()
+for material in visual_materials:
+    combined_mesh.materials.append(material)
+for polygon, material_index, use_smooth in zip(
+    combined_mesh.polygons, combined_material_indices, combined_smoothing
+):
+    polygon.material_index = material_index
+    polygon.use_smooth = use_smooth
+
+model = bpy.data.objects.new(ASSET_NAME, combined_mesh)
+bpy.context.collection.objects.link(model)
 for part in render_parts:
-    part.select_set(True)
-bpy.context.view_layer.objects.active = render_parts[0]
-bpy.ops.object.join()
-model = bpy.context.object
-model.name = ASSET_NAME
-
-# Blender can retain duplicate material slots while joining hundreds of parts.
-# Collapse them now so the GTA drawable has a small, deterministic shader list.
-old_slots = list(model.data.materials)
-unique_materials = []
-slot_remap = {}
-for old_index, mat in enumerate(old_slots):
-    try:
-        new_index = unique_materials.index(mat)
-    except ValueError:
-        new_index = len(unique_materials)
-        unique_materials.append(mat)
-    slot_remap[old_index] = new_index
-for polygon in model.data.polygons:
-    polygon.material_index = slot_remap[polygon.material_index]
-model.data.materials.clear()
-for mat in unique_materials:
-    model.data.materials.append(mat)
+    bpy.data.objects.remove(part, do_unlink=True)
+smart_uv(model)
 
 # Triangulate once and preserve a source GLB before adding GTA hierarchy objects.
 tri = model.modifiers.new("Game triangulation", "TRIANGULATE")
