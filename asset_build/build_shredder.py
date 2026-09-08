@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v25"
+ASSET_NAME = "industrial_scrap_shredder_v26"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -377,6 +377,12 @@ for index in range(22):
             rotation=(0, conv_angle, 0), bevel=0.008)
     )
 
+# A fixed terminal tread fills the visually empty belt tail without joining the
+# animated cleat group. It therefore cannot translate past the rails and float.
+input_terminal_slat = point_on_input(-3.12, 0.105)
+box("input_terminal_cleat", input_terminal_slat, (0.060, 1.72, 0.048),
+    MAT_STEEL, rotation=(0, conv_angle, 0), bevel=0.008)
+
 # Five rigid portal frames, each with feet, ground ties and a top saddle,
 # transfer the inclined conveyor into a continuous foundation frame.
 INPUT_SUPPORT_LOCAL_X = (-2.85, -1.65, -0.45, 0.75, 1.80)
@@ -447,6 +453,13 @@ for index in range(9):
             rotation=(0, out_angle, 0), bevel=0.007)
     )
 
+output_terminal_local_x = -1.29
+output_terminal_x = 2.55 + math.cos(out_angle) * output_terminal_local_x
+output_terminal_z = 0.92 - math.sin(out_angle) * output_terminal_local_x + 0.095
+box("output_terminal_cleat", (output_terminal_x, 0.0, output_terminal_z),
+    (0.060, 1.68, 0.046), MAT_STEEL,
+    rotation=(0, out_angle, 0), bevel=0.008)
+
 for local_x in (-0.25, 1.05):
     support_x = 2.55 + math.cos(out_angle) * local_x
     support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
@@ -489,6 +502,33 @@ for support_x, support_z in output_support_data:
         cylinder("output_saddle_fastener", (support_x, y, support_z - 0.03),
                  0.052, 0.045, MAT_SILVER,
                  rotation=(math.radians(90), 0, 0), vertices=12, bevel=0.006)
+
+# Open receiving bin beneath the discharge. Processed props leave the belt over
+# the low entry lip, settle in the collidable tray and remain visible/targetable
+# from the three taller sides.
+BIN_CENTER_X = 4.62
+BIN_FLOOR_Z = 0.14
+BIN_WALL_Z = 0.47
+box("scrap_bin_floor", (BIN_CENTER_X, 0.0, BIN_FLOOR_Z),
+    (1.42, 2.18, 0.16), MAT_DARK, bevel=0.025)
+for y in (-1.04, 1.04):
+    box("scrap_bin_side", (BIN_CENTER_X, y, BIN_WALL_Z),
+        (1.42, 0.12, 0.76), MAT_BLUE, bevel=0.030)
+    box("scrap_bin_top_rail", (BIN_CENTER_X, y, 0.87),
+        (1.48, 0.14, 0.09), MAT_STEEL, bevel=0.018)
+box("scrap_bin_end", (5.30, 0.0, BIN_WALL_Z),
+    (0.12, 2.18, 0.76), MAT_BLUE, bevel=0.030)
+box("scrap_bin_end_rail", (5.30, 0.0, 0.87),
+    (0.14, 2.24, 0.09), MAT_STEEL, bevel=0.018)
+box("scrap_bin_entry_lip", (3.94, 0.0, 0.25),
+    (0.12, 2.18, 0.34), MAT_DARK, bevel=0.022)
+for x in (4.10, 5.14):
+    for y in (-0.92, 0.92):
+        box("scrap_bin_foot", (x, y, 0.045),
+            (0.34, 0.34, 0.09), MAT_STEEL, bevel=0.018)
+for y in (-0.90, 0.90):
+    beam("scrap_bin_machine_tie", (3.72, y, 0.24), (4.04, y, 0.24),
+         width=0.12, depth=0.12, mat=MAT_DARK, bevel=0.010)
 
 # Compact waist/chest-height control cabinet. The previous cabinet was nearly
 # torso-sized and placed its controls above a natural interaction height.
@@ -808,8 +848,8 @@ collision_box("col_hopper_right", (1.48, 0.0, 3.42), (0.13, 3.02, 1.48), rotatio
 # A dedicated walk surface sits at cleat height. The previous collision volume
 # was centered on the rubber carcass, which let ped capsules settle visibly
 # through the belt before contacting it.
-collision_box("col_input_walk_surface", (input_center.x, 0.0, input_center.z + 0.10),
-              (input_length, 1.74, 0.10), rotation=(0, conv_angle, 0))
+collision_box("col_input_walk_surface", (input_center.x, 0.0, input_center.z + 0.04),
+              (input_length, 1.74, 0.22), rotation=(0, conv_angle, 0))
 for y in (-1.02, 1.02):
     collision_box("col_input_rail", (input_center.x, y, input_center.z + 0.22),
                   (input_length + 0.12, 0.16, 0.46), rotation=(0, conv_angle, 0))
@@ -826,8 +866,8 @@ for support_point in input_support_points:
     collision_box("col_input_top_saddle", (support_point.x, 0.0, support_point.z - 0.04),
                   (0.20, 2.00, 0.18))
 collision_box("col_input_hopper_saddle", input_mount_point, (0.32, 2.16, 0.22))
-collision_box("col_output_walk_surface", (2.55, 0.0, 1.01),
-              (2.65, 1.70, 0.10), rotation=(0, out_angle, 0))
+collision_box("col_output_walk_surface", (2.55, 0.0, 0.95),
+              (2.65, 1.70, 0.22), rotation=(0, out_angle, 0))
 for local_x in (-0.25, 1.05):
     support_x = 2.55 + math.cos(out_angle) * local_x
     support_z = 0.92 - math.sin(out_angle) * local_x - 0.12
@@ -837,6 +877,15 @@ for local_x in (-0.25, 1.05):
                       (0.16, 0.16, leg_height))
     collision_box("col_output_top_saddle", (support_x, 0.0, support_z - 0.03),
                   (0.20, 1.88, 0.17))
+collision_box("col_scrap_bin_floor", (BIN_CENTER_X, 0.0, BIN_FLOOR_Z),
+              (1.42, 2.18, 0.16))
+for y in (-1.04, 1.04):
+    collision_box("col_scrap_bin_side", (BIN_CENTER_X, y, BIN_WALL_Z),
+                  (1.42, 0.12, 0.76))
+collision_box("col_scrap_bin_end", (5.30, 0.0, BIN_WALL_Z),
+              (0.12, 2.18, 0.76))
+collision_box("col_scrap_bin_entry_lip", (3.94, 0.0, 0.25),
+              (0.12, 2.18, 0.34))
 collision_box("col_drive", (0.0, 1.68, 1.80), (2.10, 0.78, 1.95))
 # Solid low-cost cabinet collision matches the resized control panel.
 collision_box("col_control_cabinet", CONTROL_PANEL_CENTER, (0.68, 0.30, 0.86))

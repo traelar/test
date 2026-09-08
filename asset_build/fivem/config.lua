@@ -10,7 +10,7 @@ ShredderConfig.Recipes = {
         inputItem = 'car_door',
         inputModel = 'prop_car_door_01',
         outputItem = 'metalscrap',
-        outputModel = 'industrial_scrap_shredder_v25_chunk',
+        outputModel = 'industrial_scrap_shredder_v26_chunk',
         outputMin = 2,
         outputMax = 4
     },
@@ -20,7 +20,7 @@ ShredderConfig.Recipes = {
         inputItem = 'damaged_car_part',
         inputModel = 'prop_rub_carpart_05',
         outputItem = 'steel',
-        outputModel = 'industrial_scrap_shredder_v25_chunk',
+        outputModel = 'industrial_scrap_shredder_v26_chunk',
         outputMin = 1,
         outputMax = 3
     }

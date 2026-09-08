@@ -1,10 +1,10 @@
 local MODEL_NAMES = {
-    base = 'industrial_scrap_shredder_v25',
-    rotorA = 'industrial_scrap_shredder_v25_rotor_a',
-    rotorB = 'industrial_scrap_shredder_v25_rotor_b',
-    beltIn = 'industrial_scrap_shredder_v25_belt_in',
-    beltOut = 'industrial_scrap_shredder_v25_belt_out',
-    chunk = 'industrial_scrap_shredder_v25_chunk'
+    base = 'industrial_scrap_shredder_v26',
+    rotorA = 'industrial_scrap_shredder_v26_rotor_a',
+    rotorB = 'industrial_scrap_shredder_v26_rotor_b',
+    beltIn = 'industrial_scrap_shredder_v26_belt_in',
+    beltOut = 'industrial_scrap_shredder_v26_belt_out',
+    chunk = 'industrial_scrap_shredder_v26_chunk'
 }
 
 local ROTOR_A_OFFSET = vector3(-0.39, 0.0, 2.44)
@@ -26,6 +26,7 @@ local targetZones = {}
 local outputPieces = {}
 local placementBases = {}
 local scrapEntities = {}
+local carriedObjects = {}
 local playerShredCooldown = 0
 local requestPlaceScrap
 
@@ -35,10 +36,14 @@ for _, modelName in pairs(MODEL_NAMES) do
 end
 local SCRAP_CHUNK_HASHES = {
     [joaat(MODEL_NAMES.chunk)] = true,
-    -- Lets the new cleanup remove debris left behind by the v2.3 test build.
-    [joaat('industrial_scrap_shredder_v23_chunk')] = true
+    -- Clean debris left by earlier cache-safe model revisions as well.
+    [joaat('industrial_scrap_shredder_v23_chunk')] = true,
+    [joaat('industrial_scrap_shredder_v24_chunk')] = true,
+    [joaat('industrial_scrap_shredder_v25_chunk')] = true
 }
 MODEL_HASHES[joaat('industrial_scrap_shredder_v23_chunk')] = true
+MODEL_HASHES[joaat('industrial_scrap_shredder_v24_chunk')] = true
+MODEL_HASHES[joaat('industrial_scrap_shredder_v25_chunk')] = true
 
 local function notify(message)
     BeginTextCommandThefeedPost('STRING')
@@ -383,7 +388,11 @@ RegisterNetEvent('vrp-scrap-shredder:client:spawnRecipeInput',
             return
         end
 
-        local spawn = GetOffsetFromEntityInWorldCoords(base, -6.15, 0.0, 1.02)
+        local minimum, maximum = GetModelDimensions(model)
+        local startX = -6.12
+        local clearance = math.max(0.08, -minimum.z + 0.055)
+        local startZ = inputBeltHeight(startX) + clearance
+        local spawn = GetOffsetFromEntityInWorldCoords(base, startX, 0.0, startZ)
         local object = CreateObjectNoOffset(model, spawn.x, spawn.y, spawn.z, true, true, false)
         SetModelAsNoLongerNeeded(model)
         if not object or object == 0 then
@@ -393,11 +402,21 @@ RegisterNetEvent('vrp-scrap-shredder:client:spawnRecipeInput',
         end
 
         SetEntityAsMissionEntity(object, true, true)
-        SetEntityDynamic(object, true)
-        ActivatePhysics(object)
+        SetEntityCollision(object, false, false)
+        FreezeEntityPosition(object, true)
+        SetEntityHeading(object, GetEntityHeading(base))
         Entity(object).state:set('shredderInputToken', token, true)
-        scrapEntities[object] = { token = token, base = base }
-        carryEntity(object, base, INPUT_ANGLE, 1.32)
+        scrapEntities[object] = {
+            token = token,
+            base = base,
+            localX = startX,
+            localY = 0.0,
+            clearance = clearance,
+            stage = 'belt',
+            dropProgress = 0.0,
+            dropSpin = 0.0,
+            modelHeight = maximum.z - minimum.z
+        }
     end)
 
 RegisterNetEvent('vrp-scrap-shredder:client:spawnProcessedOutput',
@@ -512,6 +531,7 @@ local function shredObject(object, base)
 
     local sourceModel = GetEntityModel(object)
     local recipeProcess = scrapEntities[object]
+    carriedObjects[object] = nil
     safeDelete(object)
     scrapEntities[object] = nil
     if recipeProcess then
@@ -600,6 +620,11 @@ local function cleanupInputScrap(base)
             TriggerServerEvent('vrp-scrap-shredder:server:cancelProcess', data.token)
             safeDelete(object)
             scrapEntities[object] = nil
+        end
+    end
+    for object, owner in pairs(carriedObjects) do
+        if owner == base then
+            carriedObjects[object] = nil
         end
     end
 end
@@ -1073,18 +1098,23 @@ end)
 
 CreateThread(function()
     local nextPropScan = 0
+    local previousTick = GetGameTimer()
 
     while true do
         local waitTime = 500
         local now = GetGameTimer()
+        local deltaTime = math.min(0.10, math.max(0.0, (now - previousTick) / 1000.0))
+        previousTick = now
         local ped = PlayerPedId()
         local playerCoords = GetEntityCoords(ped)
         local activeBases = {}
+        local activeBaseSet = {}
 
         for base in pairs(observedBases) do
             if DoesEntityExist(base) and isShredderEnabled(base) and
                 #(playerCoords - GetEntityCoords(base)) <= INTERACTION_RADIUS then
                 activeBases[#activeBases + 1] = base
+                activeBaseSet[base] = true
             end
         end
 
@@ -1103,6 +1133,67 @@ CreateThread(function()
 
         if #activeBases > 0 then
             waitTime = 50
+
+            -- Recipe props follow a deterministic path so model origin,
+            -- collision shape and network physics cannot make them fall
+            -- through or slide back down the steep intake.
+            for object, data in pairs(scrapEntities) do
+                local base = data.base
+                if not DoesEntityExist(object) or not DoesEntityExist(base) then
+                    scrapEntities[object] = nil
+                elseif activeBaseSet[base] then
+                    waitTime = 0
+                    if data.stage == 'belt' then
+                        data.localX = math.min(-1.42,
+                            data.localX + math.cos(INPUT_ANGLE) * 1.32 * deltaTime)
+                        local localZ = inputBeltHeight(data.localX) + data.clearance
+                        local world = GetOffsetFromEntityInWorldCoords(base,
+                            data.localX, data.localY, localZ)
+                        SetEntityCoordsNoOffset(object, world.x, world.y, world.z, false, false, false)
+                        if data.localX >= -1.42 then
+                            data.stage = 'drop'
+                            data.dropProgress = 0.0
+                            data.dropStartZ = localZ
+                        end
+                    else
+                        data.dropProgress = math.min(1.0,
+                            data.dropProgress + deltaTime / 0.72)
+                        local progress = data.dropProgress
+                        local smooth = progress * progress * (3.0 - 2.0 * progress)
+                        local localX = -1.42 + 0.72 * smooth
+                        local localZ = data.dropStartZ + (2.86 - data.dropStartZ) * smooth
+                        local world = GetOffsetFromEntityInWorldCoords(base,
+                            localX, data.localY, localZ)
+                        data.dropSpin = data.dropSpin + deltaTime * 150.0
+                        SetEntityCoordsNoOffset(object, world.x, world.y, world.z, false, false, false)
+                        SetEntityRotation(object, data.dropSpin, data.dropSpin * 0.45,
+                            GetEntityHeading(base), 2, true)
+                        if progress >= 1.0 then
+                            shredObject(object, base)
+                        end
+                    end
+                end
+            end
+
+            -- Loose world props are discovered by the throttled pool scan,
+            -- then retained here and driven every frame while on the belt.
+            for object, base in pairs(carriedObjects) do
+                if not DoesEntityExist(object) or not DoesEntityExist(base) or
+                    not activeBaseSet[base] then
+                    carriedObjects[object] = nil
+                elseif isInsideCutterThroat(object, base) then
+                    carriedObjects[object] = nil
+                    shredObject(object, base)
+                elseif isOnInputBelt(object, base) then
+                    FreezeEntityPosition(object, false)
+                    SetEntityDynamic(object, true)
+                    ActivatePhysics(object)
+                    carryEntity(object, base, INPUT_ANGLE, 1.62)
+                    waitTime = 0
+                else
+                    carriedObjects[object] = nil
+                end
+            end
 
             if GetConvarInt('vrp_shredder_carry_players', 1) == 1 and not IsEntityDead(ped) then
                 for index = 1, #activeBases do
@@ -1136,9 +1227,10 @@ CreateThread(function()
                 nextPropScan = now + PROP_SCAN_INTERVAL
                 for _, object in ipairs(GetGamePool('CObject')) do
                     if DoesEntityExist(object) and not MODEL_HASHES[GetEntityModel(object)] and
-                        not outputPieces[object] and not IsEntityAttached(object) and
+                        not outputPieces[object] and not scrapEntities[object] and
+                        not carriedObjects[object] and not IsEntityAttached(object) and
                         Entity(object).state.shredderOutputToken == nil and
-                        (Entity(object).state.shredderInputToken == nil or scrapEntities[object]) and
+                        Entity(object).state.shredderInputToken == nil and
                         (not IsEntityPositionFrozen(object) or IsEntityAMissionEntity(object)) then
                         for index = 1, #activeBases do
                             local base = activeBases[index]
@@ -1149,7 +1241,8 @@ CreateThread(function()
                                 FreezeEntityPosition(object, false)
                                 SetEntityDynamic(object, true)
                                 ActivatePhysics(object)
-                                carryEntity(object, base, INPUT_ANGLE, 1.32)
+                                carriedObjects[object] = base
+                                carryEntity(object, base, INPUT_ANGLE, 1.62)
                                 break
                             end
                         end
