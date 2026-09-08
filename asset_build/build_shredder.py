@@ -9,7 +9,7 @@ import bpy
 from mathutils import Vector
 
 
-ASSET_NAME = "industrial_scrap_shredder_v23"
+ASSET_NAME = "industrial_scrap_shredder_v24"
 OUT = Path(os.environ.get("SHREDDER_OUT", Path.cwd() / "out")).resolve()
 XML_OUT = OUT / "xml"
 PREVIEW_OUT = OUT / "previews"
@@ -462,16 +462,18 @@ for local_x in (-0.25, 1.05):
     box("output_support_ground_tie", (support_x, 0.0, 0.24),
         (0.18, 1.76, 0.14), MAT_DARK, bevel=0.010)
 
-# Control cabinet, indicators, emergency stop and vents.
-box("control_cabinet", (1.82, -1.43, 2.02), (0.82, 0.30, 1.16), MAT_YELLOW, bevel=0.055)
-box("control_face", (1.82, -1.602, 2.06), (0.65, 0.055, 0.88), MAT_DARK, bevel=0.025)
-cylinder("emergency_stop", (1.97, -1.655, 2.25), 0.115, 0.09, MAT_RED,
-         rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.016)
-for i, (x, z, mat) in enumerate(((1.68, 2.25, MAT_GREEN), (1.68, 2.02, MAT_WHITE), (1.97, 2.02, MAT_YELLOW))):
-    cylinder(f"control_button_{i}", (x, -1.655, z), 0.055, 0.06, mat,
-             rotation=(math.radians(90), 0, 0), vertices=12, bevel=0.010)
-for z in (1.74, 1.82, 1.90):
-    box("cabinet_vent", (1.82, -1.65, z), (0.46, 0.035, 0.027), MAT_SILVER, bevel=0.004)
+# Compact waist/chest-height control cabinet. The previous cabinet was nearly
+# torso-sized and placed its controls above a natural interaction height.
+CONTROL_PANEL_CENTER = (1.82, -1.43, 1.56)
+box("control_cabinet", CONTROL_PANEL_CENTER, (0.62, 0.24, 0.80), MAT_YELLOW, bevel=0.042)
+box("control_face", (1.82, -1.572, 1.58), (0.49, 0.045, 0.62), MAT_DARK, bevel=0.021)
+cylinder("emergency_stop", (1.94, -1.617, 1.73), 0.082, 0.065, MAT_RED,
+         rotation=(math.radians(90), 0, 0), vertices=16, bevel=0.012)
+for i, (x, z, mat) in enumerate(((1.70, 1.73, MAT_GREEN), (1.70, 1.55, MAT_WHITE), (1.94, 1.55, MAT_YELLOW))):
+    cylinder(f"control_button_{i}", (x, -1.617, z), 0.042, 0.048, mat,
+             rotation=(math.radians(90), 0, 0), vertices=12, bevel=0.008)
+for z in (1.33, 1.40, 1.47):
+    box("cabinet_vent", (1.82, -1.62, z), (0.35, 0.028, 0.022), MAT_SILVER, bevel=0.004)
 
 # Guards, handrails and ladder.
 for x in (-0.95, 0.0, 0.95):
@@ -812,6 +814,8 @@ for local_x in (-0.25, 1.05):
     collision_box("col_output_top_saddle", (support_x, 0.0, support_z - 0.03),
                   (0.20, 1.88, 0.17))
 collision_box("col_drive", (0.0, 1.68, 1.80), (2.10, 0.78, 1.95))
+# Solid low-cost cabinet collision matches the resized control panel.
+collision_box("col_control_cabinet", CONTROL_PANEL_CENTER, (0.68, 0.30, 0.86))
 
 # Ladder rails and rungs now contribute actual collision instead of being
 # visual-only tubes.
