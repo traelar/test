@@ -5,6 +5,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.baylee.billnest.model.AppData
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.KeyStore
@@ -41,7 +43,13 @@ class EncryptedStore(private val context: Context) {
         val encrypted = ByteArray(bb.remaining()).also { bb.get(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
-        gson.fromJson(String(cipher.doFinal(encrypted), Charsets.UTF_8), AppData::class.java)
+        val decoded = String(cipher.doFinal(encrypted), Charsets.UTF_8)
+
+        // Fill fields added after v1.2 before Gson creates the Kotlin data class.
+        val root = JsonParser.parseString(decoded).asJsonObject
+        if (!root.has("accounts") || root.get("accounts").isJsonNull) root.add("accounts", JsonArray())
+        if (!root.has("backendUrl") || root.get("backendUrl").isJsonNull) root.addProperty("backendUrl", "")
+        gson.fromJson(root, AppData::class.java)
     }.getOrElse { AppData() }
 
     @Synchronized
