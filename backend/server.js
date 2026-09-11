@@ -70,6 +70,7 @@ async function handler(req, res) {
         language: 'en',
         country_codes: ['US'],
         products: ['transactions'],
+        android_package_name: 'com.baylee.billnest',
         user: { client_user_id: process.env.PLAID_USER_ID || 'billnest-personal' }
       });
       return json(res, 200, { linkToken: result.link_token, expiration: result.expiration });
