@@ -7,6 +7,11 @@ function fakeD1() {
     exec() {
       throw new Error('D1_EXEC_ERROR: multiline exec should not be used for schema setup');
     },
+    async batch(statements) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
+    },
     prepare(sql) {
       const text = String(sql).trim();
       return {
