@@ -13,13 +13,5 @@
       "database_name": "billnest-db",
       "database_id": "2caa6111-47ea-4179-9c66-c2a813c6999d"
     }
-  ],
-  "secrets": {
-    "required": [
-      "PLAID_CLIENT_ID",
-      "PLAID_SECRET",
-      "BILLNEST_API_KEY",
-      "TOKEN_ENCRYPTION_KEY"
-    ]
-  }
+  ]
 }
