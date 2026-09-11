@@ -1,6 +1,7 @@
 package com.baylee.billnest
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +49,7 @@ fun BillNestHome(vm: MainViewModel) {
     var showAddBill by remember { mutableStateOf(false) }
     var showAddPayday by remember { mutableStateOf(false) }
     var editingBill by remember { mutableStateOf<Bill?>(null) }
+    var editingPayday by remember { mutableStateOf<Payday?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -78,13 +81,14 @@ fun BillNestHome(vm: MainViewModel) {
             0 -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
             1 -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
             2 -> CalendarPage(data, Modifier.padding(pad))
-            3 -> IncomePage(data, vm, Modifier.padding(pad))
+            3 -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
             else -> SettingsPage(data, vm, Modifier.padding(pad))
         }
     }
     if (showAddBill) BillEditorDialog(null, { showAddBill = false }) { vm.add(it); showAddBill = false }
     editingBill?.let { bill -> BillEditorDialog(bill, { editingBill = null }) { vm.updateBill(it); editingBill = null } }
-    if (showAddPayday) PaydayDialog({ showAddPayday = false }) { vm.addPayday(it); showAddPayday = false }
+    if (showAddPayday) PaydayDialog(null, { showAddPayday = false }) { vm.addPayday(it); showAddPayday = false }
+    editingPayday?.let { payday -> PaydayDialog(payday, { editingPayday = null }) { vm.updatePayday(it); editingPayday = null } }
 }
 
 @Composable
@@ -102,6 +106,10 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
     }.sumOf { it.amount }
     val due30Total = due30.sumOf { it.amount }
     val safe = balance - due30Total
+    val nextPayday = data.paydays.filter { !it.nextDate().isBefore(today) }.minByOrNull { it.nextDate() }
+    val billsBeforeNextPayday = nextPayday?.let { payday ->
+        unpaid.filter { !it.dueDate().isBefore(today) && !it.dueDate().isAfter(payday.nextDate()) }.sumOf { it.amount }
+    } ?: 0.0
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Money at a glance", style = MaterialTheme.typography.headlineSmall) }
         item {
@@ -112,6 +120,10 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
                     Text("Bills next 30 days: " + currency(due30Total))
                     Text("Expected income next 30 days: " + currency(incoming30))
                     Text("Safe after upcoming bills: " + currency(safe), style = MaterialTheme.typography.titleLarge)
+                    nextPayday?.let { payday ->
+                        Text("Next payday: " + prettyDate(payday.nextDate()) + " • " + currency(payday.amount))
+                        Text("Bills before payday: " + currency(billsBeforeNextPayday))
+                    }
                 }
             }
         }
@@ -202,7 +214,7 @@ fun CalendarPage(data: AppData, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
+fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (Payday) -> Unit) {
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Paydays & income", style = MaterialTheme.typography.headlineSmall) }
         item { Text("Use + Payday to add your paycheck schedule.") }
@@ -212,7 +224,10 @@ fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(p.label, style = MaterialTheme.typography.titleMedium)
                     Text(currency(p.amount) + " • " + prettyDate(p.nextDate()) + " • " + p.frequency.name.replace('_', ' '))
-                    TextButton(onClick = { vm.deletePayday(p.id) }) { Text("Delete") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { onEdit(p) }) { Text("Edit") }
+                        TextButton(onClick = { vm.deletePayday(p.id) }) { Text("Delete") }
+                    }
                 }
             }
         }
@@ -246,7 +261,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
         }
         item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text("Automatic bank connection", style = MaterialTheme.typography.titleMedium); Text("Plaid connection is prepared as the next banking step. Your bill data does not depend on it.") } } }
         item { Text("Bill data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v1.1.0") }
+        item { Text("BillNest v1.2.0") }
     }
 }
 
@@ -269,7 +284,7 @@ fun BillEditorDialog(original: Bill?, onDismiss: () -> Unit, onSave: (Bill) -> U
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 520.dp)) {
                 item { OutlinedTextField(name, { name = it }, label = { Text("Bill name") }) }
                 item { OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }) }
-                item { OutlinedTextField(date, { date = it }, label = { Text("Due date (YYYY-MM-DD)") }) }
+                item { DatePickerButton(label = "Due date", dateIso = date, onDateSelected = { date = it }) }
                 item { Box { OutlinedButton(onClick = { catExpanded = true }) { Text("Category: " + category) }; DropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) { BillCategories.forEach { c -> DropdownMenuItem(text = { Text(c) }, onClick = { category = c; catExpanded = false }) } } } }
                 item { Box { OutlinedButton(onClick = { freqExpanded = true }) { Text("Repeats: " + frequency.name.replace('_', ' ')) }; DropdownMenu(expanded = freqExpanded, onDismissRequest = { freqExpanded = false }) { Frequency.entries.forEach { f -> DropdownMenuItem(text = { Text(f.name.replace('_', ' ')) }, onClick = { frequency = f; freqExpanded = false }) } } } }
                 item { Row { Checkbox(autopay, { autopay = it }); Text("Autopay", modifier = Modifier.padding(top = 12.dp)) } }
@@ -291,20 +306,20 @@ fun BillEditorDialog(original: Bill?, onDismiss: () -> Unit, onSave: (Bill) -> U
 }
 
 @Composable
-fun PaydayDialog(onDismiss: () -> Unit, onSave: (Payday) -> Unit) {
-    var label by remember { mutableStateOf("Paycheck") }
-    var amount by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(LocalDate.now().toString()) }
-    var frequency by remember { mutableStateOf(Frequency.BIWEEKLY) }
+fun PaydayDialog(original: Payday?, onDismiss: () -> Unit, onSave: (Payday) -> Unit) {
+    var label by remember { mutableStateOf(original?.label ?: "Paycheck") }
+    var amount by remember { mutableStateOf(original?.amount?.toString() ?: "") }
+    var date by remember { mutableStateOf(original?.nextDateIso ?: LocalDate.now().toString()) }
+    var frequency by remember { mutableStateOf(original?.frequency ?: Frequency.BIWEEKLY) }
     var expanded by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add payday") },
+        title = { Text(if (original == null) "Add payday" else "Edit payday") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(label, { label = it }, label = { Text("Name") })
                 OutlinedTextField(amount, { amount = it }, label = { Text("Take-home amount") })
-                OutlinedTextField(date, { date = it }, label = { Text("Next payday (YYYY-MM-DD)") })
+                DatePickerButton(label = "Next payday", dateIso = date, onDateSelected = { date = it })
                 Box { OutlinedButton(onClick = { expanded = true }) { Text("Repeats: " + frequency.name.replace('_', ' ')) }; DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { listOf(Frequency.WEEKLY, Frequency.BIWEEKLY, Frequency.MONTHLY).forEach { f -> DropdownMenuItem(text = { Text(f.name.replace('_', ' ')) }, onClick = { frequency = f; expanded = false }) } } }
             }
         },
@@ -312,11 +327,34 @@ fun PaydayDialog(onDismiss: () -> Unit, onSave: (Payday) -> Unit) {
             Button(onClick = {
                 val parsedAmount = amount.toDoubleOrNull()
                 val parsedDate = runCatching { LocalDate.parse(date) }.getOrNull()
-                if (parsedAmount != null && parsedDate != null) onSave(Payday(label = label.ifBlank { "Paycheck" }, amount = parsedAmount, nextDateIso = parsedDate.toString(), frequency = frequency))
+                if (parsedAmount != null && parsedDate != null) onSave((original ?: Payday(label = "Paycheck", amount = parsedAmount, nextDateIso = parsedDate.toString())).copy(label = label.ifBlank { "Paycheck" }, amount = parsedAmount, nextDateIso = parsedDate.toString(), frequency = frequency))
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+
+@Composable
+fun DatePickerButton(label: String, dateIso: String, onDateSelected: (String) -> Unit) {
+    val context = LocalContext.current
+    val current = runCatching { LocalDate.parse(dateIso) }.getOrDefault(LocalDate.now())
+    OutlinedButton(
+        onClick = {
+            DatePickerDialog(
+                context,
+                { _, year, month, day ->
+                    onDateSelected(LocalDate.of(year, month + 1, day).toString())
+                },
+                current.year,
+                current.monthValue - 1,
+                current.dayOfMonth
+            ).show()
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(label + ": " + prettyDate(current))
+    }
 }
 
 private fun currency(value: Double): String = NumberFormat.getCurrencyInstance().format(value)
