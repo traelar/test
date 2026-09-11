@@ -286,7 +286,7 @@ fun BillEditorDialog(original: Bill?, onDismiss: () -> Unit, onSave: (Bill) -> U
                 }
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
