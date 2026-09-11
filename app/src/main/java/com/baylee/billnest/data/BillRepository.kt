@@ -13,25 +13,30 @@ class BillRepository(context: Context) {
     val data: StateFlow<AppData> = _data
 
     private fun migrateLegacy(data: AppData): AppData {
-        if (data.accounts.isNotEmpty()) return data
-        val imported = when {
-            data.balances.isNotEmpty() -> data.balances.map { old ->
-                Account(
-                    name = old.name,
-                    type = AccountType.CHECKING,
-                    balance = old.available ?: old.current,
-                    source = AccountSource.PLAID,
-                    plaidAccountId = old.accountId,
-                    mask = old.mask,
-                    updatedAtEpochMs = old.updatedAtEpochMs
+        val importedAccounts = if (data.accounts.isNotEmpty()) {
+            data.accounts
+        } else {
+            when {
+                data.balances.isNotEmpty() -> data.balances.map { old ->
+                    Account(
+                        name = old.name,
+                        type = AccountType.CHECKING,
+                        balance = old.available ?: old.current,
+                        source = AccountSource.PLAID,
+                        plaidAccountId = old.accountId,
+                        mask = old.mask,
+                        updatedAtEpochMs = old.updatedAtEpochMs
+                    )
+                }
+                data.manualBalance != 0.0 -> listOf(
+                    Account(name = "Main Account", type = AccountType.CHECKING, balance = data.manualBalance)
                 )
+                else -> emptyList()
             }
-            data.manualBalance != 0.0 -> listOf(
-                Account(name = "Main Account", type = AccountType.CHECKING, balance = data.manualBalance)
-            )
-            else -> emptyList()
         }
-        return data.copy(accounts = imported)
+
+        val backend = data.backendUrl.trim().ifBlank { BILLNEST_BACKEND_URL }
+        return data.copy(accounts = importedAccounts, backendUrl = backend)
     }
 
     private fun update(transform: (AppData) -> AppData) {
@@ -72,7 +77,7 @@ class BillRepository(context: Context) {
         data.copy(accounts = manual + synced, plaidConnected = synced.isNotEmpty())
     }
 
-    fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim()) }
+    fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }
     fun setBackendApiKey(value: String) = update { it.copy(backendApiKey = value.trim()) }
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
     fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
