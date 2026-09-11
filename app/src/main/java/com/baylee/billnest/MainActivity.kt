@@ -2,8 +2,8 @@ package com.baylee.billnest
 
 import android.Manifest
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.biometric.BiometricPrompt
@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.baylee.billnest.model.*
 import com.baylee.billnest.ui.MainViewModel
@@ -23,7 +24,7 @@ import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val vm by viewModels<MainViewModel> {
         val repo = (application as BillNestApp).repo
         object : androidx.lifecycle.ViewModelProvider.Factory {
