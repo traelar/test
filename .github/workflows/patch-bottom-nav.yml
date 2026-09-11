@@ -1,0 +1,33 @@
+name: Patch Bottom Navigation
+
+on:
+  push:
+    branches: [ billnest-apk-build ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch compact one-line bottom nav
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/baylee/billnest/MainActivity.kt')
+          s = p.read_text()
+          s = s.replace('val titles = listOf("Home", "Bills", "Accounts", "Calendar", "Income", "Settings")', 'val titles = listOf("Home", "Bills", "Accts", "Cal", "Income", "Settings")')
+          old = '''label = { Text(name) }'''
+          new = '''label = { Text(name, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }'''
+          if old not in s:
+              raise SystemExit('nav label block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/baylee/billnest/MainActivity.kt
+          git commit -m "Fix compact one-line bottom navigation"
+          git push
