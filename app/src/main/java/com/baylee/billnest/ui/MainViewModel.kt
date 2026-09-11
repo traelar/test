@@ -18,6 +18,7 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun deleteAccount(id: String) = repo.deleteAccount(id)
     fun syncPlaidAccounts(items: List<Account>) = repo.syncPlaidAccounts(items)
     fun backendUrl(v: String) = repo.setBackendUrl(v)
+    fun backendApiKey(v: String) = repo.setBackendApiKey(v)
     fun balance(v: Double) = repo.setManualBalance(v)
     fun reminderDays(v: List<Int>) = repo.setReminderDays(v)
 }
