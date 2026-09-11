@@ -1,3 +1,4 @@
+import { authenticateSession, getBearerToken, handleAuthHttp } from './auth.js';
 import { ensureSchema } from './schema.js';
 
 const encoder = new TextEncoder();
@@ -15,12 +16,12 @@ function json(payload, status = 200) {
   });
 }
 
-function requireAuth(request, env) {
-  const expected = env.BILLNEST_API_KEY || '';
-  const actual = request.headers.get('authorization') || '';
-  if (!expected || actual !== `Bearer ${expected}`) {
-    throw Object.assign(new Error('Unauthorized'), { status: 401 });
+async function authorizeApiRequest(request, env) {
+  const expected = String(env.BILLNEST_API_KEY || '');
+  if (expected && getBearerToken(request) === expected) {
+    return { mode: 'legacy' };
   }
+  return { mode: 'session', ...(await authenticateSession(request, env)) };
 }
 
 function plaidBaseUrl(envName) {
@@ -135,8 +136,12 @@ async function route(request, env) {
   }
 
   if (!url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
-  requireAuth(request, env);
   await ensureSchema(env);
+
+  const authResponse = await handleAuthHttp(request, env);
+  if (authResponse) return authResponse;
+
+  await authorizeApiRequest(request, env);
 
   if (request.method === 'POST' && url.pathname === '/api/plaid/link-token') {
     const result = await plaidPost(env, '/link/token/create', {
