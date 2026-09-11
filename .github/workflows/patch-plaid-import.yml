@@ -1,0 +1,26 @@
+name: Patch Plaid Import
+
+on:
+  push:
+    branches: [ billnest-apk-build ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Plaid 6.2.1 import
+        run: |
+          if grep -q 'import com.plaid.link.linkTokenConfiguration' app/src/main/java/com/baylee/billnest/MainActivity.kt; then
+            sed -i 's/import com\.plaid\.link\.linkTokenConfiguration/import com.plaid.link.configuration.linkTokenConfiguration/' app/src/main/java/com/baylee/billnest/MainActivity.kt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add app/src/main/java/com/baylee/billnest/MainActivity.kt
+            git commit -m 'Fix Plaid 6.2.1 configuration import'
+            git push
+          else
+            echo 'Plaid import already patched'
+          fi
