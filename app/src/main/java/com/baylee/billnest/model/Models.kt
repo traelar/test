@@ -7,6 +7,8 @@ enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
 enum class AccountType { CHECKING, SAVINGS, CASH, OTHER }
 enum class AccountSource { MANUAL, PLAID }
 
+const val BILLNEST_BACKEND_URL = "https://billnest-api.joshsolution.workers.dev"
+
 val BillCategories = listOf(
     "Housing", "Utilities", "Phone/Internet", "Insurance", "Car", "Credit Card",
     "Subscriptions", "Medical", "Kids", "Groceries", "Other"
@@ -65,7 +67,7 @@ data class AppData(
     val bills: List<Bill> = emptyList(),
     val paydays: List<Payday> = emptyList(),
     val accounts: List<Account> = emptyList(),
-    val backendUrl: String = "",
+    val backendUrl: String = BILLNEST_BACKEND_URL,
     val backendApiKey: String = "",
     val manualBalance: Double = 0.0,
     val balances: List<AccountBalance> = emptyList(),
