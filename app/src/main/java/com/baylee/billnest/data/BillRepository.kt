@@ -35,7 +35,12 @@ class BillRepository(context: Context) {
             }
         }
 
-        val backend = data.backendUrl.trim().ifBlank { BILLNEST_BACKEND_URL }
+        val savedBackend = data.backendUrl.trim()
+        val backend = when {
+            savedBackend.isBlank() -> BILLNEST_BACKEND_URL
+            savedBackend == "https://billnest-api.joshsolution.workers.dev" -> BILLNEST_BACKEND_URL
+            else -> savedBackend
+        }
         return data.copy(accounts = importedAccounts, backendUrl = backend)
     }
 
