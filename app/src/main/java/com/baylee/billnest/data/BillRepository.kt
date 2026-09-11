@@ -73,6 +73,7 @@ class BillRepository(context: Context) {
     }
 
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim()) }
+    fun setBackendApiKey(value: String) = update { it.copy(backendApiKey = value.trim()) }
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
     fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
         update { it.copy(balances = items, plaidConnected = connected) }
