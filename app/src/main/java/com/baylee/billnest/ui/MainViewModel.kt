@@ -12,6 +12,7 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun paid(id: String) = repo.markPaid(id)
     fun delete(id: String) = repo.deleteBill(id)
     fun addPayday(p: Payday) = repo.addPayday(p)
+    fun updatePayday(p: Payday) = repo.updatePayday(p)
     fun deletePayday(id: String) = repo.deletePayday(id)
     fun balance(v: Double) = repo.setManualBalance(v)
     fun reminderDays(v: List<Int>) = repo.setReminderDays(v)
