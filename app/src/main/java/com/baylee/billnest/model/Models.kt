@@ -5,6 +5,11 @@ import java.util.UUID
 
 enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
 
+val BillCategories = listOf(
+    "Housing", "Utilities", "Phone/Internet", "Insurance", "Car", "Credit Card",
+    "Subscriptions", "Medical", "Kids", "Groceries", "Other"
+)
+
 data class Bill(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -14,6 +19,7 @@ data class Bill(
     val autopay: Boolean = false,
     val category: String = "Other",
     val notes: String = "",
+    val variableAmount: Boolean = false,
     val paidDates: List<String> = emptyList()
 ) {
     fun dueDate(): LocalDate = LocalDate.parse(dueDateIso)
@@ -26,7 +32,9 @@ data class Payday(
     val amount: Double,
     val nextDateIso: String,
     val frequency: Frequency = Frequency.BIWEEKLY
-)
+) {
+    fun nextDate(): LocalDate = LocalDate.parse(nextDateIso)
+}
 
 data class AccountBalance(
     val accountId: String,
