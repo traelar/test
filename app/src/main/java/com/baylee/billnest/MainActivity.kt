@@ -315,7 +315,7 @@ fun PaydayDialog(onDismiss: () -> Unit, onSave: (Payday) -> Unit) {
                 if (parsedAmount != null && parsedDate != null) onSave(Payday(label = label.ifBlank { "Paycheck" }, amount = parsedAmount, nextDateIso = parsedDate.toString(), frequency = frequency))
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
