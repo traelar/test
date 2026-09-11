@@ -24,6 +24,7 @@ class BillRepository(context: Context) {
     fun deleteBill(id: String) = update { it.copy(bills = it.bills.filterNot { b -> b.id == id }) }
 
     fun addPayday(payday: Payday) = update { it.copy(paydays = it.paydays + payday) }
+    fun updatePayday(payday: Payday) = update { data -> data.copy(paydays = data.paydays.map { if (it.id == payday.id) payday else it }) }
     fun deletePayday(id: String) = update { it.copy(paydays = it.paydays.filterNot { p -> p.id == id }) }
 
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
