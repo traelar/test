@@ -44,5 +44,5 @@ data class AppData(
     val balances: List<AccountBalance> = emptyList(),
     val plaidConnected: Boolean = false,
     val reminderDays: List<Int> = listOf(7, 3, 1, 0),
-    val biometricLock: Boolean = true
+    val biometricLock: Boolean = false
 )
