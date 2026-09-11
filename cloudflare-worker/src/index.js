@@ -21,6 +21,19 @@ function requireAuth(request, env) {
   }
 }
 
+async function ensureSchema(env) {
+  await env.DB.exec(`
+    CREATE TABLE IF NOT EXISTS plaid_items (
+      item_id TEXT PRIMARY KEY,
+      access_token_enc TEXT NOT NULL,
+      label TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_plaid_items_created_at
+      ON plaid_items(created_at);
+  `);
+}
+
 function plaidBaseUrl(envName) {
   return String(envName || 'sandbox').toLowerCase() === 'production'
     ? 'https://production.plaid.com'
@@ -134,6 +147,7 @@ async function route(request, env) {
 
   if (!url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
   requireAuth(request, env);
+  await ensureSchema(env);
 
   if (request.method === 'POST' && url.pathname === '/api/plaid/link-token') {
     const result = await plaidPost(env, '/link/token/create', {
