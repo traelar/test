@@ -8,8 +8,31 @@ import java.time.LocalDate
 
 class BillRepository(context: Context) {
     private val store = EncryptedStore(context)
-    private val _data = MutableStateFlow(store.load())
+    private val initialData = migrateLegacy(store.load()).also { store.save(it) }
+    private val _data = MutableStateFlow(initialData)
     val data: StateFlow<AppData> = _data
+
+    private fun migrateLegacy(data: AppData): AppData {
+        if (data.accounts.isNotEmpty()) return data
+        val imported = when {
+            data.balances.isNotEmpty() -> data.balances.map { old ->
+                Account(
+                    name = old.name,
+                    type = AccountType.CHECKING,
+                    balance = old.available ?: old.current,
+                    source = AccountSource.PLAID,
+                    plaidAccountId = old.accountId,
+                    mask = old.mask,
+                    updatedAtEpochMs = old.updatedAtEpochMs
+                )
+            }
+            data.manualBalance != 0.0 -> listOf(
+                Account(name = "Main Account", type = AccountType.CHECKING, balance = data.manualBalance)
+            )
+            else -> emptyList()
+        }
+        return data.copy(accounts = imported)
+    }
 
     private fun update(transform: (AppData) -> AppData) {
         val next = transform(_data.value)
@@ -27,6 +50,29 @@ class BillRepository(context: Context) {
     fun updatePayday(payday: Payday) = update { data -> data.copy(paydays = data.paydays.map { if (it.id == payday.id) payday else it }) }
     fun deletePayday(id: String) = update { it.copy(paydays = it.paydays.filterNot { p -> p.id == id }) }
 
+    fun addAccount(account: Account) = update { it.copy(accounts = it.accounts + account) }
+    fun updateAccount(account: Account) = update { data ->
+        data.copy(accounts = data.accounts.map { if (it.id == account.id) account else it })
+    }
+    fun deleteAccount(id: String) = update { data ->
+        data.copy(
+            accounts = data.accounts.filterNot { it.id == id },
+            bills = data.bills.map { if (it.accountId == id) it.copy(accountId = null) else it }
+        )
+    }
+
+    fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
+        val manual = data.accounts.filter { it.source == AccountSource.MANUAL }
+        val existingPlaid = data.accounts.filter { it.source == AccountSource.PLAID }
+            .associateBy { it.plaidAccountId }
+        val synced = incoming.map { fresh ->
+            val existing = existingPlaid[fresh.plaidAccountId]
+            if (existing == null) fresh else fresh.copy(id = existing.id, name = existing.name)
+        }
+        data.copy(accounts = manual + synced, plaidConnected = synced.isNotEmpty())
+    }
+
+    fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim()) }
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
     fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
         update { it.copy(balances = items, plaidConnected = connected) }
