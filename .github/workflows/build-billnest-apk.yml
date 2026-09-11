@@ -17,16 +17,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - uses: android-actions/setup-android@v3
-      - name: Unpack BillNest
-        run: unzip -q BillNest-Android-GitHub-Build.zip
+      - name: Accept Android licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
       - name: Install Android SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Build debug APK
-        working-directory: BillNest-Android
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp BillNest-Android/app/build/outputs/apk/debug/app-debug.apk BillNest-v1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BillNest-v1-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: BillNest-v1-debug-apk
