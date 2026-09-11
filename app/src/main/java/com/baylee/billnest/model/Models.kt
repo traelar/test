@@ -66,6 +66,7 @@ data class AppData(
     val paydays: List<Payday> = emptyList(),
     val accounts: List<Account> = emptyList(),
     val backendUrl: String = "",
+    val backendApiKey: String = "",
     val manualBalance: Double = 0.0,
     val balances: List<AccountBalance> = emptyList(),
     val plaidConnected: Boolean = false,
