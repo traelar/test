@@ -18,10 +18,19 @@ class BillRepository(context: Context) {
     }
 
     fun addBill(bill: Bill) = update { it.copy(bills = it.bills + bill) }
+    fun updateBill(bill: Bill) = update { data ->
+        data.copy(bills = data.bills.map { if (it.id == bill.id) bill else it })
+    }
     fun deleteBill(id: String) = update { it.copy(bills = it.bills.filterNot { b -> b.id == id }) }
+
+    fun addPayday(payday: Payday) = update { it.copy(paydays = it.paydays + payday) }
+    fun deletePayday(id: String) = update { it.copy(paydays = it.paydays.filterNot { p -> p.id == id }) }
+
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
-    fun setBalances(items: List<AccountBalance>, connected: Boolean = true) = update { it.copy(balances = items, plaidConnected = connected) }
+    fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
+        update { it.copy(balances = items, plaidConnected = connected) }
     fun setBiometric(enabled: Boolean) = update { it.copy(biometricLock = enabled) }
+    fun setReminderDays(days: List<Int>) = update { it.copy(reminderDays = days.distinct().sortedDescending()) }
 
     fun markPaid(id: String) = update { data ->
         data.copy(bills = data.bills.map { b ->
