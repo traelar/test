@@ -1,5 +1,5 @@
 import { hashPassword, randomToken, sha256Hex, verifyPassword } from './crypto.js';
-import { httpError } from './http.js';
+import { httpError, json, readJson } from './http.js';
 import { D1Store } from './store.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -197,6 +197,62 @@ export async function authenticateSession(request, env) {
     clientIp: request.headers.get('CF-Connecting-IP') || 'unknown'
   });
   return service.contextForSession(getBearerToken(request));
+}
+
+function legacyKeyMatches(request, env) {
+  const expected = String(env.BILLNEST_API_KEY || '');
+  return expected.length > 0 && getBearerToken(request) === expected;
+}
+
+export async function handleAuthHttp(request, env, store = new D1Store(env.DB), options = {}) {
+  const url = new URL(request.url);
+  const matches = (
+    (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') ||
+    (request.method === 'POST' && url.pathname === '/api/auth/login') ||
+    (request.method === 'POST' && url.pathname === '/api/auth/logout') ||
+    (request.method === 'GET' && url.pathname === '/api/me')
+  );
+  if (!matches) return null;
+
+  const service = createAuthService(store, {
+    ...options,
+    clientIp: options.clientIp || request.headers.get('CF-Connecting-IP') || 'unknown'
+  });
+
+  try {
+    if (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') {
+      if (!legacyKeyMatches(request, env)) throw httpError(401, 'Unauthorized');
+      return json(await service.bootstrap(await readJson(request)));
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/auth/login') {
+      return json(await service.login(await readJson(request)));
+    }
+
+    const token = getBearerToken(request);
+    const context = await service.contextForSession(token);
+
+    if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
+      await service.logout(token);
+      return json({ ok: true });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/me') {
+      return json({
+        user: { userId: context.userId, username: context.username },
+        household: {
+          householdId: context.householdId,
+          name: context.householdName,
+          role: context.role,
+          displayLabel: context.displayLabel
+        }
+      });
+    }
+
+    return null;
+  } catch (error) {
+    return json({ error: error.message || 'Server error' }, error.status || 500);
+  }
 }
 
 export { normalizeUsername };
