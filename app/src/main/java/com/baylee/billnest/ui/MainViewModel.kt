@@ -2,8 +2,7 @@ package com.baylee.billnest.ui
 
 import androidx.lifecycle.ViewModel
 import com.baylee.billnest.data.BillRepository
-import com.baylee.billnest.model.Bill
-import com.baylee.billnest.model.Payday
+import com.baylee.billnest.model.*
 
 class MainViewModel(val repo: BillRepository) : ViewModel() {
     val data = repo.data
@@ -14,6 +13,11 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun addPayday(p: Payday) = repo.addPayday(p)
     fun updatePayday(p: Payday) = repo.updatePayday(p)
     fun deletePayday(id: String) = repo.deletePayday(id)
+    fun addAccount(a: Account) = repo.addAccount(a)
+    fun updateAccount(a: Account) = repo.updateAccount(a)
+    fun deleteAccount(id: String) = repo.deleteAccount(id)
+    fun syncPlaidAccounts(items: List<Account>) = repo.syncPlaidAccounts(items)
+    fun backendUrl(v: String) = repo.setBackendUrl(v)
     fun balance(v: Double) = repo.setManualBalance(v)
     fun reminderDays(v: List<Int>) = repo.setReminderDays(v)
 }
