@@ -7,7 +7,7 @@ enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
 enum class AccountType { CHECKING, SAVINGS, CASH, OTHER }
 enum class AccountSource { MANUAL, PLAID }
 
-const val BILLNEST_BACKEND_URL = "https://billnest-api.joshsolution.workers.dev"
+const val BILLNEST_BACKEND_URL = "https://billnest-api.joshselusion.workers.dev"
 
 val BillCategories = listOf(
     "Housing", "Utilities", "Phone/Internet", "Insurance", "Car", "Credit Card",
