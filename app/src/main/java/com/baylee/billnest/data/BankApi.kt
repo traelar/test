@@ -28,26 +28,26 @@ object BankApi {
 
     private fun base(raw: String): String {
         val value = raw.trim().trimEnd('/')
-        require(value.startsWith("http://") || value.startsWith("https://")) {
-            "Enter a backend address starting with http:// or https://"
+        require(value.startsWith("https://") || value.startsWith("http://")) {
+            "Enter a backend address starting with https:// or http://"
         }
         return value
     }
 
-    suspend fun createLinkToken(backendUrl: String): String = withContext(Dispatchers.IO) {
-        val json = request(base(backendUrl) + "/api/plaid/link-token", "POST", "{}")
+    suspend fun createLinkToken(backendUrl: String, apiKey: String): String = withContext(Dispatchers.IO) {
+        val json = request(base(backendUrl) + "/api/plaid/link-token", "POST", "{}", apiKey)
         val token = gson.fromJson(json, PlaidLinkTokenResponse::class.java).linkToken
         if (token.isBlank()) throw IOException("Backend did not return a Plaid link token")
         token
     }
 
-    suspend fun exchangePublicToken(backendUrl: String, publicToken: String, label: String?) = withContext(Dispatchers.IO) {
+    suspend fun exchangePublicToken(backendUrl: String, apiKey: String, publicToken: String, label: String?) = withContext(Dispatchers.IO) {
         val body = gson.toJson(mapOf("publicToken" to publicToken, "label" to (label ?: "Bank")))
-        request(base(backendUrl) + "/api/plaid/exchange", "POST", body)
+        request(base(backendUrl) + "/api/plaid/exchange", "POST", body, apiKey)
     }
 
-    suspend fun fetchAccounts(backendUrl: String): List<Account> = withContext(Dispatchers.IO) {
-        val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null)
+    suspend fun fetchAccounts(backendUrl: String, apiKey: String): List<Account> = withContext(Dispatchers.IO) {
+        val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null, apiKey)
         gson.fromJson(json, PlaidAccountsResponse::class.java).accounts
             .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
             .map { dto ->
@@ -67,12 +67,14 @@ object BankApi {
             }
     }
 
-    private fun request(url: String, method: String, body: String?): String {
+    private fun request(url: String, method: String, body: String?, apiKey: String): String {
+        if (apiKey.isBlank()) throw IOException("Enter your BillNest bank server key in Settings")
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
             readTimeout = 30000
             setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Authorization", "Bearer ${apiKey.trim()}")
             doInput = true
             if (body != null) {
                 doOutput = true
