@@ -26,7 +26,7 @@ import com.baylee.billnest.ui.MainViewModel
 import com.baylee.billnest.ui.theme.BillNestTheme
 import com.plaid.link.OpenPlaidLink
 import com.plaid.link.Plaid
-import com.plaid.link.linkTokenConfiguration
+import com.plaid.link.configuration.linkTokenConfiguration
 import com.plaid.link.result.LinkExit
 import com.plaid.link.result.LinkSuccess
 import kotlinx.coroutines.launch
