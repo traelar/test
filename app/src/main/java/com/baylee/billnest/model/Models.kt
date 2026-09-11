@@ -4,10 +4,24 @@ import java.time.LocalDate
 import java.util.UUID
 
 enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
+enum class AccountType { CHECKING, SAVINGS, CASH, OTHER }
+enum class AccountSource { MANUAL, PLAID }
 
 val BillCategories = listOf(
     "Housing", "Utilities", "Phone/Internet", "Insurance", "Car", "Credit Card",
     "Subscriptions", "Medical", "Kids", "Groceries", "Other"
+)
+
+data class Account(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val type: AccountType = AccountType.CHECKING,
+    val balance: Double = 0.0,
+    val source: AccountSource = AccountSource.MANUAL,
+    val plaidAccountId: String? = null,
+    val mask: String = "",
+    val connectionLabel: String? = null,
+    val updatedAtEpochMs: Long = System.currentTimeMillis()
 )
 
 data class Bill(
@@ -20,6 +34,7 @@ data class Bill(
     val category: String = "Other",
     val notes: String = "",
     val variableAmount: Boolean = false,
+    val accountId: String? = null,
     val paidDates: List<String> = emptyList()
 ) {
     fun dueDate(): LocalDate = LocalDate.parse(dueDateIso)
@@ -36,6 +51,7 @@ data class Payday(
     fun nextDate(): LocalDate = LocalDate.parse(nextDateIso)
 }
 
+// Legacy balance shape retained so existing encrypted v1.x data can migrate safely.
 data class AccountBalance(
     val accountId: String,
     val name: String,
@@ -48,6 +64,8 @@ data class AccountBalance(
 data class AppData(
     val bills: List<Bill> = emptyList(),
     val paydays: List<Payday> = emptyList(),
+    val accounts: List<Account> = emptyList(),
+    val backendUrl: String = "",
     val manualBalance: Double = 0.0,
     val balances: List<AccountBalance> = emptyList(),
     val plaidConnected: Boolean = false,
