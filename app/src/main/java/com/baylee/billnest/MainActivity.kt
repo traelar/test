@@ -2,6 +2,7 @@ package com.baylee.billnest
 
 import android.Manifest
 import android.os.Bundle
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,7 +37,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if ((application as BillNestApp).repo.data.value.biometricLock) authenticate() else unlocked = true
+        unlocked = true
         setContent {
             BillNestTheme {
                 if (unlocked) BillNestHome(vm) else LockedScreen { authenticate() }
@@ -45,22 +46,24 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun authenticate() {
-        val executor = ContextCompat.getMainExecutor(this)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { unlocked = true }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                if (errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS || errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT) unlocked = true
-            }
-        })
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock BillNest")
-                .setSubtitle("Use your fingerprint or phone PIN")
-                .setAllowedAuthenticators(
-                    androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                        androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                ).build()
-        )
+        runCatching {
+            val executor = ContextCompat.getMainExecutor(this)
+            val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { unlocked = true }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    unlocked = true
+                }
+            })
+            prompt.authenticate(
+                BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Unlock BillNest")
+                    .setSubtitle("Use your fingerprint or phone PIN")
+                    .setAllowedAuthenticators(
+                        androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                            androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                    ).build()
+            )
+        }.onFailure { unlocked = true }
     }
 }
 
@@ -82,7 +85,11 @@ fun BillNestHome(vm: MainViewModel) {
     var tab by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
 
     Scaffold(
         topBar = {
