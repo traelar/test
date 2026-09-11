@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,8 +58,8 @@ class MainActivity : FragmentActivity() {
                 lifecycleScope.launch {
                     runCatching {
                         val url = vm.data.value.backendUrl
-                        BankApi.exchangePublicToken(url, token, institution)
-                        BankApi.fetchAccounts(url)
+                        BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token, institution)
+                        BankApi.fetchAccounts(url, vm.data.value.backendApiKey)
                     }.onSuccess { accounts ->
                         vm.syncPlaidAccounts(accounts)
                         toast("Bank connected")
@@ -92,7 +93,7 @@ class MainActivity : FragmentActivity() {
         }
         lifecycleScope.launch {
             runCatching {
-                BankApi.createLinkToken(url)
+                BankApi.createLinkToken(url, vm.data.value.backendApiKey)
             }.onSuccess { linkToken ->
                 runCatching {
                     val session = Plaid.createPlaidLinkSession(
@@ -112,7 +113,7 @@ class MainActivity : FragmentActivity() {
             return
         }
         lifecycleScope.launch {
-            runCatching { BankApi.fetchAccounts(url) }
+            runCatching { BankApi.fetchAccounts(url, vm.data.value.backendApiKey) }
                 .onSuccess {
                     vm.syncPlaidAccounts(it)
                     toast("Bank balances refreshed")
@@ -444,6 +445,7 @@ fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, 
 @Composable
 fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }
+    var backendApiKey by remember(data.backendApiKey) { mutableStateOf(data.backendApiKey) }
     val options = listOf(7, 3, 1, 0)
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
@@ -458,8 +460,19 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
                         supportingText = { Text("Example: https://your-domain.com or http://192.168.1.50:8787") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Button(onClick = { vm.backendUrl(backendUrl) }) { Text("Save server address") }
-                    Text("Your Plaid secret stays on this server and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+              value = backendApiKey,
+              onValueChange = { backendApiKey = it },
+              label = { Text("Bank server key") },
+              visualTransformation = PasswordVisualTransformation(),
+              supportingText = { Text("Private key used only by your BillNest app") },
+              modifier = Modifier.fillMaxWidth()
+          )
+          Button(onClick = {
+              vm.backendUrl(backendUrl)
+              vm.backendApiKey(backendApiKey)
+          }) { Text("Save bank connection") }
+                    Text("Your Plaid secret stays on Cloudflare and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -481,7 +494,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
             }
         }
         item { Text("Bill and account data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v1.3.0") }
+        item { Text("BillNest v1.4.0") }
     }
 }
 
