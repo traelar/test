@@ -1,3 +1,5 @@
+import { ensureSchema } from './schema.js';
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -19,13 +21,6 @@ function requireAuth(request, env) {
   if (!expected || actual !== `Bearer ${expected}`) {
     throw Object.assign(new Error('Unauthorized'), { status: 401 });
   }
-}
-
-async function ensureSchema(env) {
-  await env.DB.batch([
-    env.DB.prepare('CREATE TABLE IF NOT EXISTS plaid_items (item_id TEXT PRIMARY KEY, access_token_enc TEXT NOT NULL, label TEXT, created_at TEXT NOT NULL)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_plaid_items_created_at ON plaid_items(created_at)')
-  ]);
 }
 
 function plaidBaseUrl(envName) {
