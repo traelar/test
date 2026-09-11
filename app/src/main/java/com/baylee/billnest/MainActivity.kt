@@ -147,7 +147,7 @@ fun BillNestHome(
         }
     }
 
-    val titles = listOf("Home", "Bills", "Accounts", "Calendar", "Income", "Settings")
+    val titles = listOf("Home", "Bills", "Accts", "Cal", "Income", "Settings")
     Scaffold(
         topBar = {
             TopAppBar(
@@ -168,7 +168,7 @@ fun BillNestHome(
                         selected = tab == i,
                         onClick = { tab = i },
                         icon = {},
-                        label = { Text(name) }
+                        label = { Text(name, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
