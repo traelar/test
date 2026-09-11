@@ -18,14 +18,16 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/java/com/baylee/billnest/MainActivity.kt')
           s = p.read_text()
-          s = s.replace('import androidx.compose.ui.platform.LocalContext\n', 'import androidx.compose.ui.platform.LocalContext\nimport androidx.compose.ui.text.input.PasswordVisualTransformation\n')
+          if 'PasswordVisualTransformation' not in s:
+              s = s.replace('import androidx.compose.ui.platform.LocalContext\n', 'import androidx.compose.ui.platform.LocalContext\nimport androidx.compose.ui.text.input.PasswordVisualTransformation\n')
           s = s.replace('BankApi.exchangePublicToken(url, token, institution)', 'BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token, institution)')
           s = s.replace('BankApi.fetchAccounts(url)', 'BankApi.fetchAccounts(url, vm.data.value.backendApiKey)')
           s = s.replace('BankApi.createLinkToken(url)', 'BankApi.createLinkToken(url, vm.data.value.backendApiKey)')
-          s = s.replace('var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }\n', 'var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }\n    var backendApiKey by remember(data.backendApiKey) { mutableStateOf(data.backendApiKey) }\n')
-          old = '''                    Button(onClick = { vm.backendUrl(backendUrl) }) { Text("Save server address") }
-                    Text("Your Plaid secret stays on this server and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)'''
-          new = '''                    OutlinedTextField(
+          if 'var backendApiKey by remember(data.backendApiKey)' not in s:
+              s = s.replace('var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }\n', 'var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }\n    var backendApiKey by remember(data.backendApiKey) { mutableStateOf(data.backendApiKey) }\n')
+          button = '                    Button(onClick = { vm.backendUrl(backendUrl) }) { Text("Save server address") }'
+          if button in s:
+              replacement = '''                    OutlinedTextField(
                         value = backendApiKey,
                         onValueChange = { backendApiKey = it },
                         label = { Text("Bank server key") },
@@ -36,11 +38,9 @@ jobs:
                     Button(onClick = {
                         vm.backendUrl(backendUrl)
                         vm.backendApiKey(backendApiKey)
-                    }) { Text("Save bank connection") }
-                    Text("Your Plaid secret stays on Cloudflare and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)'''
-          if old not in s:
-              raise SystemExit('settings block not found')
-          s = s.replace(old, new, 1)
+                    }) { Text("Save bank connection") }'''
+              s = s.replace(button, replacement, 1)
+          s = s.replace('Your Plaid secret stays on this server and is never stored in the APK.', 'Your Plaid secret stays on Cloudflare and is never stored in the APK.')
           s = s.replace('item { Text("BillNest v1.3.0") }', 'item { Text("BillNest v1.4.0") }')
           p.write_text(s)
 
