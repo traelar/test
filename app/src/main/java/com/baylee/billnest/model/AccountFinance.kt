@@ -7,7 +7,8 @@ data class AccountPreference(
     val displayOrder: Int,
     val role: AccountRole,
     val includeInTotal: Boolean,
-    val includeInSpending: Boolean
+    val includeInSpending: Boolean,
+    val customName: String? = null
 )
 
 data class AccountMoneySummary(
@@ -23,6 +24,11 @@ object AccountFinance {
         } else {
             "manual:${account.id}"
         }
+
+    fun canonicalLocalId(account: Account): String =
+        if (account.source == AccountSource.PLAID && !account.plaidAccountId.isNullOrBlank()) {
+            "plaid:${account.plaidAccountId}"
+        } else account.id
 
     fun defaultPreference(account: Account, displayOrder: Int): AccountPreference {
         val role = when (account.type) {
@@ -45,6 +51,9 @@ object AccountFinance {
         fallbackOrder: Int
     ): AccountPreference = preferences.firstOrNull { it.accountKey == stableKey(account) }
         ?: defaultPreference(account, fallbackOrder)
+
+    fun displayName(account: Account, preferences: List<AccountPreference>, fallbackOrder: Int): String =
+        preferenceFor(account, preferences, fallbackOrder).customName?.takeIf { it.isNotBlank() } ?: account.name
 
     fun sortAccounts(accounts: List<Account>, preferences: List<AccountPreference>): List<Account> =
         accounts.withIndex()
