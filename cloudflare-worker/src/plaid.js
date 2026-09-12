@@ -87,6 +87,21 @@ export function normalizeAccounts(accounts = [], itemId = null, connectionLabel 
   }));
 }
 
+export function normalizeTransactions(transactions = [], itemId = null, connectionLabel = null) {
+  return transactions.map((transaction) => ({
+    transactionId: transaction.transaction_id,
+    accountId: transaction.account_id,
+    name: transaction.merchant_name || transaction.name || 'Transaction',
+    amount: Math.abs(Number(transaction.amount || 0)),
+    date: transaction.date,
+    category: transaction.personal_finance_category?.primary || transaction.category?.[0] || 'Other',
+    pending: Boolean(transaction.pending),
+    income: Number(transaction.amount || 0) < 0 || transaction.personal_finance_category?.primary === 'INCOME',
+    itemId,
+    connectionLabel
+  }));
+}
+
 function issueFromPlaidError(item, error) {
   const errorCode = String(error?.plaid?.error_code || 'PLAID_ERROR');
   return {
@@ -195,6 +210,40 @@ export function createPlaidService(store, options = {}) {
     return { accounts, connectedItems: items.length, issues };
   }
 
+  async function fetchTransactions(context, env) {
+    const items = await listItemRecords(context);
+    const transactions = [];
+    const issues = [];
+    const endDate = nowIso().slice(0, 10);
+    const start = new Date(`${endDate}T00:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - 120);
+    const startDate = start.toISOString().slice(0, 10);
+    for (const item of items) {
+      try {
+        const accessToken = await decrypt(item.accessTokenEnc, env);
+        let offset = 0;
+        let total = 1;
+        while (offset < total && offset < 2000) {
+          const result = await post(env, '/transactions/get', {
+            access_token: accessToken,
+            start_date: startDate,
+            end_date: endDate,
+            options: { count: 500, offset }
+          });
+          const page = result.transactions || [];
+          transactions.push(...normalizeTransactions(page, item.itemId, item.label || null));
+          total = Number(result.total_transactions || page.length);
+          offset += page.length;
+          if (page.length === 0) break;
+        }
+      } catch (error) {
+        if (!error?.plaid) throw error;
+        issues.push(issueFromPlaidError(item, error));
+      }
+    }
+    return { transactions, connectedItems: items.length, issues };
+  }
+
   async function removeItem(context, itemId, env) {
     if (context.mode === 'session' && context.role !== 'owner') {
       throw httpError(403, 'Only the household owner can disconnect a bank');
@@ -213,6 +262,7 @@ export function createPlaidService(store, options = {}) {
     createUpdateLinkToken,
     exchangePublicToken,
     fetchAccounts,
+    fetchTransactions,
     removeItem
   };
 }
@@ -233,6 +283,9 @@ export async function handlePlaidHttp(request, env, context, store = new D1Store
   }
   if (request.method === 'GET' && url.pathname === '/api/plaid/accounts') {
     return json(await service.fetchAccounts(context, env));
+  }
+  if (request.method === 'GET' && url.pathname === '/api/plaid/transactions') {
+    return json(await service.fetchTransactions(context, env));
   }
   if (request.method === 'GET' && url.pathname === '/api/plaid/items') {
     return json({ items: await service.listItems(context) });

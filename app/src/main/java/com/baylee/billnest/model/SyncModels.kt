@@ -83,6 +83,16 @@ object SyncMapper {
 
     fun encodeSettings(settings: SharedSettings): String = gson.toJson(settings)
     fun decodeSettings(payloadJson: String): SharedSettings = gson.fromJson(payloadJson, SharedSettings::class.java)
+    fun encodeTransaction(value: FinanceTransaction): String = gson.toJson(value)
+    fun decodeTransaction(value: String): FinanceTransaction = gson.fromJson(value, FinanceTransaction::class.java)
+    fun encodeBudget(value: Budget): String = gson.toJson(value)
+    fun decodeBudget(value: String): Budget = gson.fromJson(value, Budget::class.java)
+    fun encodeDebt(value: Debt): String = gson.toJson(value)
+    fun decodeDebt(value: String): Debt = gson.fromJson(value, Debt::class.java)
+    fun encodeGoal(value: SavingsGoal): String = gson.toJson(value)
+    fun decodeGoal(value: String): SavingsGoal = gson.fromJson(value, SavingsGoal::class.java)
+    fun encodeReservedFund(value: ReservedFund): String = gson.toJson(value)
+    fun decodeReservedFund(value: String): ReservedFund = gson.fromJson(value, ReservedFund::class.java)
 
     fun billMutation(bill: Bill): SyncRecordDraft =
         SyncRecordDraft("bill", bill.id, encodeBill(bill))
@@ -99,4 +109,9 @@ object SyncMapper {
 
     fun settingsMutation(settings: SharedSettings): SyncRecordDraft =
         SyncRecordDraft("settings", "household", encodeSettings(settings))
+    fun transactionMutation(value: FinanceTransaction) = SyncRecordDraft("transaction", value.id, encodeTransaction(value))
+    fun budgetMutation(value: Budget) = SyncRecordDraft("budget", value.id, encodeBudget(value))
+    fun debtMutation(value: Debt) = SyncRecordDraft("debt", value.id, encodeDebt(value))
+    fun goalMutation(value: SavingsGoal) = SyncRecordDraft("savings_goal", value.id, encodeGoal(value))
+    fun reservedFundMutation(value: ReservedFund) = SyncRecordDraft("reserved_fund", value.id, encodeReservedFund(value))
 }

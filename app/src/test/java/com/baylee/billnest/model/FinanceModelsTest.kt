@@ -54,4 +54,46 @@ class FinanceModelsTest {
 
         assertEquals(0, detectPaydayPatterns(transactions).size)
     }
+
+    @Test fun detectsMonthlySubscriptionWithSmallPriceChanges() {
+        val transactions = listOf(
+            FinanceTransaction(name = "Video Stream", amount = 14.99, dateIso = "2026-06-02"),
+            FinanceTransaction(name = "Video Stream", amount = 14.99, dateIso = "2026-07-02"),
+            FinanceTransaction(name = "Video Stream", amount = 15.49, dateIso = "2026-08-02")
+        )
+
+        val suggestions = detectSubscriptions(transactions)
+
+        assertEquals(1, suggestions.size)
+        assertEquals(Frequency.MONTHLY, suggestions.single().frequency)
+        assertEquals(14.99, suggestions.single().typicalAmount, 0.001)
+    }
+
+    @Test fun findsHighConfidenceBillPaymentMatch() {
+        val bill = Bill(name = "Electric Company", amount = 104.50, dueDateIso = "2026-09-10")
+        val transaction = FinanceTransaction(name = "Electric Company Payment", amount = 104.50, dateIso = "2026-09-09")
+
+        val match = findBillMatches(listOf(bill), listOf(transaction)).single()
+
+        assertEquals(bill.id, match.billId)
+        assertEquals(transaction.id, match.transactionId)
+        assertEquals(true, match.highConfidence)
+    }
+
+    @Test fun receivingPaycheckFundsConfiguredGoalsAndReservesOnlyOnce() {
+        val payday = Payday(label = "Work", amount = 1200.0, nextDateIso = "2026-09-11", frequency = Frequency.BIWEEKLY)
+        val data = AppData(
+            paydays = listOf(payday),
+            reservedFunds = listOf(ReservedFund(name = "Insurance", amount = 100.0, paydayContribution = 75.0)),
+            savingsGoals = listOf(SavingsGoal(name = "Emergency", targetAmount = 1000.0, savedAmount = 200.0, paydayContribution = 50.0))
+        )
+
+        val once = applyPaydayContributions(data, payday.id, java.time.LocalDate.parse("2026-09-11"))
+        val twice = applyPaydayContributions(once, payday.id, java.time.LocalDate.parse("2026-09-11"))
+
+        assertEquals(175.0, twice.reservedFunds.single().amount, 0.001)
+        assertEquals(250.0, twice.savingsGoals.single().savedAmount, 0.001)
+        assertEquals("2026-09-25", twice.paydays.single().nextDateIso)
+        assertEquals(1, twice.paydays.single().receivedDates.size)
+    }
 }

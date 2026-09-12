@@ -3,6 +3,8 @@ package com.baylee.billnest.data
 import com.baylee.billnest.model.Account
 import com.baylee.billnest.model.AccountSource
 import com.baylee.billnest.model.AccountType
+import com.baylee.billnest.model.FinanceTransaction
+import com.baylee.billnest.model.TransactionSource
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +47,20 @@ data class BankConnection(
     val createdAt: String = ""
 )
 data class PlaidItemsResponse(val items: List<BankConnection> = emptyList())
+data class PlaidTransactionDto(
+    val transactionId: String = "",
+    val accountId: String = "",
+    val name: String = "Transaction",
+    val amount: Double = 0.0,
+    val date: String = "",
+    val category: String = "Other",
+    val pending: Boolean = false,
+    val income: Boolean = false
+)
+data class PlaidTransactionsResponse(
+    val transactions: List<PlaidTransactionDto> = emptyList(),
+    val issues: List<BankConnectionIssue> = emptyList()
+)
 
 fun bankConnectionDeletePath(itemId: String): String =
     "/api/plaid/items/${URLEncoder.encode(itemId, Charsets.UTF_8.name())}"
@@ -129,6 +145,23 @@ object BankApi {
     suspend fun listBankConnections(backendUrl: String, apiKey: String): List<BankConnection> = withContext(Dispatchers.IO) {
         val json = request(base(backendUrl) + "/api/plaid/items", "GET", null, authToken(apiKey))
         parseBankConnectionsJson(json)
+    }
+
+    suspend fun fetchTransactions(backendUrl: String, apiKey: String): Pair<List<FinanceTransaction>, List<BankConnectionIssue>> = withContext(Dispatchers.IO) {
+        val json = request(base(backendUrl) + "/api/plaid/transactions", "GET", null, authToken(apiKey))
+        val response = gson.fromJson(json, PlaidTransactionsResponse::class.java)
+        response.transactions.filter { !it.pending && it.transactionId.isNotBlank() && it.date.isNotBlank() }.map { dto ->
+            FinanceTransaction(
+                id = "plaid:${dto.transactionId}",
+                name = dto.name,
+                amount = dto.amount,
+                dateIso = dto.date,
+                category = dto.category.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
+                accountId = dto.accountId,
+                source = TransactionSource.PLAID,
+                income = dto.income
+            )
+        } to response.issues
     }
 
     suspend fun disconnectBank(backendUrl: String, apiKey: String, itemId: String) = withContext(Dispatchers.IO) {

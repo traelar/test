@@ -28,6 +28,21 @@ data class PaydayPattern(
     val sampleCount: Int
 )
 
+data class SubscriptionSuggestion(
+    val name: String,
+    val typicalAmount: Double,
+    val frequency: Frequency,
+    val lastDateIso: String,
+    val sampleCount: Int
+)
+
+data class BillMatchSuggestion(
+    val billId: String,
+    val transactionId: String,
+    val confidence: Double,
+    val highConfidence: Boolean
+)
+
 fun detectPaydayPatterns(
     transactions: List<FinanceTransaction>,
     referenceDate: LocalDate = LocalDate.now()
@@ -76,6 +91,71 @@ private fun normalizePayer(name: String): String = name.lowercase()
     .replace(Regex("[^a-z]+"), " ")
     .trim()
     .ifBlank { name.lowercase().trim() }
+
+fun detectSubscriptions(transactions: List<FinanceTransaction>): List<SubscriptionSuggestion> =
+    transactions.filter { !it.transfer && !it.income }.groupBy { normalizeMerchant(it.name) }.mapNotNull { (_, rows) ->
+        val dated = rows.mapNotNull { row -> runCatching { LocalDate.parse(row.dateIso) to row }.getOrNull() }
+            .distinctBy { it.first }.sortedBy { it.first }
+        if (dated.size < 3) return@mapNotNull null
+        val intervals = dated.zipWithNext { a, b -> ChronoUnit.DAYS.between(a.first, b.first).toInt() }.sorted()
+        val medianDays = intervals[intervals.size / 2]
+        val frequency = when (medianDays) {
+            in 25..35 -> Frequency.MONTHLY
+            in 350..380 -> Frequency.YEARLY
+            else -> return@mapNotNull null
+        }
+        val amounts = dated.map { kotlin.math.abs(it.second.amount) }.sorted()
+        val medianAmount = amounts[amounts.size / 2]
+        if (medianAmount <= 0.0 || amounts.any { kotlin.math.abs(it - medianAmount) / medianAmount > 0.20 }) return@mapNotNull null
+        SubscriptionSuggestion(dated.last().second.name, medianAmount, frequency, dated.last().first.toString(), dated.size)
+    }.sortedByDescending { it.typicalAmount }
+
+fun findBillMatches(bills: List<Bill>, transactions: List<FinanceTransaction>): List<BillMatchSuggestion> {
+    val expenses = transactions.filter { !it.transfer && !it.income }
+    return bills.filterNot { it.isPaidFor() }.mapNotNull { bill ->
+        val due = runCatching { bill.dueDate() }.getOrNull() ?: return@mapNotNull null
+        expenses.mapNotNull { transaction ->
+            val date = runCatching { LocalDate.parse(transaction.dateIso) }.getOrNull() ?: return@mapNotNull null
+            val dayGap = kotlin.math.abs(ChronoUnit.DAYS.between(due, date))
+            val amountGap = kotlin.math.abs(transaction.amount - bill.amount)
+            val amountRatio = if (bill.amount > 0) amountGap / bill.amount else 1.0
+            if (dayGap > 7 || amountRatio > 0.20) return@mapNotNull null
+            val billWords = normalizeMerchant(bill.name).split(' ').filter { it.length > 2 }.toSet()
+            val transactionWords = normalizeMerchant(transaction.name).split(' ').filter { it.length > 2 }.toSet()
+            val nameMatch = billWords.intersect(transactionWords).isNotEmpty()
+            val confidence = ((1.0 - amountRatio) * 0.65 + (1.0 - dayGap / 7.0) * 0.20 + if (nameMatch) 0.15 else 0.0).coerceIn(0.0, 1.0)
+            BillMatchSuggestion(bill.id, transaction.id, confidence, confidence >= 0.90)
+        }.maxByOrNull { it.confidence }
+    }
+}
+
+private fun normalizeMerchant(name: String): String = name.lowercase()
+    .replace(Regex("\\d+"), " ")
+    .replace(Regex("[^a-z]+"), " ")
+    .replace(Regex("\\b(payment|purchase|debit|online|pos)\\b"), " ")
+    .trim()
+
+fun applyPaydayContributions(data: AppData, paydayId: String, receivedDate: LocalDate = LocalDate.now()): AppData {
+    val payday = data.paydays.firstOrNull { it.id == paydayId } ?: return data
+    val dateKey = receivedDate.toString()
+    if (dateKey in payday.receivedDates) return data
+    val nextDate = when (payday.frequency) {
+        Frequency.ONE_TIME -> payday.nextDate()
+        Frequency.WEEKLY -> payday.nextDate().plusWeeks(1)
+        Frequency.BIWEEKLY -> payday.nextDate().plusWeeks(2)
+        Frequency.MONTHLY -> payday.nextDate().plusMonths(1)
+        Frequency.YEARLY -> payday.nextDate().plusYears(1)
+    }
+    return data.copy(
+        paydays = data.paydays.map {
+            if (it.id == paydayId) it.copy(nextDateIso = nextDate.toString(), receivedDates = (it.receivedDates + dateKey).distinct()) else it
+        },
+        reservedFunds = data.reservedFunds.map { it.copy(amount = it.amount + it.paydayContribution.coerceAtLeast(0.0)) },
+        savingsGoals = data.savingsGoals.map { goal ->
+            goal.copy(savedAmount = (goal.savedAmount + goal.paydayContribution.coerceAtLeast(0.0)).coerceAtMost(goal.targetAmount))
+        }
+    )
+}
 
 data class Budget(
     val id: String = UUID.randomUUID().toString(),

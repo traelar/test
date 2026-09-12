@@ -23,7 +23,7 @@ fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
         if (rows.isEmpty()) item { Text("No transactions yet. Manual entries will appear here; connected-bank transaction sync is the next data integration step.") }
         items(rows, key = { it.id }) { row -> FinanceRow(row.name, currencyV2(if (row.transfer) 0.0 else row.amount), row.category + when { row.transfer -> " • Transfer"; row.income -> " • Income"; else -> "" }) { vm.deleteTransaction(row.id) } }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.TRANSACTION, data, { editor = false }) { name, amount, option, income ->
+    if (editor) SimpleFinanceEditor(EditorKind.TRANSACTION, data, { editor = false }) { name, amount, option, income, _ ->
         vm.saveTransaction(FinanceTransaction(name = name, amount = amount, dateIso = LocalDate.now().toString(), category = option.ifBlank { if (income) "Income" else "Other" }, income = income))
         editor = false
     }
@@ -36,7 +36,7 @@ fun BudgetsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier)
         if (data.budgets.isEmpty()) item { Text("No budgets yet. Create weekly, biweekly, monthly, yearly, or custom budgets.") }
         items(data.budgets, key = { it.id }) { row -> FinanceRow(row.name, currencyV2(row.amount), row.period.name.replace('_', ' ')) { vm.deleteBudget(row.id) } }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.BUDGET, data, { editor = false }) { name, amount, option, _ ->
+    if (editor) SimpleFinanceEditor(EditorKind.BUDGET, data, { editor = false }) { name, amount, option, _, _ ->
         vm.saveBudget(Budget(name = name, amount = amount, category = option.ifBlank { "Other" }))
         editor = false
     }
@@ -50,7 +50,7 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
         if (data.debts.isEmpty()) item { Text("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
         items(data.debts, key = { it.id }) { row -> FinanceRow(row.name, currencyV2(row.balance), "${row.type.name.replace('_', ' ')} • ${row.apr}% APR") { vm.deleteDebt(row.id) } }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.DEBT, data, { editor = false }) { name, amount, option, _ ->
+    if (editor) SimpleFinanceEditor(EditorKind.DEBT, data, { editor = false }) { name, amount, option, _, _ ->
         val type = runCatching { DebtType.valueOf(option) }.getOrDefault(DebtType.OTHER)
         vm.saveDebt(Debt(name = name, type = type, balance = amount))
         editor = false
@@ -62,10 +62,10 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
     var editor by remember { mutableStateOf(false) }
     FinanceList(modifier, "Savings / Goals", "Add goal", { editor = true }) {
         if (data.savingsGoals.isEmpty()) item { Text("No savings goals yet.") }
-        items(data.savingsGoals, key = { it.id }) { row -> FinanceRow(row.name, "${currencyV2(row.savedAmount)} / ${currencyV2(row.targetAmount)}", row.targetDateIso?.let { "Target $it" } ?: "No target date") { vm.deleteGoal(row.id) } }
+        items(data.savingsGoals, key = { it.id }) { row -> FinanceRow(row.name, "${currencyV2(row.savedAmount)} / ${currencyV2(row.targetAmount)}", (row.targetDateIso?.let { "Target $it" } ?: "No target date") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "") { vm.deleteGoal(row.id) } }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.GOAL, data, { editor = false }) { name, amount, _, _ ->
-        vm.saveGoal(SavingsGoal(name = name, targetAmount = amount)); editor = false
+    if (editor) SimpleFinanceEditor(EditorKind.GOAL, data, { editor = false }) { name, amount, _, _, contribution ->
+        vm.saveGoal(SavingsGoal(name = name, targetAmount = amount, paydayContribution = contribution)); editor = false
     }
 }
 
@@ -78,19 +78,37 @@ fun ReservedFundsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
         items(data.reservedFunds, key = { it.id }) { row ->
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(row.name, style = MaterialTheme.typography.titleMedium); Text(currencyV2(row.amount), style = MaterialTheme.typography.titleLarge)
-                Text(data.accounts.firstOrNull { it.id == row.accountId }?.name ?: "No account linked")
+                Text((data.accounts.firstOrNull { it.id == row.accountId }?.name ?: "No account linked") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "")
                 Row { TextButton({ vm.fundReserved(row.id, 25.0) }) { Text("Add $25") }; TextButton({ vm.fundReserved(row.id, -25.0) }) { Text("Release $25") }; TextButton({ vm.deleteReservedFund(row.id) }) { Text("Delete") } }
             } }
         }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.RESERVE, data, { editor = false }) { name, amount, option, _ ->
-        vm.saveReservedFund(ReservedFund(name = name, amount = amount, accountId = option.ifBlank { null })); editor = false
+    if (editor) SimpleFinanceEditor(EditorKind.RESERVE, data, { editor = false }) { name, amount, option, _, contribution ->
+        vm.saveReservedFund(ReservedFund(name = name, amount = amount, accountId = option.ifBlank { null }, paydayContribution = contribution)); editor = false
+    }
+}
+
+@Composable
+fun SubscriptionsPage(data: AppData, modifier: Modifier = Modifier) {
+    val subscriptions = detectSubscriptions(data.transactions)
+    FinanceList(modifier, "Subscriptions", "", {}) {
+        item { Text("Recurring charges are detected from transaction timing and amount patterns. Nothing is confirmed or added without your approval.") }
+        if (subscriptions.isEmpty()) item { Text("No recurring subscriptions detected yet. Three matching charges are needed.") }
+        items(subscriptions, key = { "${it.name}-${it.frequency}" }) { row ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(row.name, style = MaterialTheme.typography.titleMedium)
+                    Text("${currencyV2(row.typicalAmount)} • ${row.frequency.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                    Text("Detected from ${row.sampleCount} charges • last ${row.lastDateIso}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }
 
 @Composable private fun FinanceList(modifier: Modifier, title: String, action: String, onAdd: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(title, style = MaterialTheme.typography.headlineSmall); Button(onAdd) { Text(action) } } }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(title, style = MaterialTheme.typography.headlineSmall); if (action.isNotBlank()) Button(onAdd) { Text(action) } } }
         content()
     }
 }
@@ -102,15 +120,16 @@ fun ReservedFundsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
     } }
 }
 
-@Composable private fun SimpleFinanceEditor(kind: EditorKind, data: AppData, onDismiss: () -> Unit, onSave: (String, Double, String, Boolean) -> Unit) {
-    var name by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var option by remember { mutableStateOf("") }; var expanded by remember { mutableStateOf(false) }; var income by remember { mutableStateOf(false) }
+@Composable private fun SimpleFinanceEditor(kind: EditorKind, data: AppData, onDismiss: () -> Unit, onSave: (String, Double, String, Boolean, Double) -> Unit) {
+    var name by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var option by remember { mutableStateOf("") }; var expanded by remember { mutableStateOf(false) }; var income by remember { mutableStateOf(false) }; var paydayContribution by remember { mutableStateOf("") }
     val choices = when (kind) { EditorKind.DEBT -> DebtType.entries.map { it.name }; EditorKind.RESERVE -> data.accounts.map { it.id }; else -> emptyList() }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Add ${kind.name.lowercase().replaceFirstChar { it.uppercase() }}") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(name, { name = it }, label = { Text("Name") }); OutlinedTextField(amount, { amount = it }, label = { Text(if (kind == EditorKind.DEBT) "Current balance" else "Amount") })
         if (kind == EditorKind.TRANSACTION || kind == EditorKind.BUDGET) OutlinedTextField(option, { option = it }, label = { Text("Category") })
         if (kind == EditorKind.TRANSACTION) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(income, { income = it }); Text("This is income / a paycheck") }
+        if (kind == EditorKind.GOAL || kind == EditorKind.RESERVE) OutlinedTextField(paydayContribution, { paydayContribution = it }, label = { Text("Add automatically from each payday") })
         if (choices.isNotEmpty()) Box { OutlinedButton({ expanded = true }) { Text(if (kind == EditorKind.DEBT) "Type: ${option.ifBlank { "OTHER" }}" else "Account: ${data.accounts.firstOrNull { it.id == option }?.name ?: "None"}") }; DropdownMenu(expanded, { expanded = false }) { choices.forEach { choice -> DropdownMenuItem({ Text(if (kind == EditorKind.RESERVE) data.accounts.firstOrNull { it.id == choice }?.name ?: choice else choice.replace('_', ' ')) }, { option = choice; expanded = false }) } } }
-    } }, confirmButton = { Button({ amount.toDoubleOrNull()?.takeIf { it >= 0 }?.let { onSave(name.ifBlank { kind.name.lowercase().replaceFirstChar { c -> c.uppercase() } }, it, option, income) } }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
+    } }, confirmButton = { Button({ amount.toDoubleOrNull()?.takeIf { it >= 0 }?.let { onSave(name.ifBlank { kind.name.lowercase().replaceFirstChar { c -> c.uppercase() } }, it, option, income, paydayContribution.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0) } }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 private fun currencyV2(value: Double): String = java.text.NumberFormat.getCurrencyInstance().format(value)

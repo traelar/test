@@ -75,6 +75,10 @@ class MainActivity : FragmentActivity() {
                         reconnectingItemId = null
                         bankIssues = refresh.issues
                         vm.syncPlaidAccounts(refresh.accounts)
+                        runCatching { BankApi.fetchTransactions(url, vm.data.value.backendApiKey) }.onSuccess { (transactions, issues) ->
+                            vm.syncPlaidTransactions(transactions)
+                            bankIssues = (bankIssues + issues).distinctBy { it.itemId }
+                        }
                         toast(if (reconnectItem == null) "Bank connected" else "Bank reconnected")
                     }.onFailure {
                         reconnectingItemId = null
@@ -163,6 +167,10 @@ class MainActivity : FragmentActivity() {
                 .onSuccess { refresh ->
                     bankIssues = refresh.issues
                     vm.syncPlaidAccounts(refresh.accounts)
+                    runCatching { BankApi.fetchTransactions(url, vm.data.value.backendApiKey) }.onSuccess { (transactions, issues) ->
+                        vm.syncPlaidTransactions(transactions)
+                        bankIssues = (bankIssues + issues).distinctBy { it.itemId }
+                    }
                     when {
                         refresh.issues.any { it.requiresReconnect } -> toast("A bank connection needs to be reconnected")
                         refresh.issues.isNotEmpty() -> toast("Some bank connections need attention")
@@ -206,7 +214,7 @@ fun BillNestHome(
     val scope = rememberCoroutineScope()
     val destinations = listOf(
         "Dashboard", "Accounts", "Transactions", "Bills", "Budgets",
-        "Debt", "Savings / Goals", "Reserved Funds", "Income", "Calendar", "Household", "Settings"
+        "Debt", "Savings / Goals", "Reserved Funds", "Subscriptions", "Income", "Calendar", "Household", "Settings"
     )
     var destination by remember { mutableStateOf("Dashboard") }
 
@@ -281,6 +289,7 @@ fun BillNestHome(
                 "Debt" -> DebtPage(data, vm, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
+                "Subscriptions" -> SubscriptionsPage(data, Modifier.padding(pad))
                 "Calendar" -> CalendarPage(data, Modifier.padding(pad))
                 "Income" -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
                 "Household" -> LaunchedEffect(Unit) { context.startActivity(Intent(context, HouseholdActivity::class.java)) }
@@ -385,9 +394,25 @@ fun BillsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
     var category by remember { mutableStateOf("All") }
     val categories = listOf("All") + BillCategories
     val visible = data.bills.filter { category == "All" || it.category == category }.sortedBy { it.dueDate() }
+    val matches = findBillMatches(data.bills, data.transactions)
 
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("All bills", style = MaterialTheme.typography.headlineSmall) }
+        if (matches.isNotEmpty()) {
+            item { Text("Needs review", style = MaterialTheme.typography.titleLarge) }
+            items(matches, key = { "match-${it.billId}-${it.transactionId}" }) { match ->
+                val bill = data.bills.first { it.id == match.billId }
+                val transaction = data.transactions.first { it.id == match.transactionId }
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Possible payment: ${bill.name}", style = MaterialTheme.typography.titleMedium)
+                        Text("${transaction.name} • ${currency(transaction.amount)} • ${prettyDate(LocalDate.parse(transaction.dateIso))}")
+                        Text(if (match.highConfidence) "High-confidence match" else "Review before marking paid", style = MaterialTheme.typography.bodySmall)
+                        Button(onClick = { vm.paid(bill.id) }) { Text("Confirm and mark paid") }
+                    }
+                }
+            }
+        }
         item {
             var expanded by remember { mutableStateOf(false) }
             Box {
@@ -580,6 +605,7 @@ fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, 
                     Text(p.label, style = MaterialTheme.typography.titleMedium)
                     Text(currency(p.amount) + " • " + prettyDate(p.nextDate()) + " • " + p.frequency.name.replace('_', ' '))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { vm.receivePayday(p.id) }) { Text("Pay received") }
                         TextButton(onClick = { onEdit(p) }) { Text("Edit") }
                         TextButton(onClick = { vm.deletePayday(p.id) }) { Text("Delete") }
                     }
