@@ -83,6 +83,13 @@ CREATE TABLE IF NOT EXISTS sync_events (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_mutations (
+  household_id TEXT NOT NULL,
+  mutation_id TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  PRIMARY KEY (household_id, mutation_id)
+);
+
 CREATE TABLE IF NOT EXISTS auth_rate_limits (
   bucket TEXT PRIMARY KEY,
   window_started_ms INTEGER NOT NULL,
