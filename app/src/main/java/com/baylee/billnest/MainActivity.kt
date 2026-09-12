@@ -815,6 +815,9 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                                     if (value == AccountType.SAVINGS || value == AccountType.INVESTMENT) {
                                         role = AccountRole.SAVINGS
                                         includeInSpendable = false
+                                    } else if (value == AccountType.CREDIT) {
+                                        role = AccountRole.CREDIT
+                                        includeInSpendable = false
                                     }
                                     expanded = false
                                 }

@@ -71,6 +71,15 @@ class FinanceModelsTest {
         assertEquals("new-card", twice.single().plaidAccountId)
     }
 
+    @Test fun linkingManualDebtReplacesAutomaticallyCreatedDuplicate() {
+        val automatic = Debt(name = "Bank Card", type = DebtType.CREDIT_CARD, balance = 200.0, plaidAccountId = "card-1")
+        val manual = Debt(name = "My Card", type = DebtType.CREDIT_CARD, balance = 200.0, apr = 29.9, plaidAccountId = "card-1")
+        val result = upsertDebtRecord(listOf(automatic), manual)
+        assertEquals(1, result.size)
+        assertEquals(manual.id, result.single().id)
+        assertEquals(29.9, result.single().apr, 0.001)
+    }
+
     @Test fun transfersDoNotCountAsSpending() {
         val items = listOf(
             FinanceTransaction(name = "Groceries", amount = 80.0, dateIso = "2026-09-12"),

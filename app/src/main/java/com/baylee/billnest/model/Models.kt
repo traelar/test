@@ -4,7 +4,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
-enum class AccountType { CHECKING, SAVINGS, INVESTMENT, CASH, OTHER }
+enum class AccountType { CHECKING, SAVINGS, INVESTMENT, CREDIT, CASH, OTHER }
 enum class AccountSource { MANUAL, PLAID }
 enum class AccountRole { SPENDING, SAVINGS, CREDIT, OTHER }
 
@@ -20,6 +20,7 @@ data class Account(
     val name: String,
     val type: AccountType = AccountType.CHECKING,
     val balance: Double = 0.0,
+    val creditLimit: Double = 0.0,
     val source: AccountSource = AccountSource.MANUAL,
     val plaidAccountId: String? = null,
     val mask: String = "",

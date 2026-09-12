@@ -291,8 +291,26 @@ data class Debt(
     val apr: Double = 0.0,
     val minimumPayment: Double = 0.0,
     val dueDay: Int = 1,
-    val creditLimit: Double = 0.0
+    val creditLimit: Double = 0.0,
+    val plaidAccountId: String? = null
 )
+
+fun mergePlaidCreditDebts(existing: List<Debt>, accounts: List<Account>): List<Debt> {
+    val creditAccounts = accounts.filter { it.source == AccountSource.PLAID && it.type == AccountType.CREDIT && !it.plaidAccountId.isNullOrBlank() }
+    val byPlaidId = creditAccounts.associateBy { it.plaidAccountId!! }
+    val updated = existing.map { debt ->
+        val linked = debt.plaidAccountId?.let(byPlaidId::get)
+        if (linked == null) debt else debt.copy(balance = linked.balance.coerceAtLeast(0.0), creditLimit = linked.creditLimit.coerceAtLeast(0.0))
+    }.toMutableList()
+    val linkedIds = updated.mapNotNull { it.plaidAccountId }.toSet()
+    creditAccounts.filterNot { it.plaidAccountId in linkedIds }.forEach { account ->
+        updated += Debt(name = account.name, type = DebtType.CREDIT_CARD, balance = account.balance.coerceAtLeast(0.0), creditLimit = account.creditLimit.coerceAtLeast(0.0), plaidAccountId = account.plaidAccountId)
+    }
+    return updated
+}
+
+fun upsertDebtRecord(existing: List<Debt>, value: Debt): List<Debt> = existing
+    .filterNot { it.id == value.id || (!value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId) } + value
 
 fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate {
     fun inMonth(month: java.time.YearMonth): LocalDate =

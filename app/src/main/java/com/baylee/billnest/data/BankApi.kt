@@ -17,8 +17,16 @@ fun plaidAccountType(type: String, subtype: String): AccountType = when (subtype
     "checking" -> AccountType.CHECKING
     "savings", "money market" -> AccountType.SAVINGS
     "401k", "403b", "457b", "ira", "roth", "roth 401k", "pension", "retirement", "brokerage" -> AccountType.INVESTMENT
-    else -> if (type.equals("investment", ignoreCase = true)) AccountType.INVESTMENT else AccountType.OTHER
+    "credit card", "paypal" -> AccountType.CREDIT
+    else -> when {
+        type.equals("investment", ignoreCase = true) -> AccountType.INVESTMENT
+        type.equals("credit", ignoreCase = true) -> AccountType.CREDIT
+        else -> AccountType.OTHER
+    }
 }
+
+fun plaidAccountBalance(type: AccountType, current: Double, available: Double?): Double =
+    if (type == AccountType.CREDIT) current else available ?: current
 
 data class PlaidLinkTokenResponse(val linkToken: String = "")
 data class PlaidAccountDto(
@@ -29,6 +37,7 @@ data class PlaidAccountDto(
     val subtype: String = "",
     val current: Double = 0.0,
     val available: Double? = null,
+    val limit: Double? = null,
     val connectionLabel: String? = null
 )
 data class BankConnectionIssue(
@@ -132,20 +141,25 @@ object BankApi {
         val accounts = response.accounts
             .filter {
                 it.type.isBlank() || it.type.equals("depository", ignoreCase = true) ||
-                    it.type.equals("investment", ignoreCase = true)
+                    it.type.equals("investment", ignoreCase = true) || it.type.equals("credit", ignoreCase = true)
             }
             .map { dto ->
                 val accountType = plaidAccountType(dto.type, dto.subtype)
                 Account(
                     name = dto.name,
                     type = accountType,
-                    balance = dto.available ?: dto.current,
+                    balance = plaidAccountBalance(accountType, dto.current, dto.available),
+                    creditLimit = dto.limit ?: 0.0,
                     source = AccountSource.PLAID,
                     plaidAccountId = dto.accountId,
                     mask = dto.mask,
                     connectionLabel = dto.connectionLabel,
-                    role = if (accountType == AccountType.SAVINGS || accountType == AccountType.INVESTMENT) com.baylee.billnest.model.AccountRole.SAVINGS else com.baylee.billnest.model.AccountRole.SPENDING,
-                    includeInSpendable = accountType != AccountType.SAVINGS && accountType != AccountType.INVESTMENT
+                    role = when (accountType) {
+                        AccountType.SAVINGS, AccountType.INVESTMENT -> com.baylee.billnest.model.AccountRole.SAVINGS
+                        AccountType.CREDIT -> com.baylee.billnest.model.AccountRole.CREDIT
+                        else -> com.baylee.billnest.model.AccountRole.SPENDING
+                    },
+                    includeInSpendable = accountType != AccountType.SAVINGS && accountType != AccountType.INVESTMENT && accountType != AccountType.CREDIT
                 )
             }
         BankRefreshResult(accounts, response.issues, response.connectedItems)

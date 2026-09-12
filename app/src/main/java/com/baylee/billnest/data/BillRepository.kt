@@ -155,7 +155,12 @@ class BillRepository(
     }
     fun saveBudget(value: Budget) { update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }; queue(SyncMapper.budgetMutation(value)) }
     fun deleteBudget(id: String) { update { it.copy(budgets = it.budgets.filterNot { row -> row.id == id }) }; queueDelete("budget", id) }
-    fun saveDebt(value: Debt) { update { data -> data.copy(debts = upsert(data.debts, value.id, value) { it.id }) }; queue(SyncMapper.debtMutation(value)) }
+    fun saveDebt(value: Debt) {
+        val removedDuplicateIds = _data.value.debts.filter { it.id != value.id && !value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId }.map { it.id }
+        update { data -> data.copy(debts = upsertDebtRecord(data.debts, value)) }
+        removedDuplicateIds.forEach { queueDelete("debt", it) }
+        queue(SyncMapper.debtMutation(value))
+    }
     fun deleteDebt(id: String) { update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }; queueDelete("debt", id) }
     fun saveGoal(value: SavingsGoal) { update { data -> data.copy(savingsGoals = upsert(data.savingsGoals, value.id, value) { it.id }) }; queue(SyncMapper.goalMutation(value)) }
     fun deleteGoal(id: String) { update { it.copy(savingsGoals = it.savingsGoals.filterNot { row -> row.id == id }) }; queueDelete("savings_goal", id) }
@@ -179,9 +184,12 @@ class BillRepository(
         queueDelete("subscription_preference", merchantKey)
     }
 
-    fun syncPlaidAccounts(incoming: List<Account>, retainMissing: Boolean = false) = update { data ->
-        val merged = mergePlaidAccounts(data.accounts, incoming, retainMissing)
-        data.copy(accounts = merged, plaidConnected = merged.any { it.source == AccountSource.PLAID })
+    fun syncPlaidAccounts(incoming: List<Account>, retainMissing: Boolean = false) {
+        val before = _data.value
+        val merged = mergePlaidAccounts(before.accounts, incoming, retainMissing)
+        val debts = mergePlaidCreditDebts(before.debts, merged)
+        update { it.copy(accounts = merged, debts = debts, plaidConnected = merged.any { account -> account.source == AccountSource.PLAID }) }
+        debts.filter { debt -> before.debts.firstOrNull { it.id == debt.id } != debt }.forEach { queue(SyncMapper.debtMutation(it)) }
     }
 
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }

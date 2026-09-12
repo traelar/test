@@ -91,7 +91,7 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
             } }
         }
     }
-    if (adding || editing != null) DebtEditorDialog(editing, { adding = false; editing = null }) { vm.saveDebt(it); adding = false; editing = null }
+    if (adding || editing != null) DebtEditorDialog(data, editing, { adding = false; editing = null }) { vm.saveDebt(it); adding = false; editing = null }
 }
 
 @Composable
@@ -250,7 +250,7 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
 }
 
 @Composable
-private fun DebtEditorDialog(existing: Debt?, onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
+private fun DebtEditorDialog(data: AppData, existing: Debt?, onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
     var name by remember(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
     var balance by remember(existing?.id) { mutableStateOf(existing?.balance?.toString().orEmpty()) }
     var apr by remember(existing?.id) { mutableStateOf(existing?.apr?.toString().orEmpty()) }
@@ -258,7 +258,10 @@ private fun DebtEditorDialog(existing: Debt?, onDismiss: () -> Unit, onSave: (De
     var creditLimit by remember(existing?.id) { mutableStateOf(existing?.creditLimit?.takeIf { it > 0 }?.toString().orEmpty()) }
     var dueDate by remember(existing?.id) { mutableStateOf(existing?.let { nextDebtDueDate(it).toString() } ?: LocalDate.now().plusDays(7).toString()) }
     var type by remember(existing?.id) { mutableStateOf(existing?.type ?: DebtType.CREDIT_CARD) }
+    var plaidAccountId by remember(existing?.id) { mutableStateOf(existing?.plaidAccountId.orEmpty()) }
     var expanded by remember { mutableStateOf(false) }
+    var accountExpanded by remember { mutableStateOf(false) }
+    val creditAccounts = data.accounts.filter { it.source == AccountSource.PLAID && it.type == AccountType.CREDIT && !it.plaidAccountId.isNullOrBlank() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (existing == null) "Add debt" else "Edit debt") },
@@ -269,12 +272,21 @@ private fun DebtEditorDialog(existing: Debt?, onDismiss: () -> Unit, onSave: (De
             OutlinedTextField(apr, { apr = it }, label = { Text("APR percent") })
             OutlinedTextField(minimum, { minimum = it }, label = { Text("Minimum monthly payment") })
             if (type == DebtType.CREDIT_CARD) OutlinedTextField(creditLimit, { creditLimit = it }, label = { Text("Total credit limit") })
+            if (type == DebtType.CREDIT_CARD && creditAccounts.isNotEmpty()) Box {
+                OutlinedButton({ accountExpanded = true }) { Text("Linked card: ${creditAccounts.firstOrNull { it.plaidAccountId == plaidAccountId }?.name ?: "None"}") }
+                DropdownMenu(accountExpanded, { accountExpanded = false }) {
+                    DropdownMenuItem({ Text("None") }, { plaidAccountId = ""; accountExpanded = false })
+                    creditAccounts.forEach { account -> DropdownMenuItem({ Text(account.name + if (account.mask.isNotBlank()) " ••••${account.mask}" else "") }, {
+                        plaidAccountId = account.plaidAccountId.orEmpty(); balance = account.balance.toString(); creditLimit = account.creditLimit.takeIf { it > 0 }?.toString().orEmpty(); accountExpanded = false
+                    }) }
+                }
+            }
             DatePickerButton("Next due date", dueDate) { dueDate = it }
         } },
         confirmButton = { Button(onClick = {
             balance.toDoubleOrNull()?.let { parsedBalance ->
                 val selectedDueDate = runCatching { LocalDate.parse(dueDate) }.getOrDefault(LocalDate.now().plusDays(7))
-                onSave(Debt(id = existing?.id ?: java.util.UUID.randomUUID().toString(), name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth, creditLimit = if (type == DebtType.CREDIT_CARD) (creditLimit.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0))
+                onSave(Debt(id = existing?.id ?: java.util.UUID.randomUUID().toString(), name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth, creditLimit = if (type == DebtType.CREDIT_CARD) (creditLimit.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0, plaidAccountId = plaidAccountId.ifBlank { null }))
             }
         }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } }

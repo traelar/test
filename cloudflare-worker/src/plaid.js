@@ -82,6 +82,7 @@ export function normalizeAccounts(accounts = [], itemId = null, connectionLabel 
     subtype: account.subtype || '',
     current: Number(account.balances?.current ?? 0),
     available: account.balances?.available == null ? null : Number(account.balances.available),
+    limit: account.balances?.limit == null ? null : Number(account.balances.limit),
     itemId,
     connectionLabel
   }));
