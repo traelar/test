@@ -157,4 +157,63 @@ class TransactionClassificationTest {
 
         assertFalse(visibleIncomeTransactions(listOf(overridden)).any { it.id == overridden.id })
     }
+
+    @Test
+    fun deletingPlaidTransactionRemovesItAndCreatesPersistentTombstone() {
+        val plaid = FinanceTransaction(
+            id = "plaid:test-deposit",
+            name = "Deposit test",
+            amount = -0.01,
+            dateIso = "2026-09-12",
+            source = TransactionSource.PLAID,
+            income = true
+        )
+        val result = deleteFinanceTransaction(
+            AppData(transactions = listOf(plaid)),
+            plaid.id
+        )
+
+        assertFalse(result.transactions.any { it.id == plaid.id })
+        assertTrue(plaid.id in result.deletedPlaidTransactionIds)
+    }
+
+    @Test
+    fun deletingManualTransactionDoesNotCreatePlaidTombstone() {
+        val manual = FinanceTransaction(
+            id = "manual:test-deposit",
+            name = "Manual test",
+            amount = 1.0,
+            dateIso = "2026-09-12",
+            source = TransactionSource.MANUAL,
+            income = true
+        )
+        val result = deleteFinanceTransaction(
+            AppData(transactions = listOf(manual)),
+            manual.id
+        )
+
+        assertFalse(result.transactions.any { it.id == manual.id })
+        assertTrue(result.deletedPlaidTransactionIds.isEmpty())
+    }
+
+    @Test
+    fun plaidRefreshDoesNotRestoreDeletedPlaidTransaction() {
+        val deletedId = "plaid:test-deposit"
+        val incoming = FinanceTransaction(
+            id = deletedId,
+            name = "Deposit test",
+            amount = -0.01,
+            dateIso = "2026-09-12",
+            source = TransactionSource.PLAID,
+            income = true
+        )
+
+        val merged = mergePlaidTransactions(
+            existing = emptyList(),
+            incoming = listOf(incoming),
+            deletedPlaidTransactionIds = setOf(deletedId)
+        )
+
+        assertFalse(merged.any { it.id == deletedId })
+    }
 }
