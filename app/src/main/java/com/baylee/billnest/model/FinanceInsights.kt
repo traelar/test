@@ -2,8 +2,8 @@ package com.baylee.billnest.model
 
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
 import kotlin.math.abs
+import kotlin.math.min
 
 data class MonthlyRecap(
     val month: YearMonth,
@@ -13,7 +13,12 @@ data class MonthlyRecap(
     val income: Double,
     val topCategory: String?,
     val topCategoryAmount: Double,
-    val categoryTotals: Map<String, Double>
+    val categoryTotals: Map<String, Double>,
+    val largestIncreaseCategory: String? = null,
+    val largestIncreaseAmount: Double = 0.0,
+    val assetChange: Double? = null,
+    val debtReduction: Double? = null,
+    val netWorthChange: Double? = null
 )
 
 data class FinancialSnapshot(
@@ -38,6 +43,12 @@ data class DebtPaymentMatch(
     val amount: Double,
     val dateIso: String,
     val confidence: Double
+)
+
+data class DebtPaymentBreakdown(
+    val paymentAmount: Double,
+    val estimatedInterest: Double,
+    val estimatedPrincipal: Double
 )
 
 data class PaycheckPlan(
@@ -72,15 +83,32 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
         YearMonth.from(date) == target
     }
 
-    val currentRows = rowsFor(month)
-    val priorRows = rowsFor(month.minusMonths(1))
-    val categoryTotals = currentRows
+    fun totalsFor(rows: List<FinanceTransaction>): Map<String, Double> = rows
         .groupBy { it.category.ifBlank { "Other" } }
-        .mapValues { (_, rows) -> rows.sumOf { it.amount.coerceAtLeast(0.0) } }
+        .mapValues { (_, grouped) -> grouped.sumOf { it.amount.coerceAtLeast(0.0) } }
         .toList()
         .sortedByDescending { it.second }
         .toMap()
+
+    fun latestSnapshot(target: YearMonth): FinancialSnapshot? = data.financialSnapshots
+        .mapNotNull { snapshot ->
+            val date = runCatching { LocalDate.parse(snapshot.dateIso) }.getOrNull() ?: return@mapNotNull null
+            if (YearMonth.from(date) == target) date to snapshot else null
+        }
+        .maxByOrNull { it.first }
+        ?.second
+
+    val currentRows = rowsFor(month)
+    val priorMonth = month.minusMonths(1)
+    val priorRows = rowsFor(priorMonth)
+    val categoryTotals = totalsFor(currentRows)
+    val priorCategoryTotals = totalsFor(priorRows)
     val top = categoryTotals.maxByOrNull { it.value }
+    val largestIncrease = (categoryTotals.keys + priorCategoryTotals.keys)
+        .map { category -> category to ((categoryTotals[category] ?: 0.0) - (priorCategoryTotals[category] ?: 0.0)) }
+        .filter { it.second > 0.005 }
+        .maxByOrNull { it.second }
+
     val income = data.transactions.filter { row ->
         if (row.transfer) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
@@ -91,6 +119,10 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
     val spending = currentRows.sumOf { it.amount.coerceAtLeast(0.0) }
     val prior = priorRows.sumOf { it.amount.coerceAtLeast(0.0) }
 
+    val currentSnapshot = latestSnapshot(month)
+    val previousSnapshot = latestSnapshot(priorMonth)
+    val hasProgressPair = currentSnapshot != null && previousSnapshot != null
+
     return MonthlyRecap(
         month = month,
         spending = spending,
@@ -99,7 +131,12 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
         income = income,
         topCategory = top?.key,
         topCategoryAmount = top?.value ?: 0.0,
-        categoryTotals = categoryTotals
+        categoryTotals = categoryTotals,
+        largestIncreaseCategory = largestIncrease?.first,
+        largestIncreaseAmount = largestIncrease?.second ?: 0.0,
+        assetChange = if (hasProgressPair) currentSnapshot!!.assets - previousSnapshot!!.assets else null,
+        debtReduction = if (hasProgressPair) previousSnapshot!!.debts - currentSnapshot!!.debts else null,
+        netWorthChange = if (hasProgressPair) currentSnapshot!!.netWorth - previousSnapshot!!.netWorth else null
     )
 }
 
@@ -172,6 +209,21 @@ fun detectDebtPayments(
         }
     }.distinctBy { it.debtId to it.transactionId }
         .sortedByDescending { it.dateIso }
+}
+
+/**
+ * Estimate one month's interest/principal split for a detected payment. This is a planning estimate,
+ * not a lender statement: daily balance changes, fees, grace periods, and lender accrual rules can differ.
+ */
+fun estimateDebtPaymentBreakdown(debt: Debt, paymentAmount: Double): DebtPaymentBreakdown {
+    val payment = paymentAmount.coerceAtLeast(0.0)
+    val estimatedMonthlyInterest = debt.balance.coerceAtLeast(0.0) * (debt.apr.coerceAtLeast(0.0) / 1200.0)
+    val interest = min(payment, estimatedMonthlyInterest)
+    return DebtPaymentBreakdown(
+        paymentAmount = payment,
+        estimatedInterest = interest,
+        estimatedPrincipal = (payment - interest).coerceAtLeast(0.0)
+    )
 }
 
 fun calculateNextPaycheckPlan(
