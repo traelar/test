@@ -77,6 +77,7 @@ data class AppData(
     val debts: List<Debt> = emptyList(),
     val savingsGoals: List<SavingsGoal> = emptyList(),
     val reservedFunds: List<ReservedFund> = emptyList(),
+    val subscriptionPreferences: List<SubscriptionPreference> = emptyList(),
     val backendUrl: String = BILLNEST_BACKEND_URL,
     val backendApiKey: String = "",
     val manualBalance: Double = 0.0,

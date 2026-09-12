@@ -35,4 +35,6 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun saveReservedFund(v: ReservedFund) = repo.saveReservedFund(v)
     fun deleteReservedFund(id: String) = repo.deleteReservedFund(id)
     fun fundReserved(id: String, amount: Double) = repo.fundReserved(id, amount)
+    fun saveSubscriptionPreference(v: SubscriptionPreference) = repo.saveSubscriptionPreference(v)
+    fun deleteSubscriptionPreference(key: String) = repo.deleteSubscriptionPreference(key)
 }

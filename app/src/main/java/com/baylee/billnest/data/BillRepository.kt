@@ -169,6 +169,15 @@ class BillRepository(
         update { data -> data.copy(reservedFunds = data.reservedFunds.map { if (it.id == id) it.copy(amount = (it.amount + amount).coerceAtLeast(0.0)) else it }) }
         _data.value.reservedFunds.firstOrNull { it.id == id }?.let { queue(SyncMapper.reservedFundMutation(it)) }
     }
+    fun saveSubscriptionPreference(value: SubscriptionPreference) {
+        update { data -> data.copy(subscriptionPreferences = upsert(data.subscriptionPreferences, value.merchantKey, value) { it.merchantKey }) }
+        queue(SyncMapper.subscriptionPreferenceMutation(value))
+    }
+
+    fun deleteSubscriptionPreference(merchantKey: String) {
+        update { data -> data.copy(subscriptionPreferences = data.subscriptionPreferences.filterNot { it.merchantKey == merchantKey }) }
+        queueDelete("subscription_preference", merchantKey)
+    }
 
     fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
         val manual = data.accounts.filter { it.source == AccountSource.MANUAL }
@@ -267,6 +276,7 @@ class BillRepository(
             "debt" -> data.copy(debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id })
             "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
             "reserved_fund" -> data.copy(reservedFunds = remoteList(data.reservedFunds, payload?.let(SyncMapper::decodeReservedFund), deletedId) { it.id })
+            "subscription_preference" -> data.copy(subscriptionPreferences = remoteList(data.subscriptionPreferences, payload?.let(SyncMapper::decodeSubscriptionPreference), deletedId) { it.merchantKey })
             else -> data
         } }
     }

@@ -93,6 +93,8 @@ object SyncMapper {
     fun decodeGoal(value: String): SavingsGoal = gson.fromJson(value, SavingsGoal::class.java)
     fun encodeReservedFund(value: ReservedFund): String = gson.toJson(value)
     fun decodeReservedFund(value: String): ReservedFund = gson.fromJson(value, ReservedFund::class.java)
+    fun encodeSubscriptionPreference(value: SubscriptionPreference): String = gson.toJson(value)
+    fun decodeSubscriptionPreference(value: String): SubscriptionPreference = gson.fromJson(value, SubscriptionPreference::class.java)
 
     fun billMutation(bill: Bill): SyncRecordDraft =
         SyncRecordDraft("bill", bill.id, encodeBill(bill))
@@ -114,4 +116,5 @@ object SyncMapper {
     fun debtMutation(value: Debt) = SyncRecordDraft("debt", value.id, encodeDebt(value))
     fun goalMutation(value: SavingsGoal) = SyncRecordDraft("savings_goal", value.id, encodeGoal(value))
     fun reservedFundMutation(value: ReservedFund) = SyncRecordDraft("reserved_fund", value.id, encodeReservedFund(value))
+    fun subscriptionPreferenceMutation(value: SubscriptionPreference) = SyncRecordDraft("subscription_preference", value.merchantKey, encodeSubscriptionPreference(value))
 }

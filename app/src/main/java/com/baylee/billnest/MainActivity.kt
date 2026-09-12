@@ -289,7 +289,7 @@ fun BillNestHome(
                 "Debt" -> DebtPage(data, vm, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
-                "Subscriptions" -> SubscriptionsPage(data, Modifier.padding(pad))
+                "Subscriptions" -> SubscriptionsPage(data, vm, Modifier.padding(pad))
                 "Calendar" -> CalendarPage(data, Modifier.padding(pad))
                 "Income" -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
                 "Household" -> LaunchedEffect(Unit) { context.startActivity(Intent(context, HouseholdActivity::class.java)) }

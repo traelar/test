@@ -96,4 +96,36 @@ class FinanceModelsTest {
         assertEquals("2026-09-25", twice.paydays.single().nextDateIso)
         assertEquals(1, twice.paydays.single().receivedDates.size)
     }
+
+    @Test fun budgetSpendingExcludesIncomeAndTransfers() {
+        val budget = Budget(name = "Food", amount = 300.0, category = "Food", period = BudgetPeriod.MONTHLY)
+        val rows = listOf(
+            FinanceTransaction(name = "Groceries", amount = 82.0, dateIso = "2026-09-03", category = "Food"),
+            FinanceTransaction(name = "Transfer", amount = 100.0, dateIso = "2026-09-04", category = "Food", transfer = true),
+            FinanceTransaction(name = "Refund", amount = 20.0, dateIso = "2026-09-05", category = "Food", income = true),
+            FinanceTransaction(name = "Old groceries", amount = 55.0, dateIso = "2026-08-05", category = "Food")
+        )
+
+        assertEquals(82.0, calculateBudgetSpent(budget, rows, java.time.LocalDate.parse("2026-09-12")), 0.001)
+    }
+
+    @Test fun avalancheCostsLessInterestThanSnowballForMixedDebts() {
+        val debts = listOf(
+            Debt(name = "Small loan", type = DebtType.LOAN, balance = 1800.0, apr = 5.0, minimumPayment = 75.0),
+            Debt(name = "Credit card", type = DebtType.CREDIT_CARD, balance = 5000.0, apr = 24.0, minimumPayment = 150.0)
+        )
+
+        val snowball = calculateDebtStrategy(debts, 200.0, DebtStrategy.SNOWBALL)
+        val avalanche = calculateDebtStrategy(debts, 200.0, DebtStrategy.AVALANCHE)
+
+        assertEquals(true, avalanche.totalInterest < snowball.totalInterest)
+        assertEquals(true, avalanche.months > 0)
+    }
+
+    @Test fun subscriptionPreferenceSuppressesIgnoredSuggestion() {
+        val suggestion = SubscriptionSuggestion("Video Stream", 15.0, Frequency.MONTHLY, "2026-09-01", 3)
+        val ignored = SubscriptionPreference(merchantKey = subscriptionKey(suggestion.name), name = suggestion.name, status = SubscriptionStatus.IGNORED)
+
+        assertEquals(0, visibleSubscriptionSuggestions(listOf(suggestion), listOf(ignored)).size)
+    }
 }

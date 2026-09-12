@@ -7,6 +7,8 @@ import java.util.UUID
 enum class TransactionSource { MANUAL, PLAID }
 enum class DebtType { CREDIT_CARD, LOAN, MORTGAGE, OTHER }
 enum class BudgetPeriod { WEEKLY, BIWEEKLY, MONTHLY, YEARLY, CUSTOM }
+enum class DebtStrategy { SNOWBALL, AVALANCHE }
+enum class SubscriptionStatus { CONFIRMED, IGNORED }
 
 data class FinanceTransaction(
     val id: String = UUID.randomUUID().toString(),
@@ -34,6 +36,21 @@ data class SubscriptionSuggestion(
     val frequency: Frequency,
     val lastDateIso: String,
     val sampleCount: Int
+)
+
+data class SubscriptionPreference(
+    val merchantKey: String,
+    val name: String,
+    val status: SubscriptionStatus,
+    val updatedAtEpochMs: Long = System.currentTimeMillis()
+)
+
+data class DebtStrategyProjection(
+    val strategy: DebtStrategy,
+    val months: Int,
+    val totalInterest: Double,
+    val monthlyBudget: Double,
+    val payoffPossible: Boolean
 )
 
 data class BillMatchSuggestion(
@@ -157,13 +174,87 @@ fun applyPaydayContributions(data: AppData, paydayId: String, receivedDate: Loca
     )
 }
 
+fun calculateBudgetSpent(budget: Budget, transactions: List<FinanceTransaction>, referenceDate: LocalDate = LocalDate.now()): Double {
+    val explicitStart = budget.startDateIso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    val explicitEnd = budget.endDateIso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    val start = explicitStart ?: when (budget.period) {
+        BudgetPeriod.WEEKLY -> referenceDate.minusDays((referenceDate.dayOfWeek.value - 1).toLong())
+        BudgetPeriod.BIWEEKLY -> referenceDate.minusDays(((referenceDate.dayOfYear - 1) % 14).toLong())
+        BudgetPeriod.MONTHLY -> referenceDate.withDayOfMonth(1)
+        BudgetPeriod.YEARLY -> referenceDate.withDayOfYear(1)
+        BudgetPeriod.CUSTOM -> referenceDate
+    }
+    val end = explicitEnd ?: when (budget.period) {
+        BudgetPeriod.WEEKLY -> start.plusDays(6)
+        BudgetPeriod.BIWEEKLY -> start.plusDays(13)
+        BudgetPeriod.MONTHLY -> start.plusMonths(1).minusDays(1)
+        BudgetPeriod.YEARLY -> start.plusYears(1).minusDays(1)
+        BudgetPeriod.CUSTOM -> referenceDate
+    }
+    return transactions.filter { row ->
+        if (row.transfer || row.income || !row.category.equals(budget.category, true)) return@filter false
+        val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
+        !date.isBefore(start) && !date.isAfter(end)
+    }.sumOf { it.amount.coerceAtLeast(0.0) }
+}
+
+fun calculateDebtStrategy(debts: List<Debt>, extraPayment: Double, strategy: DebtStrategy): DebtStrategyProjection {
+    val active = debts.filter { it.balance > 0.0 }.associate { it.id to it.balance }.toMutableMap()
+    val debtById = debts.associateBy { it.id }
+    val monthlyBudget = debts.sumOf { it.minimumPayment.coerceAtLeast(0.0) } + extraPayment.coerceAtLeast(0.0)
+    if (active.isEmpty()) return DebtStrategyProjection(strategy, 0, 0.0, monthlyBudget, true)
+    if (monthlyBudget <= 0.0) return DebtStrategyProjection(strategy, 0, 0.0, monthlyBudget, false)
+    var interestTotal = 0.0
+    var month = 0
+    while (active.isNotEmpty() && month < 1200) {
+        month += 1
+        active.keys.toList().forEach { id ->
+            val interest = active.getValue(id) * ((debtById[id]?.apr ?: 0.0).coerceAtLeast(0.0) / 1200.0)
+            active[id] = active.getValue(id) + interest
+            interestTotal += interest
+        }
+        var remainingBudget = monthlyBudget
+        active.keys.toList().forEach { id ->
+            val minimum = (debtById[id]?.minimumPayment ?: 0.0).coerceAtLeast(0.0)
+            val paid = minOf(active.getValue(id), minimum, remainingBudget)
+            active[id] = active.getValue(id) - paid
+            remainingBudget -= paid
+        }
+        active.entries.removeAll { it.value <= 0.005 }
+        while (remainingBudget > 0.005 && active.isNotEmpty()) {
+            val target = when (strategy) {
+                DebtStrategy.SNOWBALL -> active.minBy { it.value }.key
+                DebtStrategy.AVALANCHE -> active.keys.maxBy { debtById[it]?.apr ?: 0.0 }
+            }
+            val paid = minOf(active.getValue(target), remainingBudget)
+            active[target] = active.getValue(target) - paid
+            remainingBudget -= paid
+            if (active.getValue(target) <= 0.005) active.remove(target)
+        }
+        if (remainingBudget >= monthlyBudget && active.isNotEmpty()) break
+    }
+    return DebtStrategyProjection(strategy, month, interestTotal, monthlyBudget, active.isEmpty())
+}
+
+fun subscriptionKey(name: String): String = name.lowercase().replace(Regex("[^a-z0-9]+"), "").trim()
+
+fun visibleSubscriptionSuggestions(
+    suggestions: List<SubscriptionSuggestion>,
+    preferences: List<SubscriptionPreference>
+): List<SubscriptionSuggestion> {
+    val hidden = preferences.map { it.merchantKey }.toSet()
+    return suggestions.filterNot { subscriptionKey(it.name) in hidden }
+}
+
 data class Budget(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val amount: Double,
     val category: String = "Other",
     val period: BudgetPeriod = BudgetPeriod.MONTHLY,
-    val rollover: Boolean = false
+    val rollover: Boolean = false,
+    val startDateIso: String? = null,
+    val endDateIso: String? = null
 )
 
 data class Debt(

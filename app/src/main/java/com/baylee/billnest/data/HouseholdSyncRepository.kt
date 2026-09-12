@@ -154,6 +154,7 @@ class HouseholdSyncRepository(
             data.debts.forEach { add(SyncMapper.debtMutation(it)) }
             data.savingsGoals.forEach { add(SyncMapper.goalMutation(it)) }
             data.reservedFunds.forEach { add(SyncMapper.reservedFundMutation(it)) }
+            data.subscriptionPreferences.forEach { add(SyncMapper.subscriptionPreferenceMutation(it)) }
         }
         extraDrafts.forEach { draft ->
             if (syncDb.currentVersion(draft.kind, draft.recordId) == 0) {
@@ -183,7 +184,7 @@ class HouseholdSyncRepository(
             "settings" -> if (!change.deleted) {
                 repo.applyRemoteSharedSettings(SyncMapper.decodeSettings(change.payloadJson))
             }
-            "transaction", "budget", "debt", "savings_goal", "reserved_fund" -> repo.applyRemoteFinance(
+            "transaction", "budget", "debt", "savings_goal", "reserved_fund", "subscription_preference" -> repo.applyRemoteFinance(
                 kind = change.kind,
                 payload = if (change.deleted) null else change.payloadJson,
                 deletedId = if (change.deleted) change.recordId else null

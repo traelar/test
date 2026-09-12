@@ -10,6 +10,8 @@ import com.baylee.billnest.model.FinanceTransaction
 import com.baylee.billnest.model.Payday
 import com.baylee.billnest.model.ReservedFund
 import com.baylee.billnest.model.SavingsGoal
+import com.baylee.billnest.model.SubscriptionPreference
+import com.baylee.billnest.model.SubscriptionStatus
 import com.baylee.billnest.model.SyncMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -52,10 +54,12 @@ class SyncMappingTest {
         val debt = Debt(name = "Home", type = DebtType.MORTGAGE, balance = 100000.0)
         val goal = SavingsGoal(name = "Emergency", targetAmount = 3000.0)
         val reserve = ReservedFund(name = "Insurance", paydayContribution = 50.0)
+        val subscription = SubscriptionPreference("video", "Video", SubscriptionStatus.CONFIRMED)
         assertEquals(transaction, SyncMapper.decodeTransaction(SyncMapper.encodeTransaction(transaction)))
         assertEquals(budget, SyncMapper.decodeBudget(SyncMapper.encodeBudget(budget)))
         assertEquals(debt, SyncMapper.decodeDebt(SyncMapper.encodeDebt(debt)))
         assertEquals(goal, SyncMapper.decodeGoal(SyncMapper.encodeGoal(goal)))
         assertEquals(reserve, SyncMapper.decodeReservedFund(SyncMapper.encodeReservedFund(reserve)))
+        assertEquals(subscription, SyncMapper.decodeSubscriptionPreference(SyncMapper.encodeSubscriptionPreference(subscription)))
     }
 }
