@@ -71,10 +71,6 @@ data class BudgetSuggestion(
 )
 
 private val BIWEEKLY_ANCHOR: LocalDate = LocalDate.of(1970, 1, 5)
-private val NON_VARIABLE_CATEGORIES = setOf(
-    "income", "transfer", "savings", "saving", "reserve", "reserved funds",
-    "investment", "retirement", "debt", "debt payment", "credit card payment", "loan payment", "mortgage payment"
-)
 
 fun budgetPeriodWindow(
     budget: Budget,
@@ -155,7 +151,7 @@ fun eligibleVariableSpendingTransactions(
     return data.transactions.filter { row ->
         if (row.transfer || row.income || row.excludedFromSpending || row.id in inferredIncomeIds || row.id in fixedBillIds) return@filter false
         if (row.amount <= 0.0) return@filter false
-        if (row.category.trim().lowercase() in NON_VARIABLE_CATEGORIES) return@filter false
+        if (isNonVariableSpendingCategory(row.category)) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
         !date.isBefore(start) && !date.isAfter(end)
     }.sortedBy { it.dateIso }
@@ -388,7 +384,7 @@ fun calculateVariableSpendingSummary(
         val start = referenceDate.withDayOfMonth(1)
         val end = start.plusMonths(1).minusDays(1)
         val unbudgeted = eligibleVariableSpendingTransactions(data, start, end).sumOf { it.amount }
-        return VariableSpendingSummary(0.0, 0.0, 0.0, unbudgeted, 0.0, if (unbudgeted > 0) BudgetPace.WARNING else BudgetPace.ON_TRACK)
+        return VariableSpendingSummary(0.0, 0.0, 0.0, unbudgeted, 0.0, BudgetPace.ON_TRACK)
     }
     val summaries = data.budgets.map { calculateBudgetSummary(data, it, referenceDate) }
     val assignments = resolveBudgetAssignments(data, referenceDate)
