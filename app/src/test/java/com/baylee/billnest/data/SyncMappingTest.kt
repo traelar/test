@@ -4,6 +4,7 @@ import com.baylee.billnest.model.Account
 import com.baylee.billnest.model.AccountSource
 import com.baylee.billnest.model.Bill
 import com.baylee.billnest.model.Payday
+import com.baylee.billnest.model.SyncMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
