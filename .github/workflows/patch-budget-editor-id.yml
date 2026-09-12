@@ -1,0 +1,39 @@
+name: Apply Budget Editor Compile Fix
+
+on:
+  push:
+    branches: [billnest-apk-build]
+    paths:
+      - '.github/workflows/patch-budget-editor-id.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: billnest-apk-build
+      - name: Replace invalid Budget constructor id generation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/baylee/billnest/BudgetPageV2.kt')
+          text = path.read_text()
+          old = 'id = existing?.id ?: Budget().id,'
+          new = 'id = existing?.id ?: java.util.UUID.randomUUID().toString(),'
+          if old not in text:
+              raise SystemExit('expected Budget() id expression not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit compile fix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/baylee/billnest/BudgetPageV2.kt
+          git commit -m 'fix: generate budget id without invalid constructor'
+          git push origin HEAD:billnest-apk-build
