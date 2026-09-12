@@ -1,16 +1,20 @@
 package com.baylee.billnest
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.baylee.billnest.model.*
 import com.baylee.billnest.ui.MainViewModel
+import com.baylee.billnest.ui.theme.BillNestColors
 import java.time.LocalDate
 
 private enum class EditorKind { TRANSACTION, BUDGET, DEBT, GOAL, RESERVE }
@@ -29,11 +33,47 @@ fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
             else -> true
         }
     }.sortedByDescending { it.dateIso }
+
     FinanceList(modifier, "Transactions", "Add transaction", { editor = true }) {
-        item { OutlinedTextField(query, { query = it }, label = { Text("Search transactions") }, modifier = Modifier.fillMaxWidth()) }
-        item { Box { OutlinedButton(onClick = { filterExpanded = true }) { Text("Show: $typeFilter") }; DropdownMenu(filterExpanded, { filterExpanded = false }) { listOf("All", "Spending", "Income", "Transfers").forEach { choice -> DropdownMenuItem({ Text(choice) }, { typeFilter = choice; filterExpanded = false }) } } } }
-        if (rows.isEmpty()) item { Text("No transactions yet. Add one manually or refresh a connected bank after transaction sync is enabled on the backend.") }
-        items(rows, key = { it.id }) { row -> FinanceRow(row.name, currencyV2(if (row.transfer) 0.0 else row.amount), row.category + when { row.transfer -> " • Transfer"; row.income -> " • Income"; else -> "" }) { vm.deleteTransaction(row.id) } }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search transactions") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        }
+        item {
+            Box {
+                OutlinedButton(onClick = { filterExpanded = true }) { Text("Show: $typeFilter") }
+                DropdownMenu(filterExpanded, { filterExpanded = false }) {
+                    listOf("All", "Spending", "Income", "Transfers").forEach { choice ->
+                        DropdownMenuItem({ Text(choice) }, { typeFilter = choice; filterExpanded = false })
+                    }
+                }
+            }
+        }
+        if (rows.isEmpty()) item { EmptyFinanceState("No transactions match this view yet.") }
+        items(rows, key = { it.id }) { row ->
+            val kind = when {
+                row.transfer -> "Transfer"
+                row.income -> "Income"
+                else -> row.category
+            }
+            val amountColor = when {
+                row.income -> BillNestColors.positive
+                row.transfer -> BillNestColors.info
+                else -> MaterialTheme.colorScheme.onSurface
+            }
+            FinanceRow(
+                title = row.name,
+                amount = if (row.transfer) "Transfer" else currencyV2(row.amount),
+                subtitle = "$kind • ${row.dateIso}",
+                amountColor = amountColor,
+                onDelete = { vm.deleteTransaction(row.id) }
+            )
+        }
     }
     if (editor) SimpleFinanceEditor(EditorKind.TRANSACTION, data, { editor = false }) { name, amount, option, income, _, transfer ->
         vm.saveTransaction(FinanceTransaction(name = name, amount = amount, dateIso = LocalDate.now().toString(), category = option.ifBlank { if (income) "Income" else "Other" }, income = income, transfer = transfer))
@@ -45,10 +85,25 @@ fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
 fun BudgetsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     var editor by remember { mutableStateOf(false) }
     FinanceList(modifier, "Budgets", "Add budget", { editor = true }) {
-        if (data.budgets.isEmpty()) item { Text("No budgets yet. Create weekly, biweekly, monthly, yearly, or custom budgets.") }
+        if (data.budgets.isEmpty()) item { EmptyFinanceState("No budgets yet. Create one to track spending against a real limit.") }
         items(data.budgets, key = { it.id }) { row ->
             val spent = calculateBudgetSpent(row, data.transactions)
-            FinanceRow(row.name, "${currencyV2(spent)} / ${currencyV2(row.amount)}", "${row.period.name.replace('_', ' ')} • ${currencyV2((row.amount - spent).coerceAtLeast(0.0))} remaining") { vm.deleteBudget(row.id) }
+            val progress = if (row.amount > 0) (spent / row.amount).coerceIn(0.0, 1.0).toFloat() else 0f
+            val remaining = (row.amount - spent).coerceAtLeast(0.0)
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.titleMedium)
+                        Text(row.period.name.replace('_', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    }
+                    Text(currencyV2(remaining), style = MaterialTheme.typography.titleLarge, color = if (remaining > 0) BillNestColors.positive else BillNestColors.danger)
+                }
+                Text("${currencyV2(spent)} spent of ${currencyV2(row.amount)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FinanceProgress(progress, if (progress >= .9f) BillNestColors.warning else BillNestColors.accent)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton({ vm.deleteBudget(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
+            }
         }
     }
     if (editor) BudgetEditorDialog({ editor = false }) { vm.saveBudget(it); editor = false }
@@ -62,33 +117,75 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     val extra = extraPayment.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
     val snowball = calculateDebtStrategy(data.debts, extra, DebtStrategy.SNOWBALL)
     val avalanche = calculateDebtStrategy(data.debts, extra, DebtStrategy.AVALANCHE)
+    val totalDebt = data.debts.sumOf { it.balance.coerceAtLeast(0.0) }
+    val creditCards = data.debts.filter { it.type == DebtType.CREDIT_CARD && it.creditLimit > 0.0 }
+    val limits = creditCards.sumOf { it.creditLimit }
+    val used = creditCards.sumOf { it.balance.coerceAtLeast(0.0) }
+    val utilization = if (limits > 0) (used / limits).coerceIn(0.0, 1.0).toFloat() else 0f
+
     FinanceList(modifier, "Debt", "Add debt", { adding = true }) {
-        item { Text("Total debt: ${currencyV2(data.debts.sumOf { it.balance })}", style = MaterialTheme.typography.titleLarge) }
-        val creditCards = data.debts.filter { it.type == DebtType.CREDIT_CARD && it.creditLimit > 0.0 }
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = .55f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = .3f))
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Total debt", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    Text(currencyV2(totalDebt), style = MaterialTheme.typography.headlineMedium)
+                    Text("${data.debts.size} debt account${if (data.debts.size == 1) "" else "s"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (creditCards.isNotEmpty()) item {
-            val limits = creditCards.sumOf { it.creditLimit }
-            val used = creditCards.sumOf { it.balance.coerceAtLeast(0.0) }
-            Text("Credit used: ${currencyV2(used)} of ${currencyV2(limits)} • ${currencyV2((limits - used).coerceAtLeast(0.0))} available")
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Credit utilization", style = MaterialTheme.typography.titleMedium)
+                    Text("${(utilization * 100).toInt()}%", style = MaterialTheme.typography.titleMedium, color = if (utilization >= .5f) BillNestColors.warning else BillNestColors.accent)
+                }
+                FinanceProgress(utilization, if (utilization >= .5f) BillNestColors.warning else BillNestColors.accent)
+                Text("${currencyV2(used)} used • ${currencyV2((limits - used).coerceAtLeast(0.0))} available", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         if (data.debts.isNotEmpty()) item {
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Payoff comparison", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(extraPayment, { extraPayment = it }, label = { Text("Extra payment each month") }, modifier = Modifier.fillMaxWidth())
-                Text(strategyText(snowball))
-                Text(strategyText(avalanche))
+            PremiumFinanceCard {
+                Text("Payoff comparison", style = MaterialTheme.typography.titleLarge)
+                Text("See how an extra monthly payment changes your payoff.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(extraPayment, { extraPayment = it }, label = { Text("Extra payment each month") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StrategyCard(snowball, Modifier.weight(1f))
+                    StrategyCard(avalanche, Modifier.weight(1f))
+                }
                 val savings = snowball.totalInterest - avalanche.totalInterest
-                if (savings > 0.01) Text("Avalanche saves about ${currencyV2(savings)} in interest.")
-            } }
+                if (savings > 0.01) Text("Avalanche saves about ${currencyV2(savings)} in interest.", color = BillNestColors.positive, style = MaterialTheme.typography.labelLarge)
+            }
         }
-        if (data.debts.isEmpty()) item { Text("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
+        if (data.debts.isEmpty()) item { EmptyFinanceState("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
         items(data.debts, key = { it.id }) { row ->
             val due = nextDebtDueDate(row).format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
-            val utilization = if (row.type == DebtType.CREDIT_CARD && row.creditLimit > 0) " • ${((row.balance / row.creditLimit) * 100).coerceAtLeast(0.0).toInt()}% used of ${currencyV2(row.creditLimit)}" else ""
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(row.name, style = MaterialTheme.typography.titleMedium); Text(currencyV2(row.balance), style = MaterialTheme.typography.titleMedium) }
-                Text("${row.type.name.replace('_', ' ')} • ${row.apr}% APR • ${currencyV2(row.minimumPayment)} minimum • Due $due$utilization")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ editing = row }) { Text("Edit") }; TextButton({ vm.deleteDebt(row.id) }) { Text("Delete") } }
-            } }
+            val rowUtil = if (row.type == DebtType.CREDIT_CARD && row.creditLimit > 0) (row.balance / row.creditLimit).coerceIn(0.0, 1.0).toFloat() else null
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.titleMedium)
+                        Text(row.type.name.replace('_', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    }
+                    Text(currencyV2(row.balance), style = MaterialTheme.typography.titleLarge)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FinanceTag("${row.apr}% APR", BillNestColors.warning)
+                    FinanceTag("Due $due", BillNestColors.info)
+                }
+                Text("Minimum ${currencyV2(row.minimumPayment)} / month", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                rowUtil?.let {
+                    FinanceProgress(it, if (it >= .5f) BillNestColors.warning else BillNestColors.accent)
+                    Text("${(it * 100).toInt()}% of ${currencyV2(row.creditLimit)} limit", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton({ editing = row }) { Text("Edit") }
+                    TextButton({ vm.deleteDebt(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
+            }
         }
     }
     if (adding || editing != null) DebtEditorDialog(data, editing, { adding = false; editing = null }) { vm.saveDebt(it); adding = false; editing = null }
@@ -98,8 +195,23 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
 fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     var editor by remember { mutableStateOf(false) }
     FinanceList(modifier, "Savings / Goals", "Add goal", { editor = true }) {
-        if (data.savingsGoals.isEmpty()) item { Text("No savings goals yet.") }
-        items(data.savingsGoals, key = { it.id }) { row -> FinanceRow(row.name, "${currencyV2(row.savedAmount)} / ${currencyV2(row.targetAmount)}", (row.targetDateIso?.let { "Target $it" } ?: "No target date") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "") { vm.deleteGoal(row.id) } }
+        if (data.savingsGoals.isEmpty()) item { EmptyFinanceState("No savings goals yet.") }
+        items(data.savingsGoals, key = { it.id }) { row ->
+            val progress = if (row.targetAmount > 0) (row.savedAmount / row.targetAmount).coerceIn(0.0, 1.0).toFloat() else 0f
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(row.name, style = MaterialTheme.typography.titleMedium)
+                    Text("${(progress * 100).toInt()}%", color = BillNestColors.positive, style = MaterialTheme.typography.titleMedium)
+                }
+                Text("${currencyV2(row.savedAmount)} of ${currencyV2(row.targetAmount)}", style = MaterialTheme.typography.titleLarge)
+                FinanceProgress(progress, BillNestColors.positive)
+                Text(
+                    (row.targetDateIso?.let { "Target $it" } ?: "No target date") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ vm.deleteGoal(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }
+            }
+        }
     }
     if (editor) SimpleFinanceEditor(EditorKind.GOAL, data, { editor = false }) { name, amount, _, _, contribution, _ ->
         vm.saveGoal(SavingsGoal(name = name, targetAmount = amount, paydayContribution = contribution)); editor = false
@@ -110,22 +222,36 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
 fun ReservedFundsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     var editing by remember { mutableStateOf<ReservedFund?>(null) }
     var adding by remember { mutableStateOf(false) }
+    val totalReserved = data.reservedFunds.sumOf { it.amount }
     FinanceList(modifier, "Reserved Funds", "Add reserve", { adding = true }) {
-        item { Text("Reserved: ${currencyV2(data.reservedFunds.sumOf { it.amount })}", style = MaterialTheme.typography.titleLarge) }
-        if (data.reservedFunds.isEmpty()) item { Text("Earmark money for bills or future expenses without removing it from Total Money.") }
+        item {
+            PremiumFinanceCard {
+                Text("Reserved money", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                Text(currencyV2(totalReserved), style = MaterialTheme.typography.headlineSmall)
+                Text("Earmarked without removing it from Total Money.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (data.reservedFunds.isEmpty()) item { EmptyFinanceState("No reserved funds yet.") }
         items(data.reservedFunds, key = { it.id }) { row ->
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(row.name, style = MaterialTheme.typography.titleMedium); Text(currencyV2(row.amount), style = MaterialTheme.typography.titleLarge)
-                Text((data.accounts.firstOrNull { it.id == row.accountId }?.name ?: "No account linked") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "")
+            PremiumFinanceCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(row.name, style = MaterialTheme.typography.titleMedium)
+                    Text(currencyV2(row.amount), style = MaterialTheme.typography.titleLarge)
+                }
+                row.targetAmount?.takeIf { it > 0 }?.let { target ->
+                    val progress = (row.amount / target).coerceIn(0.0, 1.0).toFloat()
+                    FinanceProgress(progress, BillNestColors.info)
+                    Text("Target ${currencyV2(target)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+                Text((data.accounts.firstOrNull { it.id == row.accountId }?.name ?: "No account linked") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton({ editing = row }) { Text("Edit") }
-                    TextButton({ vm.fundReserved(row.id, 25.0) }) { Text("Add $25") }
-                    TextButton({ vm.fundReserved(row.id, -25.0) }) { Text("Release $25") }
+                    TextButton({ vm.fundReserved(row.id, 25.0) }) { Text("+ $25") }
+                    TextButton({ vm.fundReserved(row.id, -25.0) }) { Text("Release") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton({ vm.deleteReservedFund(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton({ vm.deleteReservedFund(row.id) }) { Text("Delete") }
-                }
-            } }
+            }
         }
     }
     if (adding || editing != null) ReserveEditorDialog(data, editing, { adding = false; editing = null }) {
@@ -168,7 +294,7 @@ private fun ReserveEditorDialog(data: AppData, existing: ReservedFund?, onDismis
                     data.bills.forEach { bill -> DropdownMenuItem({ Text(bill.name) }, { billId = bill.id; billExpanded = false }) }
                 }
             }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(consumeWhenPaid, { consumeWhenPaid = it }, enabled = billId.isNotBlank())
                 Text("Use this reserve when the linked bill is paid")
             }
@@ -197,52 +323,130 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
     val subscriptions = visibleSubscriptionSuggestions(detected, data.subscriptionPreferences)
     val confirmed = data.subscriptionPreferences.filter { it.status == SubscriptionStatus.CONFIRMED }
     FinanceList(modifier, "Subscriptions", "", {}) {
-        item { Text("Recurring charges are detected from transaction timing and amount patterns. Nothing is confirmed or added without your approval.") }
+        item {
+            Text(
+                "BillNest detects recurring charges from real transaction patterns. Nothing is confirmed without you.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         if (confirmed.isNotEmpty()) item { Text("Confirmed", style = MaterialTheme.typography.titleMedium) }
         items(confirmed, key = { "confirmed-${it.merchantKey}" }) { row ->
-            FinanceRow(row.name, "Confirmed", "Included in your subscription list") { vm.deleteSubscriptionPreference(row.merchantKey) }
+            FinanceRow(row.name, "Confirmed", "Tracked subscription", BillNestColors.positive) { vm.deleteSubscriptionPreference(row.merchantKey) }
         }
         if (subscriptions.isNotEmpty()) item { Text("Needs review", style = MaterialTheme.typography.titleMedium) }
-        if (subscriptions.isEmpty() && confirmed.isEmpty()) item { Text("No recurring subscriptions detected yet. Three matching charges are needed.") }
+        if (subscriptions.isEmpty() && confirmed.isEmpty()) item { EmptyFinanceState("No recurring subscriptions detected yet. Three matching charges are needed.") }
         items(subscriptions, key = { "${it.name}-${it.frequency}" }) { row ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(row.name, style = MaterialTheme.typography.titleMedium)
-                    Text("${currencyV2(row.typicalAmount)} • ${row.frequency.name.lowercase().replaceFirstChar { it.uppercase() }}")
-                    Text("Detected from ${row.sampleCount} charges • last ${row.lastDateIso}", style = MaterialTheme.typography.bodySmall)
-                    Row {
-                        TextButton(onClick = { vm.saveSubscriptionPreference(SubscriptionPreference(subscriptionKey(row.name), row.name, SubscriptionStatus.CONFIRMED)) }) { Text("Confirm") }
-                        TextButton(onClick = { vm.saveSubscriptionPreference(SubscriptionPreference(subscriptionKey(row.name), row.name, SubscriptionStatus.IGNORED)) }) { Text("Ignore") }
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.titleMedium)
+                        Text("${row.frequency.name.lowercase().replaceFirstChar { it.uppercase() }} subscription", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text(currencyV2(row.typicalAmount), style = MaterialTheme.typography.titleLarge)
+                }
+                Text("Detected from ${row.sampleCount} charges • last ${row.lastDateIso}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row {
+                    TextButton(onClick = { vm.saveSubscriptionPreference(SubscriptionPreference(subscriptionKey(row.name), row.name, SubscriptionStatus.CONFIRMED)) }) { Text("Confirm", color = BillNestColors.positive) }
+                    TextButton(onClick = { vm.saveSubscriptionPreference(SubscriptionPreference(subscriptionKey(row.name), row.name, SubscriptionStatus.IGNORED)) }) { Text("Ignore") }
                 }
             }
         }
     }
 }
 
-@Composable private fun FinanceList(modifier: Modifier, title: String, action: String, onAdd: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(title, style = MaterialTheme.typography.headlineSmall); if (action.isNotBlank()) Button(onAdd) { Text(action) } } }
+@Composable
+private fun FinanceList(modifier: Modifier, title: String, action: String, onAdd: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.headlineSmall)
+                if (action.isNotBlank()) Button(onAdd) { Text(action) }
+            }
+        }
         content()
     }
 }
 
-@Composable private fun FinanceRow(title: String, amount: String, subtitle: String, onDelete: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleMedium); Text(subtitle) }
-        Column { Text(amount, style = MaterialTheme.typography.titleMedium); TextButton(onDelete) { Text("Delete") } }
-    } }
+@Composable
+private fun FinanceRow(title: String, amount: String, subtitle: String, amountColor: Color = MaterialTheme.colorScheme.onSurface, onDelete: () -> Unit) {
+    PremiumFinanceCard {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(amount, style = MaterialTheme.typography.titleMedium, color = amountColor)
+                TextButton(onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
 }
 
-@Composable private fun SimpleFinanceEditor(kind: EditorKind, data: AppData, onDismiss: () -> Unit, onSave: (String, Double, String, Boolean, Double, Boolean) -> Unit) {
+@Composable
+private fun PremiumFinanceCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+        border = BorderStroke(1.dp, BillNestColors.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    }
+}
+
+@Composable
+private fun EmptyFinanceState(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BillNestColors.card)
+    ) {
+        Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun FinanceProgress(progress: Float, color: Color) {
+    LinearProgressIndicator(
+        progress = { progress.coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth().height(8.dp),
+        color = color,
+        trackColor = BillNestColors.cardStrong
+    )
+}
+
+@Composable
+private fun FinanceTag(text: String, color: Color) {
+    Surface(color = color.copy(alpha = .12f), shape = MaterialTheme.shapes.small, border = BorderStroke(1.dp, color.copy(alpha = .28f))) {
+        Text(text, Modifier.padding(horizontal = 9.dp, vertical = 5.dp), color = color, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+private fun StrategyCard(value: DebtStrategyProjection, modifier: Modifier = Modifier) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = BillNestColors.cardRaised)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(value.strategy.name.lowercase().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge)
+            if (value.payoffPossible) {
+                Text("${value.months} mo", style = MaterialTheme.typography.titleLarge)
+                Text("${currencyV2(value.totalInterest)} interest", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("Payment too low", color = BillNestColors.warning, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimpleFinanceEditor(kind: EditorKind, data: AppData, onDismiss: () -> Unit, onSave: (String, Double, String, Boolean, Double, Boolean) -> Unit) {
     var name by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var option by remember { mutableStateOf("") }; var expanded by remember { mutableStateOf(false) }; var income by remember { mutableStateOf(false) }; var paydayContribution by remember { mutableStateOf("") }; var transfer by remember { mutableStateOf(false) }
     val choices = when (kind) { EditorKind.DEBT -> DebtType.entries.map { it.name }; EditorKind.RESERVE -> data.accounts.map { it.id }; else -> emptyList() }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Add ${kind.name.lowercase().replaceFirstChar { it.uppercase() }}") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(name, { name = it }, label = { Text("Name") }); OutlinedTextField(amount, { amount = it }, label = { Text(if (kind == EditorKind.DEBT) "Current balance" else "Amount") })
         if (kind == EditorKind.TRANSACTION || kind == EditorKind.BUDGET) OutlinedTextField(option, { option = it }, label = { Text("Category") })
         if (kind == EditorKind.TRANSACTION) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(income, { income = it; if (it) transfer = false }); Text("This is income / a paycheck") }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(transfer, { transfer = it; if (it) income = false }); Text("This is a transfer between accounts") }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(income, { income = it; if (it) transfer = false }); Text("This is income / a paycheck") }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(transfer, { transfer = it; if (it) income = false }); Text("This is a transfer between accounts") }
         }
         if (kind == EditorKind.GOAL || kind == EditorKind.RESERVE) OutlinedTextField(paydayContribution, { paydayContribution = it }, label = { Text("Add automatically from each payday") })
         if (choices.isNotEmpty()) Box { OutlinedButton({ expanded = true }) { Text(if (kind == EditorKind.DEBT) "Type: ${option.ifBlank { "OTHER" }}" else "Account: ${data.accounts.firstOrNull { it.id == option }?.name ?: "None"}") }; DropdownMenu(expanded, { expanded = false }) { choices.forEach { choice -> DropdownMenuItem({ Text(if (kind == EditorKind.RESERVE) data.accounts.firstOrNull { it.id == choice }?.name ?: choice else choice.replace('_', ' ')) }, { option = choice; expanded = false }) } } }
@@ -315,16 +519,11 @@ private fun BudgetEditorDialog(onDismiss: () -> Unit, onSave: (Budget) -> Unit) 
                 OutlinedTextField(startDate, { startDate = it }, label = { Text("Start date (YYYY-MM-DD)") })
                 OutlinedTextField(endDate, { endDate = it }, label = { Text("End date (YYYY-MM-DD)") })
             }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(rollover, { rollover = it }); Text("Roll unused money forward") }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(rollover, { rollover = it }); Text("Roll unused money forward") }
         } },
         confirmButton = { Button(onClick = { amount.toDoubleOrNull()?.let { onSave(Budget(name = name.ifBlank { category.ifBlank { "Budget" } }, amount = it.coerceAtLeast(0.0), category = category.ifBlank { "Other" }, period = period, rollover = rollover, startDateIso = startDate.takeIf { value -> value.isNotBlank() }, endDateIso = endDate.takeIf { value -> value.isNotBlank() })) } }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
     )
-}
-
-private fun strategyText(value: DebtStrategyProjection): String {
-    val label = value.strategy.name.lowercase().replaceFirstChar { it.uppercase() }
-    return if (value.payoffPossible) "$label: ${value.months} months • ${currencyV2(value.totalInterest)} interest" else "$label: payment is too low to produce a payoff"
 }
 
 private fun currencyV2(value: Double): String = java.text.NumberFormat.getCurrencyInstance().format(value)
