@@ -134,6 +134,24 @@ class BillRepository(
         if (existing?.source == AccountSource.MANUAL) queueDelete("manual_account", id)
     }
 
+    fun saveTransaction(value: FinanceTransaction) = update { data ->
+        data.copy(transactions = upsert(data.transactions, value.id, value) { it.id })
+    }
+    fun deleteTransaction(id: String) = update { it.copy(transactions = it.transactions.filterNot { row -> row.id == id }) }
+    fun saveBudget(value: Budget) = update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }
+    fun deleteBudget(id: String) = update { it.copy(budgets = it.budgets.filterNot { row -> row.id == id }) }
+    fun saveDebt(value: Debt) = update { data -> data.copy(debts = upsert(data.debts, value.id, value) { it.id }) }
+    fun deleteDebt(id: String) = update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }
+    fun saveGoal(value: SavingsGoal) = update { data -> data.copy(savingsGoals = upsert(data.savingsGoals, value.id, value) { it.id }) }
+    fun deleteGoal(id: String) = update { it.copy(savingsGoals = it.savingsGoals.filterNot { row -> row.id == id }) }
+    fun saveReservedFund(value: ReservedFund) = update { data ->
+        data.copy(reservedFunds = upsert(data.reservedFunds, value.id, value.copy(amount = value.amount.coerceAtLeast(0.0))) { it.id })
+    }
+    fun deleteReservedFund(id: String) = update { it.copy(reservedFunds = it.reservedFunds.filterNot { row -> row.id == id }) }
+    fun fundReserved(id: String, amount: Double) = update { data ->
+        data.copy(reservedFunds = data.reservedFunds.map { if (it.id == id) it.copy(amount = (it.amount + amount).coerceAtLeast(0.0)) else it })
+    }
+
     fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
         val manual = data.accounts.filter { it.source == AccountSource.MANUAL }
         val existingPlaid = data.accounts.filter { it.source == AccountSource.PLAID }
@@ -166,14 +184,20 @@ class BillRepository(
 
     fun markPaid(id: String) {
         update { data ->
-            data.copy(bills = data.bills.map { bill ->
-                if (bill.id != id) bill else {
-                    val due = bill.dueDate()
-                    val paid = (bill.paidDates + due.toString()).distinct()
-                    if (bill.frequency == Frequency.ONE_TIME) bill.copy(paidDates = paid)
-                    else bill.copy(dueDateIso = advance(due, bill.frequency).toString(), paidDates = paid)
+            val paidBill = data.bills.firstOrNull { it.id == id }
+            data.copy(
+                bills = data.bills.map { bill ->
+                    if (bill.id != id) bill else {
+                        val due = bill.dueDate()
+                        val paid = (bill.paidDates + due.toString()).distinct()
+                        if (bill.frequency == Frequency.ONE_TIME) bill.copy(paidDates = paid)
+                        else bill.copy(dueDateIso = advance(due, bill.frequency).toString(), paidDates = paid)
+                    }
+                },
+                reservedFunds = data.reservedFunds.map { fund ->
+                    if (fund.billId == id && fund.consumeWhenBillPaid && paidBill != null) fund.copy(amount = (fund.amount - paidBill.amount).coerceAtLeast(0.0)) else fund
                 }
-            })
+            )
         }
         _data.value.bills.firstOrNull { it.id == id }?.let { queue(SyncMapper.billMutation(it)) }
     }
