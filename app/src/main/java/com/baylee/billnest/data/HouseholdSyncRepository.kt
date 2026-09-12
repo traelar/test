@@ -149,7 +149,13 @@ class HouseholdSyncRepository(
             }
         }
         if (syncDb.currentVersion("settings", "household") == 0) {
-            val settings = SyncMapper.settingsMutation(SharedSettings(data.reminderDays))
+            val settings = SyncMapper.settingsMutation(
+                SharedSettings(
+                    reminderDays = data.reminderDays,
+                    accountPreferences = data.accountPreferences,
+                    reservedFunds = data.reservedFunds
+                )
+            )
             syncDb.enqueueCurrent(settings.kind, settings.recordId, false, settings.payloadJson)
         }
     }
