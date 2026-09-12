@@ -33,7 +33,11 @@ fun applyTransactionRules(
 
     transaction.copy(
         name = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() } ?: transaction.name,
-        category = matching.category?.trim()?.takeIf { it.isNotEmpty() } ?: transaction.category,
+        category = if (transaction.userClassificationOverride) {
+            transaction.category
+        } else {
+            matching.category?.trim()?.takeIf { it.isNotEmpty() } ?: transaction.category
+        },
         excludedFromSpending = matching.excludeFromSpending
     )
 }
