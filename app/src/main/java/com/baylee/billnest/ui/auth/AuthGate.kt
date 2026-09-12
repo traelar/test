@@ -1,5 +1,7 @@
 package com.baylee.billnest.ui.auth
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +15,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +34,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.baylee.billnest.ui.AuthViewModel
+import com.baylee.billnest.ui.theme.BillNestColors
 
 private enum class AuthMode { SIGN_IN, CREATE_ACCOUNT, JOIN }
 
@@ -45,23 +50,42 @@ fun AuthGate(vm: AuthViewModel) {
     var setupKey by remember { mutableStateOf("") }
 
     Box(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 20.dp, vertical = 28.dp),
         contentAlignment = Alignment.Center
     ) {
-        Card(Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = BillNestColors.cardRaised),
+            border = BorderStroke(1.dp, BillNestColors.border),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(15.dp)
             ) {
-                Text("BillNest", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "Shared household money, bills, accounts, and cash flow.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        "BillNest",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Your household money, organized.",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        "Bills, accounts, debt, savings, and cash flow in one place.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ModeButton("Sign in", mode == AuthMode.SIGN_IN, Modifier.weight(1f)) {
@@ -80,12 +104,11 @@ fun AuthGate(vm: AuthViewModel) {
 
                 Text(
                     when (mode) {
-                        AuthMode.SIGN_IN -> "Sign in"
-                        AuthMode.CREATE_ACCOUNT -> "Create account"
-                        AuthMode.JOIN -> "Join household"
+                        AuthMode.SIGN_IN -> "Welcome back"
+                        AuthMode.CREATE_ACCOUNT -> "Create your BillNest"
+                        AuthMode.JOIN -> "Join a household"
                     },
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.titleLarge
                 )
 
                 when (mode) {
@@ -109,7 +132,7 @@ fun AuthGate(vm: AuthViewModel) {
                             onValueChange = { setupKey = it },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("First-owner setup key") },
-                            supportingText = { Text("Enter it here if this phone does not already have it saved.") },
+                            supportingText = { Text("Only needed to authorize the first household owner.") },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation()
                         )
@@ -139,7 +162,17 @@ fun AuthGate(vm: AuthViewModel) {
                 )
 
                 error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = .45f))
+                    ) {
+                        Text(
+                            it,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
 
                 Button(
@@ -171,7 +204,7 @@ fun AuthGate(vm: AuthViewModel) {
                 if (mode == AuthMode.CREATE_ACCOUNT) {
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "The setup key is only needed to authorize the first household owner. After that, use your BillNest username and password.",
+                        "After setup, you sign in normally with your BillNest username and password.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -184,7 +217,7 @@ fun AuthGate(vm: AuthViewModel) {
 @Composable
 private fun ModeButton(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     if (selected) {
-        Button(onClick = onClick, modifier = modifier) { Text(label, maxLines = 1) }
+        FilledTonalButton(onClick = onClick, modifier = modifier) { Text(label, maxLines = 1) }
     } else {
         OutlinedButton(onClick = onClick, modifier = modifier) { Text(label, maxLines = 1) }
     }
