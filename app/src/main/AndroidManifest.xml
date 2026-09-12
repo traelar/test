@@ -8,6 +8,7 @@
         android:theme="@style/Theme.BillNest"
         android:usesCleartextTraffic="true">
         <activity android:name=".HouseholdActivity" android:exported="false" />
+        <activity android:name=".V2MainActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".AuthActivity" android:exported="true">
             <intent-filter>
