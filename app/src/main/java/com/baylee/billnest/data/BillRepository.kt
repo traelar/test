@@ -145,13 +145,25 @@ class BillRepository(
         update { data -> data.copy(transactions = upsert(data.transactions, value.id, value) { it.id }) }
         queue(SyncMapper.transactionMutation(value))
     }
-    fun deleteTransaction(id: String) { update { it.copy(transactions = it.transactions.filterNot { row -> row.id == id }) }; queueDelete("transaction", id) }
+
+    fun deleteTransaction(id: String) {
+        update { data -> deleteFinanceTransaction(data, id) }
+        queueDelete("transaction", id)
+    }
+
     fun syncPlaidTransactions(incoming: List<FinanceTransaction>) = update { data ->
         val accountIds = data.accounts.filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
             .associate { it.plaidAccountId!! to it.id }
         val mapped = incoming.map { row -> row.copy(accountId = accountIds[row.accountId] ?: row.accountId) }
-        data.copy(transactions = mergePlaidTransactions(data.transactions, mapped))
+        data.copy(
+            transactions = mergePlaidTransactions(
+                existing = data.transactions,
+                incoming = mapped,
+                deletedPlaidTransactionIds = data.deletedPlaidTransactionIds.toSet()
+            )
+        )
     }
+
     fun saveBudget(value: Budget) { update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }; queue(SyncMapper.budgetMutation(value)) }
     fun deleteBudget(id: String) { update { it.copy(budgets = it.budgets.filterNot { row -> row.id == id }) }; queueDelete("budget", id) }
     fun saveDebt(value: Debt) {
@@ -266,7 +278,11 @@ class BillRepository(
 
     fun applyRemoteFinance(kind: String, payload: String?, deletedId: String?) {
         update { data -> when (kind) {
-            "transaction" -> data.copy(transactions = remoteList(data.transactions, payload?.let(SyncMapper::decodeTransaction), deletedId) { it.id })
+            "transaction" -> {
+                val updated = remoteList(data.transactions, payload?.let(SyncMapper::decodeTransaction), deletedId) { it.id }
+                    .filterNot { it.id in data.deletedPlaidTransactionIds }
+                data.copy(transactions = updated)
+            }
             "budget" -> data.copy(budgets = remoteList(data.budgets, payload?.let(SyncMapper::decodeBudget), deletedId) { it.id })
             "debt" -> data.copy(debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id })
             "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
