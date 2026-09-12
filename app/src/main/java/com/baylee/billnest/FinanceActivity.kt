@@ -279,7 +279,7 @@ fun BillNestHomeV2(
             }
         ) { pad ->
             when (destination) {
-                "Dashboard" -> DashboardV3(data, Modifier.padding(pad))
+                "Dashboard" -> DashboardV4(data, Modifier.padding(pad))
                 "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
                 "Accounts" -> AccountsPageV3(
                     data = data,
