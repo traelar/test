@@ -27,7 +27,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.data.BankConnectionIssue
-import com.baylee.billnest.data.canRefreshBanks
 import com.baylee.billnest.model.*
 import com.baylee.billnest.ui.MainViewModel
 import com.baylee.billnest.ui.theme.BillNestTheme
@@ -282,7 +281,7 @@ fun BillNestHomeV2(
             when (destination) {
                 "Dashboard" -> DashboardV3(data, Modifier.padding(pad))
                 "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
-                "Accounts" -> AccountsPage(
+                "Accounts" -> AccountsPageV3(
                     data = data,
                     vm = vm,
                     bankIssues = bankIssues,
