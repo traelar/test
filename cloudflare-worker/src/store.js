@@ -126,6 +126,102 @@ export class D1Store {
     `).bind(householdId, userId, createdAt).run();
   }
 
+  async upsertPlaidItem(item) {
+    await this.db.prepare(`
+      INSERT INTO plaid_items (item_id, access_token_enc, label, created_at)
+      VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT(item_id) DO UPDATE SET
+        access_token_enc = excluded.access_token_enc,
+        label = excluded.label
+    `).bind(item.itemId, item.accessTokenEnc, item.label || null, item.createdAt).run();
+  }
+
+  async mapPlaidItemToHousehold(mapping) {
+    await this.db.prepare(`
+      INSERT INTO plaid_item_households (item_id, household_id, connected_by_user_id, created_at)
+      VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT(item_id) DO UPDATE SET
+        household_id = excluded.household_id,
+        connected_by_user_id = excluded.connected_by_user_id
+    `).bind(mapping.itemId, mapping.householdId, mapping.connectedByUserId, mapping.createdAt).run();
+  }
+
+  async findPlaidItemAny(itemId) {
+    const row = await this.db.prepare(`
+      SELECT item_id, access_token_enc, label, created_at
+      FROM plaid_items
+      WHERE item_id = ?1
+      LIMIT 1
+    `).bind(itemId).first();
+    if (!row) return null;
+    return {
+      itemId: row.item_id,
+      accessTokenEnc: row.access_token_enc,
+      label: row.label,
+      createdAt: row.created_at
+    };
+  }
+
+  async findPlaidItemForHousehold(householdId, itemId) {
+    const row = await this.db.prepare(`
+      SELECT p.item_id, p.access_token_enc, p.label, p.created_at,
+             ph.household_id, ph.connected_by_user_id
+      FROM plaid_items p
+      JOIN plaid_item_households ph ON ph.item_id = p.item_id
+      WHERE ph.household_id = ?1 AND p.item_id = ?2
+      LIMIT 1
+    `).bind(householdId, itemId).first();
+    if (!row) return null;
+    return {
+      itemId: row.item_id,
+      accessTokenEnc: row.access_token_enc,
+      label: row.label,
+      createdAt: row.created_at,
+      householdId: row.household_id,
+      connectedByUserId: row.connected_by_user_id
+    };
+  }
+
+  async listPlaidItemsAll() {
+    const rows = await this.db.prepare(`
+      SELECT item_id, access_token_enc, label, created_at
+      FROM plaid_items
+      ORDER BY created_at ASC
+    `).all();
+    return (rows.results || []).map((row) => ({
+      itemId: row.item_id,
+      accessTokenEnc: row.access_token_enc,
+      label: row.label,
+      createdAt: row.created_at
+    }));
+  }
+
+  async listPlaidItemsForHousehold(householdId) {
+    const rows = await this.db.prepare(`
+      SELECT p.item_id, p.access_token_enc, p.label, p.created_at,
+             ph.household_id, ph.connected_by_user_id
+      FROM plaid_items p
+      JOIN plaid_item_households ph ON ph.item_id = p.item_id
+      WHERE ph.household_id = ?1
+      ORDER BY p.created_at ASC
+    `).bind(householdId).all();
+    return (rows.results || []).map((row) => ({
+      itemId: row.item_id,
+      accessTokenEnc: row.access_token_enc,
+      label: row.label,
+      createdAt: row.created_at,
+      householdId: row.household_id,
+      connectedByUserId: row.connected_by_user_id
+    }));
+  }
+
+  async deletePlaidItem(itemId) {
+    await this.db.batch([
+      this.db.prepare('DELETE FROM plaid_item_households WHERE item_id = ?1').bind(itemId),
+      this.db.prepare('DELETE FROM plaid_items WHERE item_id = ?1').bind(itemId)
+    ]);
+  }
+
   async createInvite(invite) {
     await this.db.prepare(`
       INSERT INTO household_invites (invite_id, household_id, code_hash, created_by_user_id, created_at, expires_at, redeemed_at)
