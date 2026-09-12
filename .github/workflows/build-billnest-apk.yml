@@ -2,7 +2,7 @@ name: Build BillNest APK
 
 on:
   push:
-    branches: [ billnest-apk-build, billnest-v2-foundation ]
+    branches: [ billnest-apk-build ]
   workflow_dispatch:
 
 jobs:
