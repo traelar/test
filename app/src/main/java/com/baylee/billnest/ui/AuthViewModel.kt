@@ -16,6 +16,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+fun resolveBootstrapServerKey(savedKey: String, enteredKey: String): String {
+    val entered = enteredKey.trim()
+    if (entered.isNotBlank()) return entered
+    val saved = savedKey.trim()
+    if (saved.isNotBlank()) return saved
+    error("Enter the existing BillNest bank server key to set up the first household owner.")
+}
+
 class AuthViewModel(
     private val repo: BillRepository,
     private val sessionStore: SecureSessionStore,
@@ -50,19 +58,21 @@ class AuthViewModel(
         _error.value = null
     }
 
-    fun bootstrap(username: String, password: String, householdName: String) {
+    fun bootstrap(username: String, password: String, householdName: String, enteredServerKey: String = "") {
         launchAuth {
             val data = repo.data.value
-            if (data.backendApiKey.isBlank()) {
-                error("This phone does not have the existing BillNest bank server key needed for first-owner setup.")
-            }
-            api.bootstrap(
+            val bootstrapKey = resolveBootstrapServerKey(data.backendApiKey, enteredServerKey)
+            val session = api.bootstrap(
                 backendUrl = data.backendUrl,
-                legacyApiKey = data.backendApiKey,
+                legacyApiKey = bootstrapKey,
                 username = username,
                 password = password,
                 householdName = householdName
             )
+            if (data.backendApiKey != bootstrapKey) {
+                repo.setBackendApiKey(bootstrapKey)
+            }
+            session
         }
     }
 
