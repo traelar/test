@@ -74,7 +74,7 @@ class MainActivity : FragmentActivity() {
                     }.onSuccess { refresh ->
                         reconnectingItemId = null
                         bankIssues = refresh.issues
-                        vm.syncPlaidAccounts(refresh.accounts)
+                        vm.syncPlaidAccounts(refresh.accounts, retainMissing = refresh.issues.isNotEmpty())
                         runCatching { BankApi.fetchTransactions(url, vm.data.value.backendApiKey) }.onSuccess { (transactions, issues) ->
                             vm.syncPlaidTransactions(transactions)
                             bankIssues = (bankIssues + issues).distinctBy { it.itemId }
@@ -166,7 +166,7 @@ class MainActivity : FragmentActivity() {
             runCatching { BankApi.fetchAccounts(url, vm.data.value.backendApiKey) }
                 .onSuccess { refresh ->
                     bankIssues = refresh.issues
-                    vm.syncPlaidAccounts(refresh.accounts)
+                    vm.syncPlaidAccounts(refresh.accounts, retainMissing = refresh.issues.isNotEmpty())
                     runCatching { BankApi.fetchTransactions(url, vm.data.value.backendApiKey) }.onSuccess { (transactions, issues) ->
                         vm.syncPlaidTransactions(transactions)
                         bankIssues = (bankIssues + issues).distinctBy { it.itemId }

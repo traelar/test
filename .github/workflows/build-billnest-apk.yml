@@ -27,12 +27,16 @@ jobs:
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
+      - name: Verify stable BillNest signing certificate
+        run: |
+          fingerprint=$(keytool -list -v -keystore app/billnest-debug.jks -storepass billnest-debug -alias billnest | sed -n 's/.*SHA256: //p' | head -n 1)
+          test "$fingerprint" = "0A:A4:71:98:7E:2D:6B:34:AD:D2:CE:81:1D:F5:37:FE:8D:AE:20:3A:7B:B4:74:BB:90:CB:96:06:E3:03:65:4C"
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BillNest-v2.0.0-alpha8-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BillNest-v2.0.0-alpha9-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: BillNest-v2.0.0-alpha8-debug-apk
-          path: BillNest-v2.0.0-alpha8-debug.apk
+          name: BillNest-v2.0.0-alpha9-debug-apk
+          path: BillNest-v2.0.0-alpha9-debug.apk
           if-no-files-found: error

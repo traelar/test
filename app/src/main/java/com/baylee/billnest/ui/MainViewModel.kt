@@ -18,7 +18,7 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun updateAccount(a: Account) = repo.updateAccount(a)
     fun moveAccount(id: String, direction: Int) = repo.moveAccount(id, direction)
     fun deleteAccount(id: String) = repo.deleteAccount(id)
-    fun syncPlaidAccounts(items: List<Account>) = repo.syncPlaidAccounts(items)
+    fun syncPlaidAccounts(items: List<Account>, retainMissing: Boolean = false) = repo.syncPlaidAccounts(items, retainMissing)
     fun backendUrl(v: String) = repo.setBackendUrl(v)
     fun backendApiKey(v: String) = repo.setBackendApiKey(v)
     fun balance(v: Double) = repo.setManualBalance(v)

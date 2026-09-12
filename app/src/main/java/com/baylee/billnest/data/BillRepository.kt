@@ -179,21 +179,9 @@ class BillRepository(
         queueDelete("subscription_preference", merchantKey)
     }
 
-    fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
-        val manual = data.accounts.filter { it.source == AccountSource.MANUAL }
-        val existingPlaid = data.accounts.filter { it.source == AccountSource.PLAID }
-            .associateBy { it.plaidAccountId }
-        val synced = incoming.map { fresh ->
-            val existing = existingPlaid[fresh.plaidAccountId]
-            if (existing == null) fresh else fresh.copy(
-                id = existing.id,
-                name = existing.name,
-                role = existing.role,
-                includeInSpendable = existing.includeInSpendable,
-                displayOrder = existing.displayOrder
-            )
-        }
-        data.copy(accounts = (manual + synced).sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name }), plaidConnected = synced.isNotEmpty())
+    fun syncPlaidAccounts(incoming: List<Account>, retainMissing: Boolean = false) = update { data ->
+        val merged = mergePlaidAccounts(data.accounts, incoming, retainMissing)
+        data.copy(accounts = merged, plaidConnected = merged.any { it.source == AccountSource.PLAID })
     }
 
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }

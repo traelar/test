@@ -14,8 +14,8 @@ android {
         applicationId = "com.baylee.billnest"
         minSdk = 28
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.0.0-alpha8"
+        versionCode = 16
+        versionName = "2.0.0-alpha9"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -23,6 +23,19 @@ android {
     }
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    signingConfigs {
+        create("billnestStableDebug") {
+            storeFile = file("billnest-debug.jks")
+            storePassword = "billnest-debug"
+            keyAlias = "billnest"
+            keyPassword = "billnest-debug"
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("billnestStableDebug")
+        }
+    }
 }
 
 kotlin {

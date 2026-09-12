@@ -41,7 +41,7 @@ class HouseholdActivity : FragmentActivity() {
             onBankConnectionsChanged = {
                 val data = app.repo.data.value
                 val refresh = BankApi.fetchAccounts(data.backendUrl, data.backendApiKey)
-                app.repo.syncPlaidAccounts(refresh.accounts)
+                app.repo.syncPlaidAccounts(refresh.accounts, retainMissing = refresh.issues.isNotEmpty())
             },
             onBack = { finish() }
         )

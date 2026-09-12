@@ -246,6 +246,32 @@ fun visibleSubscriptionSuggestions(
     return suggestions.filterNot { subscriptionKey(it.name) in hidden }
 }
 
+fun mergePlaidAccounts(
+    existing: List<Account>,
+    incoming: List<Account>,
+    retainMissing: Boolean = false
+): List<Account> {
+    val existingPlaid = existing.filter { it.source == AccountSource.PLAID }.associateBy { it.plaidAccountId }
+    val manual = existing.filter { it.source == AccountSource.MANUAL }
+    val refreshed = incoming.map { fresh ->
+        val saved = existingPlaid[fresh.plaidAccountId]
+        if (saved == null) fresh else fresh.copy(
+            id = saved.id,
+            name = saved.name,
+            role = saved.role,
+            includeInSpendable = saved.includeInSpendable,
+            displayOrder = saved.displayOrder
+        )
+    }
+    val receivedIds = incoming.mapNotNull { it.plaidAccountId }.toSet()
+    val temporarilyUnavailable = if (retainMissing) {
+        existingPlaid.values.filter { it.plaidAccountId !in receivedIds }
+    } else emptyList()
+    return (manual + refreshed + temporarilyUnavailable)
+        .distinctBy { it.id }
+        .sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name })
+}
+
 data class Budget(
     val id: String = UUID.randomUUID().toString(),
     val name: String,

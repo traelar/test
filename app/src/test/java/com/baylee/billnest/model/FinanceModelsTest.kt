@@ -128,4 +128,34 @@ class FinanceModelsTest {
 
         assertEquals(0, visibleSubscriptionSuggestions(listOf(suggestion), listOf(ignored)).size)
     }
+
+    @Test fun plaidRefreshPreservesSavedAccountOrderAndBehavior() {
+        val existing = listOf(
+            Account(name = "Savings", source = AccountSource.PLAID, plaidAccountId = "save", balance = 10.0, role = AccountRole.SAVINGS, includeInSpendable = false, displayOrder = 0),
+            Account(name = "Checking", source = AccountSource.PLAID, plaidAccountId = "check", balance = 20.0, role = AccountRole.SPENDING, displayOrder = 1)
+        )
+        val incoming = listOf(
+            Account(name = "Checking from bank", source = AccountSource.PLAID, plaidAccountId = "check", balance = 220.0),
+            Account(name = "Savings from bank", source = AccountSource.PLAID, plaidAccountId = "save", balance = 110.0)
+        )
+
+        val result = mergePlaidAccounts(existing, incoming)
+
+        assertEquals(listOf("save", "check"), result.map { it.plaidAccountId })
+        assertEquals(110.0, result[0].balance, 0.001)
+        assertEquals(AccountRole.SAVINGS, result[0].role)
+        assertEquals(false, result[0].includeInSpendable)
+    }
+
+    @Test fun partialPlaidRefreshRetainsAccountThatNeedsReconnect() {
+        val existing = listOf(
+            Account(name = "Working", source = AccountSource.PLAID, plaidAccountId = "working", displayOrder = 0),
+            Account(name = "Needs reconnect", source = AccountSource.PLAID, plaidAccountId = "broken", displayOrder = 1)
+        )
+        val incoming = listOf(Account(name = "Working", source = AccountSource.PLAID, plaidAccountId = "working", balance = 55.0))
+
+        val result = mergePlaidAccounts(existing, incoming, retainMissing = true)
+
+        assertEquals(listOf("working", "broken"), result.map { it.plaidAccountId })
+    }
 }
