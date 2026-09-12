@@ -45,9 +45,11 @@ class EncryptedStore(private val context: Context) {
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         val decoded = String(cipher.doFinal(encrypted), Charsets.UTF_8)
 
-        // Fill fields added after v1.2 before Gson creates the Kotlin data class.
+        // Fill fields added after v1.x before Gson creates the Kotlin data class.
         val root = JsonParser.parseString(decoded).asJsonObject
         if (!root.has("accounts") || root.get("accounts").isJsonNull) root.add("accounts", JsonArray())
+        if (!root.has("accountPreferences") || root.get("accountPreferences").isJsonNull) root.add("accountPreferences", JsonArray())
+        if (!root.has("reservedFunds") || root.get("reservedFunds").isJsonNull) root.add("reservedFunds", JsonArray())
         if (!root.has("backendUrl") || root.get("backendUrl").isJsonNull) root.addProperty("backendUrl", "")
         gson.fromJson(root, AppData::class.java)
     }.getOrElse { AppData() }
