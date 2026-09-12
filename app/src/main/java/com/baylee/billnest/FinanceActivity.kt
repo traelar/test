@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Current BillNest finance shell. This keeps the existing finance screens intact
- * while routing Income to the editable transaction-aware IncomePageV2.
+ * while routing Income and Budgets to the transaction-aware v2 experiences.
  */
 class FinanceActivity : FragmentActivity() {
     private val vm by viewModels<MainViewModel> {
@@ -295,7 +295,7 @@ fun BillNestHomeV2(
                     onRefreshBanks = onRefreshBanks
                 )
                 "Transactions" -> TransactionsPage(data, vm, Modifier.padding(pad))
-                "Budgets" -> BudgetsPage(data, vm, Modifier.padding(pad))
+                "Budgets" -> BudgetsPageV2(data, vm, Modifier.padding(pad))
                 "Debt" -> DebtPage(data, vm, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
