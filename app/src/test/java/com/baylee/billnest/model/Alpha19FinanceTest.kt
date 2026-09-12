@@ -140,6 +140,30 @@ class Alpha19FinanceTest {
     }
 
     @Test
+    fun monthlyRecapReportsLargestCategoryIncreaseAndSnapshotProgress() {
+        val data = AppData(
+            transactions = listOf(
+                FinanceTransaction(id = "aug-food", name = "Food", amount = 100.0, dateIso = "2026-08-10", category = "Groceries"),
+                FinanceTransaction(id = "aug-shop", name = "Shop", amount = 50.0, dateIso = "2026-08-11", category = "Shopping"),
+                FinanceTransaction(id = "sep-food", name = "Food", amount = 150.0, dateIso = "2026-09-10", category = "Groceries"),
+                FinanceTransaction(id = "sep-shop", name = "Shop", amount = 250.0, dateIso = "2026-09-11", category = "Shopping")
+            ),
+            financialSnapshots = listOf(
+                FinancialSnapshot("2026-08-31", "2026-08-31", assets = 2000.0, debts = 800.0, netWorth = 1200.0),
+                FinancialSnapshot("2026-09-12", "2026-09-12", assets = 2200.0, debts = 700.0, netWorth = 1500.0)
+            )
+        )
+
+        val recap = monthlyRecap(data, YearMonth.of(2026, 9))
+
+        assertEquals("Shopping", recap.largestIncreaseCategory)
+        assertEquals(200.0, recap.largestIncreaseAmount, 0.001)
+        assertEquals(200.0, recap.assetChange!!, 0.001)
+        assertEquals(100.0, recap.debtReduction!!, 0.001)
+        assertEquals(300.0, recap.netWorthChange!!, 0.001)
+    }
+
+    @Test
     fun financialSnapshotsReplaceSameDayAndNetWorthHistoryUsesLatestMonthSnapshot() {
         val initial = AppData(
             accounts = listOf(Account(name = "Checking", balance = 2000.0, role = AccountRole.SPENDING)),
@@ -178,6 +202,16 @@ class Alpha19FinanceTest {
         assertEquals(1, result.size)
         assertEquals(debt.id, result.single().debtId)
         assertEquals(250.0, result.single().amount, 0.001)
+    }
+
+    @Test
+    fun debtPaymentBreakdownEstimatesInterestAndPrincipalWhenAprIsKnown() {
+        val debt = Debt(name = "Card", type = DebtType.CREDIT_CARD, balance = 1200.0, apr = 12.0)
+        val split = estimateDebtPaymentBreakdown(debt, paymentAmount = 200.0)
+
+        assertEquals(12.0, split.estimatedInterest, 0.001)
+        assertEquals(188.0, split.estimatedPrincipal, 0.001)
+        assertEquals(200.0, split.paymentAmount, 0.001)
     }
 
     @Test
