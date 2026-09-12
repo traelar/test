@@ -3,7 +3,9 @@ package com.baylee.billnest
 import android.app.Application
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.baylee.billnest.data.BankApi
@@ -26,7 +28,7 @@ class BillNestApp : Application() {
 
         sessionStore = SecureSessionStore(this)
         syncDb = LocalSyncDb(this)
-        repo = BillRepository(this, syncDb)
+        repo = BillRepository(this, syncDb) { enqueueImmediateSync() }
         householdSync = HouseholdSyncRepository(repo, syncDb, sessionStore)
         BankApi.setSessionToken(sessionStore.load()?.sessionToken)
 
@@ -37,11 +39,8 @@ class BillNestApp : Application() {
             reminderRequest
         )
 
-        val syncConstraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
         val syncRequest = PeriodicWorkRequestBuilder<HouseholdSyncWorker>(1, TimeUnit.HOURS)
-            .setConstraints(syncConstraints)
+            .setConstraints(networkConstraints())
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "household-sync",
@@ -49,4 +48,19 @@ class BillNestApp : Application() {
             syncRequest
         )
     }
+
+    fun enqueueImmediateSync() {
+        val request = OneTimeWorkRequestBuilder<HouseholdSyncWorker>()
+            .setConstraints(networkConstraints())
+            .build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "household-sync-now",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
+
+    private fun networkConstraints(): Constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .build()
 }
