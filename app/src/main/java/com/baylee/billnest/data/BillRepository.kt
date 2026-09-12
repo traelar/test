@@ -105,6 +105,19 @@ class BillRepository(
         queue(SyncMapper.accountMutation(account))
     }
 
+    fun moveAccount(accountId: String, direction: Int) {
+        update { data ->
+            val ordered = data.accounts.sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name }).toMutableList()
+            val from = ordered.indexOfFirst { it.id == accountId }
+            val to = (from + direction).coerceIn(0, ordered.lastIndex)
+            if (from < 0 || from == to) return@update data
+            val moved = ordered.removeAt(from)
+            ordered.add(to, moved)
+            data.copy(accounts = ordered.mapIndexed { index, account -> account.copy(displayOrder = index) })
+        }
+        _data.value.accounts.filter { it.source == AccountSource.MANUAL }.forEach { queue(SyncMapper.accountMutation(it)) }
+    }
+
     fun updateAccount(account: Account) {
         update { data -> data.copy(accounts = data.accounts.map { if (it.id == account.id) account else it }) }
         queue(SyncMapper.accountMutation(account))
@@ -127,9 +140,9 @@ class BillRepository(
             .associateBy { it.plaidAccountId }
         val synced = incoming.map { fresh ->
             val existing = existingPlaid[fresh.plaidAccountId]
-            if (existing == null) fresh else fresh.copy(id = existing.id, name = existing.name)
+            if (existing == null) fresh else fresh.copy(\n                id = existing.id,\n                name = existing.name,\n                role = existing.role,\n                includeInSpendable = existing.includeInSpendable,\n                displayOrder = existing.displayOrder\n            )
         }
-        data.copy(accounts = manual + synced, plaidConnected = synced.isNotEmpty())
+        data.copy(accounts = (manual + synced).sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name }), plaidConnected = synced.isNotEmpty())
     }
 
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }
