@@ -1,6 +1,7 @@
 import { httpError } from './http.js';
 
 const encoder = new TextEncoder();
+export const PASSWORD_KDF_ITERATIONS = 100000;
 
 function bytesToBase64(bytes) {
   let binary = '';
@@ -44,7 +45,7 @@ async function derivePassword(password, salt, iterations) {
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password, saltBase64 = null, iterations = 100000) {
+export async function hashPassword(password, saltBase64 = null, iterations = PASSWORD_KDF_ITERATIONS) {
   if (typeof password !== 'string' || password.length < 10 || password.length > 200) {
     throw httpError(400, 'Password must be 10 to 200 characters');
   }
