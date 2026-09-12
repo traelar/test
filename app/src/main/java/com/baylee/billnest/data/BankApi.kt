@@ -52,6 +52,11 @@ fun bankConnectionDeletePath(itemId: String): String =
 fun parseBankConnectionsJson(json: String): List<BankConnection> =
     Gson().fromJson(json, PlaidItemsResponse::class.java).items
 
+fun canRefreshBanks(backendUrl: String): Boolean {
+    val value = backendUrl.trim()
+    return value.startsWith("https://") || value.startsWith("http://")
+}
+
 object BankApi {
     private val gson = Gson()
     @Volatile private var sessionToken: String? = null
