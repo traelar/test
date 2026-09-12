@@ -12,7 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
+import androidx.compose.material3.*\nimport androidx.compose.material.icons.Icons\nimport androidx.compose.material.icons.filled.Menu
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -196,49 +196,76 @@ fun BillNestHome(
         }
     }
 
-    val titles = listOf("Home", "Bills", "Accts", "Cal", "Income", "Settings")
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("BillNest") },
-                actions = {
-                    when (tab) {
-                        1 -> TextButton(onClick = { showAddBill = true }) { Text("+ Bill") }
-                        2 -> TextButton(onClick = { showAddAccount = true }) { Text("+ Account") }
-                        4 -> TextButton(onClick = { showAddPayday = true }) { Text("+ Payday") }
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                titles.forEachIndexed { i, name ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = {},
-                        label = { Text(name, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val destinations = listOf(
+        "Dashboard", "Accounts", "Transactions", "Bills", "Budgets",
+        "Debt", "Savings / Goals", "Income", "Calendar", "Household", "Settings"
+    )
+    var destination by remember { mutableStateOf("Dashboard") }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "BillNest",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+                HorizontalDivider()
+                destinations.forEach { name ->
+                    NavigationDrawerItem(
+                        label = { Text(name) },
+                        selected = destination == name,
+                        onClick = {
+                            destination = name
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
                 }
             }
         }
-    ) { pad ->
-        when (tab) {
-            0 -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
-            1 -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
-            2 -> AccountsPage(
-                data = data,
-                vm = vm,
-                bankIssues = bankIssues,
-                modifier = Modifier.padding(pad),
-                onEdit = { editingAccount = it },
-                onConnectBank = onConnectBank,
-                onReconnectBank = onReconnectBank,
-                onRefreshBanks = onRefreshBanks
-            )
-            3 -> CalendarPage(data, Modifier.padding(pad))
-            4 -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
-            else -> SettingsPage(data, vm, Modifier.padding(pad))
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(destination) },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open navigation")
+                        }
+                    },
+                    actions = {
+                        when (destination) {
+                            "Bills" -> TextButton(onClick = { showAddBill = true }) { Text("+ Bill") }
+                            "Accounts" -> TextButton(onClick = { showAddAccount = true }) { Text("+ Account") }
+                            "Income" -> TextButton(onClick = { showAddPayday = true }) { Text("+ Payday") }
+                        }
+                    }
+                )
+            }
+        ) { pad ->
+            when (destination) {
+                "Dashboard" -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
+                "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
+                "Accounts" -> AccountsPage(
+                    data = data,
+                    vm = vm,
+                    bankIssues = bankIssues,
+                    modifier = Modifier.padding(pad),
+                    onEdit = { editingAccount = it },
+                    onConnectBank = onConnectBank,
+                    onReconnectBank = onReconnectBank,
+                    onRefreshBanks = onRefreshBanks
+                )
+                "Calendar" -> CalendarPage(data, Modifier.padding(pad))
+                "Income" -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
+                "Settings" -> SettingsPage(data, vm, Modifier.padding(pad))
+                else -> V2ComingSoonPage(destination, Modifier.padding(pad))
+            }
         }
     }
 
