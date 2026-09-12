@@ -28,7 +28,7 @@ fun IncomePageV2(
 ) {
     var editingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
     var deletingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
-    val incomeTransactions = visibleIncomeTransactions(data.transactions)
+    val incomeTransactions = recentVisibleIncomeTransactions(data.transactions)
         .sortedByDescending { it.dateIso }
     val detected = detectPaydayPatterns(incomeTransactions).filterNot { suggestion ->
         data.paydays.any { it.label.equals(suggestion.label, true) && it.frequency == suggestion.frequency }
@@ -42,7 +42,7 @@ fun IncomePageV2(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Paydays & income", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "Review bank deposits here. Edit any income to classify it as spending, income, or a transfer between accounts.",
+                    "Showing the latest 30 days of deposits. Older transactions stay saved for history and budgeting.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -74,7 +74,7 @@ fun IncomePageV2(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Text(
-                        "No income transactions are currently classified as income.",
+                        "No income transactions are classified as income in the last 30 days.",
                         Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -149,7 +149,7 @@ fun IncomePageV2(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Detected payday schedules", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Built only from transactions still classified as income.",
+                        "Built from income deposits visible in the last 30 days.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
