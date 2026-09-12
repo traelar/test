@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +27,7 @@ fun IncomePageV2(
     onEditPayday: (Payday) -> Unit
 ) {
     var editingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
+    var deletingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
     val incomeTransactions = visibleIncomeTransactions(data.transactions)
         .sortedByDescending { it.dateIso }
     val detected = detectPaydayPatterns(incomeTransactions).filterNot { suggestion ->
@@ -123,10 +126,18 @@ fun IncomePageV2(
                     }
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(onClick = { editingTransaction = row }) {
                             Text("Edit / Reclassify")
+                        }
+                        IconButton(onClick = { deletingTransaction = row }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "Delete income transaction",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
@@ -203,6 +214,42 @@ fun IncomePageV2(
             onSave = { updated ->
                 vm.saveTransaction(updated)
                 editingTransaction = null
+            }
+        )
+    }
+
+    deletingTransaction?.let { transaction ->
+        AlertDialog(
+            onDismissRequest = { deletingTransaction = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Delete income transaction?") },
+            text = {
+                Text(
+                    if (transaction.source == TransactionSource.PLAID) {
+                        "${transaction.name} will be removed from BillNest and kept hidden when your bank transactions refresh again."
+                    } else {
+                        "${transaction.name} will be permanently removed from BillNest."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteTransaction(transaction.id)
+                        deletingTransaction = null
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingTransaction = null }) { Text("Cancel") }
             }
         )
     }
