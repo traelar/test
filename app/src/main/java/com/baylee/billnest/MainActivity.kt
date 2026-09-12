@@ -319,6 +319,7 @@ fun BillNestHome(
 
 @Composable
 fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (Bill) -> Unit) {
+    var showMoneyBreakdown by remember { mutableStateOf(false) }
     val today = LocalDate.now()
     val month = YearMonth.from(today)
     val money = calculateMoneySummary(data)
@@ -351,6 +352,16 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
                     Text("Bills next 30 days: " + currency(due30Total))
                     Text("Expected income next 30 days: " + currency(incoming30))
                     Text("Available after upcoming bills: " + currency(money.availableAfterUpcomingBills), style = MaterialTheme.typography.titleLarge)
+                    TextButton(onClick = { showMoneyBreakdown = !showMoneyBreakdown }) { Text(if (showMoneyBreakdown) "Hide breakdown" else "View breakdown") }
+                    if (showMoneyBreakdown) Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Spending Money: ${currency(money.spendingMoney)}")
+                            Text("Minus reserves held in spending accounts: ${currency(money.reservedFromSpending)}")
+                            Text("Minus unpaid upcoming bills: ${currency(money.upcomingBills)}")
+                            HorizontalDivider()
+                            Text("Available: ${currency(money.availableAfterUpcomingBills)}", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                     nextPayday?.let { payday ->
                         Text("Next payday: " + prettyDate(payday.nextDate()) + " • " + currency(payday.amount))
                         Text("Bills before payday: " + currency(billsBeforeNextPayday))

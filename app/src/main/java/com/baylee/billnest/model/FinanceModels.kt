@@ -290,7 +290,8 @@ data class Debt(
     val balance: Double,
     val apr: Double = 0.0,
     val minimumPayment: Double = 0.0,
-    val dueDay: Int = 1
+    val dueDay: Int = 1,
+    val creditLimit: Double = 0.0
 )
 
 fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate {
@@ -326,6 +327,8 @@ data class MoneySummary(
     val spendingMoney: Double,
     val savings: Double,
     val reserved: Double,
+    val reservedFromSpending: Double,
+    val upcomingBills: Double,
     val availableAfterUpcomingBills: Double
 )
 
@@ -334,6 +337,10 @@ fun calculateMoneySummary(data: AppData): MoneySummary {
     val savings = data.accounts.filter { it.role == AccountRole.SAVINGS }.sumOf { it.balance }
     val spendable = data.accounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT }.sumOf { it.balance }
     val reserved = data.reservedFunds.sumOf { it.amount.coerceAtLeast(0.0) }
+    val reservedFromSpending = data.reservedFunds.filter { fund ->
+        val linked = fund.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
+        linked == null || (linked.includeInSpendable && linked.role != AccountRole.SAVINGS && linked.role != AccountRole.CREDIT)
+    }.sumOf { it.amount.coerceAtLeast(0.0) }
     val upcoming = data.bills.filterNot { it.isPaidFor() }.sumOf { it.amount.coerceAtLeast(0.0) }
-    return MoneySummary(total, spendable, savings, reserved, spendable - reserved - upcoming)
+    return MoneySummary(total, spendable, savings, reserved, reservedFromSpending, upcoming, spendable - reservedFromSpending - upcoming)
 }

@@ -32,6 +32,16 @@ class FinanceModelsTest {
         assertEquals(1600.0, summary.availableAfterUpcomingBills, 0.001)
     }
 
+    @Test fun reserveLinkedToExcludedSavingsIsNotSubtractedTwice() {
+        val checking = Account(name = "Checking", balance = 1000.0, role = AccountRole.SPENDING)
+        val savings = Account(name = "Savings", balance = 500.0, role = AccountRole.SAVINGS, includeInSpendable = false)
+        val data = AppData(accounts = listOf(checking, savings), reservedFunds = listOf(ReservedFund(name = "Emergency", amount = 300.0, accountId = savings.id)))
+        val summary = calculateMoneySummary(data)
+        assertEquals(300.0, summary.reserved, 0.001)
+        assertEquals(0.0, summary.reservedFromSpending, 0.001)
+        assertEquals(1000.0, summary.availableAfterUpcomingBills, 0.001)
+    }
+
     @Test fun transfersDoNotCountAsSpending() {
         val items = listOf(
             FinanceTransaction(name = "Groceries", amount = 80.0, dateIso = "2026-09-12"),

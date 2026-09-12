@@ -56,13 +56,20 @@ fun BudgetsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier)
 
 @Composable
 fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
-    var editor by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Debt?>(null) }
     var extraPayment by remember { mutableStateOf("") }
     val extra = extraPayment.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
     val snowball = calculateDebtStrategy(data.debts, extra, DebtStrategy.SNOWBALL)
     val avalanche = calculateDebtStrategy(data.debts, extra, DebtStrategy.AVALANCHE)
-    FinanceList(modifier, "Debt", "Add debt", { editor = true }) {
+    FinanceList(modifier, "Debt", "Add debt", { adding = true }) {
         item { Text("Total debt: ${currencyV2(data.debts.sumOf { it.balance })}", style = MaterialTheme.typography.titleLarge) }
+        val creditCards = data.debts.filter { it.type == DebtType.CREDIT_CARD && it.creditLimit > 0.0 }
+        if (creditCards.isNotEmpty()) item {
+            val limits = creditCards.sumOf { it.creditLimit }
+            val used = creditCards.sumOf { it.balance.coerceAtLeast(0.0) }
+            Text("Credit used: ${currencyV2(used)} of ${currencyV2(limits)} • ${currencyV2((limits - used).coerceAtLeast(0.0))} available")
+        }
         if (data.debts.isNotEmpty()) item {
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Payoff comparison", style = MaterialTheme.typography.titleMedium)
@@ -76,10 +83,15 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
         if (data.debts.isEmpty()) item { Text("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
         items(data.debts, key = { it.id }) { row ->
             val due = nextDebtDueDate(row).format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
-            FinanceRow(row.name, currencyV2(row.balance), "${row.type.name.replace('_', ' ')} • ${row.apr}% APR • ${currencyV2(row.minimumPayment)} minimum • Due $due") { vm.deleteDebt(row.id) }
+            val utilization = if (row.type == DebtType.CREDIT_CARD && row.creditLimit > 0) " • ${((row.balance / row.creditLimit) * 100).coerceAtLeast(0.0).toInt()}% used of ${currencyV2(row.creditLimit)}" else ""
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(row.name, style = MaterialTheme.typography.titleMedium); Text(currencyV2(row.balance), style = MaterialTheme.typography.titleMedium) }
+                Text("${row.type.name.replace('_', ' ')} • ${row.apr}% APR • ${currencyV2(row.minimumPayment)} minimum • Due $due$utilization")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ editing = row }) { Text("Edit") }; TextButton({ vm.deleteDebt(row.id) }) { Text("Delete") } }
+            } }
         }
     }
-    if (editor) DebtEditorDialog({ editor = false }) { vm.saveDebt(it); editor = false }
+    if (adding || editing != null) DebtEditorDialog(editing, { adding = false; editing = null }) { vm.saveDebt(it); adding = false; editing = null }
 }
 
 @Composable
@@ -238,29 +250,31 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
 }
 
 @Composable
-private fun DebtEditorDialog(onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var balance by remember { mutableStateOf("") }
-    var apr by remember { mutableStateOf("") }
-    var minimum by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf(LocalDate.now().plusDays(7).toString()) }
-    var type by remember { mutableStateOf(DebtType.CREDIT_CARD) }
+private fun DebtEditorDialog(existing: Debt?, onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
+    var name by remember(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
+    var balance by remember(existing?.id) { mutableStateOf(existing?.balance?.toString().orEmpty()) }
+    var apr by remember(existing?.id) { mutableStateOf(existing?.apr?.toString().orEmpty()) }
+    var minimum by remember(existing?.id) { mutableStateOf(existing?.minimumPayment?.toString().orEmpty()) }
+    var creditLimit by remember(existing?.id) { mutableStateOf(existing?.creditLimit?.takeIf { it > 0 }?.toString().orEmpty()) }
+    var dueDate by remember(existing?.id) { mutableStateOf(existing?.let { nextDebtDueDate(it).toString() } ?: LocalDate.now().plusDays(7).toString()) }
+    var type by remember(existing?.id) { mutableStateOf(existing?.type ?: DebtType.CREDIT_CARD) }
     var expanded by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add debt") },
+        title = { Text(if (existing == null) "Add debt" else "Edit debt") },
         text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Debt name") })
             Box { OutlinedButton(onClick = { expanded = true }) { Text("Type: ${type.name.replace('_', ' ')}") }; DropdownMenu(expanded, { expanded = false }) { DebtType.entries.forEach { choice -> DropdownMenuItem({ Text(choice.name.replace('_', ' ')) }, { type = choice; expanded = false }) } } }
             OutlinedTextField(balance, { balance = it }, label = { Text("Current balance") })
             OutlinedTextField(apr, { apr = it }, label = { Text("APR percent") })
             OutlinedTextField(minimum, { minimum = it }, label = { Text("Minimum monthly payment") })
+            if (type == DebtType.CREDIT_CARD) OutlinedTextField(creditLimit, { creditLimit = it }, label = { Text("Total credit limit") })
             DatePickerButton("Next due date", dueDate) { dueDate = it }
         } },
         confirmButton = { Button(onClick = {
             balance.toDoubleOrNull()?.let { parsedBalance ->
                 val selectedDueDate = runCatching { LocalDate.parse(dueDate) }.getOrDefault(LocalDate.now().plusDays(7))
-                onSave(Debt(name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth))
+                onSave(Debt(id = existing?.id ?: java.util.UUID.randomUUID().toString(), name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth, creditLimit = if (type == DebtType.CREDIT_CARD) (creditLimit.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0))
             }
         }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
