@@ -1,4 +1,5 @@
 import { authenticateSession, getBearerToken, handleAuthHttp } from './auth.js';
+import { PASSWORD_KDF_ITERATIONS } from './crypto.js';
 import { handleHouseholdHttp } from './households.js';
 import { handlePlaidHttp, normalizeAccounts, encryptToken, decryptToken } from './plaid.js';
 import { ensureSchema } from './schema.js';
@@ -25,7 +26,14 @@ async function authorizeApiRequest(request, env) {
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: json({}).headers });
-  if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'billnest-cloudflare', storage: 'd1' });
+  if (request.method === 'GET' && url.pathname === '/health') {
+    return json({
+      ok: true,
+      service: 'billnest-cloudflare',
+      storage: 'd1',
+      authKdfIterations: PASSWORD_KDF_ITERATIONS
+    });
+  }
   if (!url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
   await ensureSchema(env);
