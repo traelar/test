@@ -150,6 +150,9 @@ class HouseholdSyncRepository(
         }
         val extraDrafts = buildList {
             data.transactions.forEach { add(SyncMapper.transactionMutation(it)) }
+            data.transactionRules.forEach { add(SyncMapper.transactionRuleMutation(it)) }
+            data.transactionTombstones.forEach { add(SyncMapper.transactionTombstoneMutation(it)) }
+            data.financialSnapshots.forEach { add(SyncMapper.financialSnapshotMutation(it)) }
             data.budgets.forEach { add(SyncMapper.budgetMutation(it)) }
             data.budgetTransactionOverrides.forEach { add(SyncMapper.budgetOverrideMutation(it)) }
             data.budgetAdjustments.forEach { add(SyncMapper.budgetAdjustmentMutation(it)) }
@@ -186,7 +189,9 @@ class HouseholdSyncRepository(
             "settings" -> if (!change.deleted) {
                 repo.applyRemoteSharedSettings(SyncMapper.decodeSettings(change.payloadJson))
             }
-            "transaction", "budget", "budget_override", "budget_adjustment", "debt", "savings_goal", "reserved_fund", "subscription_preference" -> repo.applyRemoteFinance(
+            "transaction", "transaction_rule", "transaction_tombstone", "financial_snapshot",
+            "budget", "budget_override", "budget_adjustment", "debt", "savings_goal",
+            "reserved_fund", "subscription_preference" -> repo.applyRemoteFinance(
                 kind = change.kind,
                 payload = if (change.deleted) null else change.payloadJson,
                 deletedId = if (change.deleted) change.recordId else null
