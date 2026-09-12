@@ -1,6 +1,7 @@
 package com.baylee.billnest.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,5 +52,58 @@ class TransactionClassificationTest {
         assertEquals("checking", merged.transferToAccountId)
         assertTrue(merged.userClassificationOverride)
         assertEquals("Bank transfer deposit", merged.name)
+    }
+
+    @Test
+    fun reclassifyIncomeAsTransferSetsFromAndToAccounts() {
+        val original = FinanceTransaction(
+            id = "plaid:income-1",
+            name = "ACH deposit",
+            amount = -400.0,
+            dateIso = "2026-09-11",
+            category = "Income",
+            accountId = "checking",
+            source = TransactionSource.PLAID,
+            income = true
+        )
+
+        val updated = reclassifyTransaction(
+            original,
+            TransactionClassification.TRANSFER,
+            fromAccountId = "savings",
+            toAccountId = "checking",
+            spendingCategory = "Other"
+        )
+
+        assertTrue(updated.transfer)
+        assertFalse(updated.income)
+        assertEquals("Transfer", updated.category)
+        assertEquals("savings", updated.transferFromAccountId)
+        assertEquals("checking", updated.transferToAccountId)
+        assertTrue(updated.userClassificationOverride)
+    }
+
+    @Test
+    fun reclassifyingBackToIncomeClearsTransferAccounts() {
+        val original = FinanceTransaction(
+            id = "plaid:transfer-1",
+            name = "Deposit",
+            amount = -250.0,
+            dateIso = "2026-09-11",
+            category = "Transfer",
+            transfer = true,
+            transferFromAccountId = "savings",
+            transferToAccountId = "checking",
+            userClassificationOverride = true
+        )
+
+        val updated = reclassifyTransaction(original, TransactionClassification.INCOME)
+
+        assertFalse(updated.transfer)
+        assertTrue(updated.income)
+        assertEquals("Income", updated.category)
+        assertEquals(null, updated.transferFromAccountId)
+        assertEquals(null, updated.transferToAccountId)
+        assertTrue(updated.userClassificationOverride)
     }
 }
