@@ -89,6 +89,14 @@ fun canRefreshBanks(backendUrl: String): Boolean {
     return value.startsWith("https://") || value.startsWith("http://")
 }
 
+fun isPlaidTransferCategory(category: String): Boolean {
+    val normalized = category.trim()
+        .replace('_', ' ')
+        .lowercase()
+        .replace(Regex("\\s+"), " ")
+    return normalized == "transfer" || normalized.startsWith("transfer ")
+}
+
 object BankApi {
     private val gson = Gson()
     @Volatile private var sessionToken: String? = null
@@ -174,6 +182,7 @@ object BankApi {
         val json = request(base(backendUrl) + "/api/plaid/transactions", "GET", null, authToken(apiKey))
         val response = gson.fromJson(json, PlaidTransactionsResponse::class.java)
         response.transactions.filter { !it.pending && it.transactionId.isNotBlank() && it.date.isNotBlank() }.map { dto ->
+            val transfer = isPlaidTransferCategory(dto.category)
             FinanceTransaction(
                 id = "plaid:${dto.transactionId}",
                 name = dto.name,
@@ -182,7 +191,8 @@ object BankApi {
                 category = dto.category.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
                 accountId = dto.accountId,
                 source = TransactionSource.PLAID,
-                income = dto.income
+                transfer = transfer,
+                income = dto.income && !transfer
             )
         } to response.issues
     }
