@@ -4,6 +4,7 @@ import { handleHouseholdHttp } from './households.js';
 import { handlePlaidHttp, normalizeAccounts, encryptToken, decryptToken } from './plaid.js';
 import { ensureSchema } from './schema.js';
 import { handleSyncHttp } from './sync.js';
+import { handleTransactionsHttp, syncAllHouseholdTransactions } from './transactions.js';
 
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -49,6 +50,9 @@ async function route(request, env) {
   const syncResponse = await handleSyncHttp(request, env, context);
   if (syncResponse) return syncResponse;
 
+  const transactionResponse = await handleTransactionsHttp(request, env, context);
+  if (transactionResponse) return transactionResponse;
+
   const plaidResponse = await handlePlaidHttp(request, env, context);
   if (plaidResponse) return plaidResponse;
 
@@ -65,6 +69,10 @@ export default {
         plaidErrorCode: error.plaid?.error_code || null
       }, error.status || 500);
     }
+  },
+
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(syncAllHouseholdTransactions(env));
   }
 };
 
