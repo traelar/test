@@ -2,6 +2,7 @@ package com.baylee.billnest
 
 import android.Manifest
 import android.app.DatePickerDialog
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -193,6 +194,7 @@ fun BillNestHome(
     var editingPayday by remember { mutableStateOf<Payday?>(null) }
     var editingAccount by remember { mutableStateOf<Account?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -204,7 +206,7 @@ fun BillNestHome(
     val scope = rememberCoroutineScope()
     val destinations = listOf(
         "Dashboard", "Accounts", "Transactions", "Bills", "Budgets",
-        "Debt", "Savings / Goals", "Income", "Calendar", "Household", "Settings"
+        "Debt", "Savings / Goals", "Reserved Funds", "Income", "Calendar", "Household", "Settings"
     )
     var destination by remember { mutableStateOf("Dashboard") }
 
@@ -265,8 +267,14 @@ fun BillNestHome(
                     onReconnectBank = onReconnectBank,
                     onRefreshBanks = onRefreshBanks
                 )
+                "Transactions" -> TransactionsPage(data, vm, Modifier.padding(pad))
+                "Budgets" -> BudgetsPage(data, vm, Modifier.padding(pad))
+                "Debt" -> DebtPage(data, vm, Modifier.padding(pad))
+                "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
+                "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
                 "Calendar" -> CalendarPage(data, Modifier.padding(pad))
                 "Income" -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
+                "Household" -> LaunchedEffect(Unit) { context.startActivity(Intent(context, HouseholdActivity::class.java)) }
                 "Settings" -> SettingsPage(data, vm, Modifier.padding(pad))
                 else -> V2ComingSoonPage(destination, Modifier.padding(pad))
             }
@@ -295,7 +303,8 @@ fun BillNestHome(
 fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (Bill) -> Unit) {
     val today = LocalDate.now()
     val month = YearMonth.from(today)
-    val balance = if (data.accounts.isNotEmpty()) data.accounts.sumOf { it.balance } else data.manualBalance
+    val money = calculateMoneySummary(data)
+    val balance = if (data.accounts.isNotEmpty()) money.totalMoney else data.manualBalance
     val unpaid = data.bills.filter { !it.isPaidFor() }
     val overdue = unpaid.filter { it.dueDate().isBefore(today) }
     val due30 = unpaid.filter { !it.dueDate().isBefore(today) && ChronoUnit.DAYS.between(today, it.dueDate()) <= 30 }
@@ -318,9 +327,12 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("Across ${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
                     Text(currency(balance), style = MaterialTheme.typography.headlineMedium)
+                    Text("Spending Money: " + currency(money.spendingMoney))
+                    Text("Savings: " + currency(money.savings))
+                    Text("Reserved Money: " + currency(money.reserved))
                     Text("Bills next 30 days: " + currency(due30Total))
                     Text("Expected income next 30 days: " + currency(incoming30))
-                    Text("Safe after upcoming bills: " + currency(safe), style = MaterialTheme.typography.titleLarge)
+                    Text("Available after upcoming bills: " + currency(money.availableAfterUpcomingBills), style = MaterialTheme.typography.titleLarge)
                     nextPayday?.let { payday ->
                         Text("Next payday: " + prettyDate(payday.nextDate()) + " • " + currency(payday.amount))
                         Text("Bills before payday: " + currency(billsBeforeNextPayday))
@@ -422,18 +434,17 @@ fun AccountsPage(
     onRefreshBanks: () -> Unit
 ) {
     val orderedAccounts = data.accounts.sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name })
-    val total = orderedAccounts.sumOf { it.balance }
-    val spendingMoney = orderedAccounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT }.sumOf { it.balance }
-    val savingsMoney = orderedAccounts.filter { it.role == AccountRole.SAVINGS }.sumOf { it.balance }
+    val money = calculateMoneySummary(data)
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Accounts", style = MaterialTheme.typography.headlineSmall) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("Total Money")
-                    Text(currency(total), style = MaterialTheme.typography.headlineMedium)
-                    Text("Spending Money: ${currency(spendingMoney)}")
-                    Text("Savings: ${currency(savingsMoney)}")
+                    Text(currency(money.totalMoney), style = MaterialTheme.typography.headlineMedium)
+                    Text("Spending Money: ${currency(money.spendingMoney)}")
+                    Text("Savings: ${currency(money.savings)}")
+                    Text("Reserved: ${currency(money.reserved)}")
                     Text("${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
                 }
             }
@@ -605,7 +616,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
             }
         }
         item { Text("Bill and account data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v2.0.0-alpha4") }
+        item { Text("BillNest v2.0.0-alpha5") }
     }
 }
 
