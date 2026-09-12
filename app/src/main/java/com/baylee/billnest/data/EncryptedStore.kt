@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.baylee.billnest.model.AppData
+import com.baylee.billnest.model.SyncMapper
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonParser
@@ -45,11 +46,20 @@ class EncryptedStore(private val context: Context) {
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         val decoded = String(cipher.doFinal(encrypted), Charsets.UTF_8)
 
-        // Fill fields added after v1.2 before Gson creates the Kotlin data class.
+        // Fill fields added after v1.2 before Gson creates Kotlin data classes.
         val root = JsonParser.parseString(decoded).asJsonObject
         if (!root.has("accounts") || root.get("accounts").isJsonNull) root.add("accounts", JsonArray())
         if (!root.has("deletedPlaidTransactionIds") || root.get("deletedPlaidTransactionIds").isJsonNull) {
             root.add("deletedPlaidTransactionIds", JsonArray())
+        }
+        if (!root.has("budgetTransactionOverrides") || root.get("budgetTransactionOverrides").isJsonNull) {
+            root.add("budgetTransactionOverrides", JsonArray())
+        }
+        if (!root.has("budgetAdjustments") || root.get("budgetAdjustments").isJsonNull) {
+            root.add("budgetAdjustments", JsonArray())
+        }
+        root.getAsJsonArray("budgets")?.forEach { element ->
+            if (element.isJsonObject) SyncMapper.normalizeBudgetJson(element.asJsonObject)
         }
         if (!root.has("backendUrl") || root.get("backendUrl").isJsonNull) root.addProperty("backendUrl", "")
         gson.fromJson(root, AppData::class.java)
