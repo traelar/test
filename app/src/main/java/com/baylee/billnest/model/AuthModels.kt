@@ -32,3 +32,8 @@ data class HouseholdDetails(
     val ownerUserId: String,
     val members: List<HouseholdMember>
 )
+
+data class HouseholdInvite(
+    val inviteCode: String,
+    val expiresAt: String
+)
