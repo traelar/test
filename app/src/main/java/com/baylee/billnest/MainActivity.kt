@@ -214,23 +214,32 @@ fun BillNestHome(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "BillNest",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                )
-                HorizontalDivider()
-                destinations.forEach { name ->
-                    NavigationDrawerItem(
-                        label = { Text(name) },
-                        selected = destination == name,
-                        onClick = {
-                            destination = name
-                            scope.launch { drawerState.close() }
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                LazyColumn(
+                    modifier = Modifier.fillMaxHeight(),
+                    contentPadding = PaddingValues(
+                        top = 12.dp,
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
                     )
+                ) {
+                    item {
+                        Text(
+                            "BillNest",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                        )
+                        HorizontalDivider()
+                    }
+                    items(destinations) { name ->
+                        NavigationDrawerItem(
+                            label = { Text(name) },
+                            selected = destination == name,
+                            onClick = {
+                                destination = name
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -545,9 +554,25 @@ fun CalendarPage(data: AppData, modifier: Modifier = Modifier) {
 
 @Composable
 fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (Payday) -> Unit) {
+    val detected = detectPaydayPatterns(data.transactions).filterNot { suggestion ->
+        data.paydays.any { it.label.equals(suggestion.label, true) && it.frequency == suggestion.frequency }
+    }
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Paydays & income", style = MaterialTheme.typography.headlineSmall) }
-        item { Text("Use + Payday to add your paycheck schedule.") }
+        item { Text("BillNest detects recurring paydays from income transactions even when check amounts change. You can still use + Payday to add one manually.") }
+        if (detected.isNotEmpty()) {
+            item { Text("Detected paydays", style = MaterialTheme.typography.titleMedium) }
+            items(detected, key = { "detected-${it.label}-${it.frequency}" }) { suggestion ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(suggestion.label, style = MaterialTheme.typography.titleMedium)
+                        Text("Typical check ${currency(suggestion.typicalAmount)} • ${suggestion.frequency.name.replace('_', ' ')}")
+                        Text("Next expected ${prettyDate(LocalDate.parse(suggestion.nextDateIso))} • based on ${suggestion.sampleCount} deposits", style = MaterialTheme.typography.bodySmall)
+                        Button(onClick = { vm.addPayday(Payday(label = suggestion.label, amount = suggestion.typicalAmount, nextDateIso = suggestion.nextDateIso, frequency = suggestion.frequency)) }) { Text("Use this schedule") }
+                    }
+                }
+            }
+        }
         if (data.paydays.isEmpty()) item { Text("No paydays added yet.") }
         items(data.paydays.sortedBy { it.nextDate() }, key = { it.id }) { p ->
             Card(Modifier.fillMaxWidth()) {
