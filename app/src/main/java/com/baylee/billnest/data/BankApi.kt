@@ -13,6 +13,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+fun plaidAccountType(type: String, subtype: String): AccountType = when (subtype.lowercase()) {
+    "checking" -> AccountType.CHECKING
+    "savings", "money market" -> AccountType.SAVINGS
+    "401k", "403b", "457b", "ira", "roth", "roth 401k", "pension", "retirement", "brokerage" -> AccountType.INVESTMENT
+    else -> if (type.equals("investment", ignoreCase = true)) AccountType.INVESTMENT else AccountType.OTHER
+}
+
 data class PlaidLinkTokenResponse(val linkToken: String = "")
 data class PlaidAccountDto(
     val accountId: String = "",
@@ -123,13 +130,12 @@ object BankApi {
         val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null, authToken(apiKey))
         val response = gson.fromJson(json, PlaidAccountsResponse::class.java)
         val accounts = response.accounts
-            .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
+            .filter {
+                it.type.isBlank() || it.type.equals("depository", ignoreCase = true) ||
+                    it.type.equals("investment", ignoreCase = true)
+            }
             .map { dto ->
-                val accountType = when (dto.subtype.lowercase()) {
-                    "checking" -> AccountType.CHECKING
-                    "savings", "money market" -> AccountType.SAVINGS
-                    else -> AccountType.OTHER
-                }
+                val accountType = plaidAccountType(dto.type, dto.subtype)
                 Account(
                     name = dto.name,
                     type = accountType,
@@ -138,8 +144,8 @@ object BankApi {
                     plaidAccountId = dto.accountId,
                     mask = dto.mask,
                     connectionLabel = dto.connectionLabel,
-                    role = if (accountType == AccountType.SAVINGS) com.baylee.billnest.model.AccountRole.SAVINGS else com.baylee.billnest.model.AccountRole.SPENDING,
-                    includeInSpendable = accountType != AccountType.SAVINGS
+                    role = if (accountType == AccountType.SAVINGS || accountType == AccountType.INVESTMENT) com.baylee.billnest.model.AccountRole.SAVINGS else com.baylee.billnest.model.AccountRole.SPENDING,
+                    includeInSpendable = accountType != AccountType.SAVINGS && accountType != AccountType.INVESTMENT
                 )
             }
         BankRefreshResult(accounts, response.issues, response.connectedItems)

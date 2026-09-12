@@ -4,7 +4,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
-enum class AccountType { CHECKING, SAVINGS, CASH, OTHER }
+enum class AccountType { CHECKING, SAVINGS, INVESTMENT, CASH, OTHER }
 enum class AccountSource { MANUAL, PLAID }
 enum class AccountRole { SPENDING, SAVINGS, CREDIT, OTHER }
 

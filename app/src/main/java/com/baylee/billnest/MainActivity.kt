@@ -786,7 +786,7 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                                 text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) },
                                 onClick = {
                                     type = value
-                                    if (value == AccountType.SAVINGS) {
+                                    if (value == AccountType.SAVINGS || value == AccountType.INVESTMENT) {
                                         role = AccountRole.SAVINGS
                                         includeInSpendable = false
                                     }
