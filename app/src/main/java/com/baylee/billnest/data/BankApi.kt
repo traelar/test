@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 data class PlaidLinkTokenResponse(val linkToken: String = "")
 data class PlaidAccountDto(
@@ -38,6 +39,18 @@ data class BankRefreshResult(
     val issues: List<BankConnectionIssue>,
     val connectedItems: Int
 )
+data class BankConnection(
+    val itemId: String = "",
+    val label: String? = null,
+    val createdAt: String = ""
+)
+data class PlaidItemsResponse(val items: List<BankConnection> = emptyList())
+
+fun bankConnectionDeletePath(itemId: String): String =
+    "/api/plaid/items/${URLEncoder.encode(itemId, Charsets.UTF_8.name())}"
+
+fun parseBankConnectionsJson(json: String): List<BankConnection> =
+    Gson().fromJson(json, PlaidItemsResponse::class.java).items
 
 object BankApi {
     private val gson = Gson()
@@ -68,7 +81,7 @@ object BankApi {
     }
 
     suspend fun createUpdateLinkToken(backendUrl: String, apiKey: String, itemId: String): String = withContext(Dispatchers.IO) {
-        val safeItemId = java.net.URLEncoder.encode(itemId, Charsets.UTF_8.name())
+        val safeItemId = URLEncoder.encode(itemId, Charsets.UTF_8.name())
         val json = request(
             base(backendUrl) + "/api/plaid/items/$safeItemId/link-token",
             "POST",
@@ -106,6 +119,20 @@ object BankApi {
                 )
             }
         BankRefreshResult(accounts, response.issues, response.connectedItems)
+    }
+
+    suspend fun listBankConnections(backendUrl: String, apiKey: String): List<BankConnection> = withContext(Dispatchers.IO) {
+        val json = request(base(backendUrl) + "/api/plaid/items", "GET", null, authToken(apiKey))
+        parseBankConnectionsJson(json)
+    }
+
+    suspend fun disconnectBank(backendUrl: String, apiKey: String, itemId: String) = withContext(Dispatchers.IO) {
+        request(
+            base(backendUrl) + bankConnectionDeletePath(itemId),
+            "DELETE",
+            null,
+            authToken(apiKey)
+        )
     }
 
     private fun request(url: String, method: String, body: String?, bearerToken: String): String {
