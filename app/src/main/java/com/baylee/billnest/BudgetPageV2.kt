@@ -665,7 +665,7 @@ private fun BudgetEditorSheet(
                         val parsedWarning = warningPercent.toIntOrNull()?.coerceIn(1, 100) ?: 90
                         val includeCategories = parseRules(categories)
                         val candidate = Budget(
-                            id = existing?.id ?: Budget().id,
+                            id = existing?.id ?: java.util.UUID.randomUUID().toString(),
                             name = name.trim(),
                             amount = parsedAmount ?: 0.0,
                             category = includeCategories.firstOrNull() ?: existing?.category ?: "Other",
