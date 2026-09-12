@@ -19,7 +19,10 @@ data class FinanceTransaction(
     val accountId: String? = null,
     val source: TransactionSource = TransactionSource.MANUAL,
     val transfer: Boolean = false,
-    val income: Boolean = false
+    val income: Boolean = false,
+    val transferFromAccountId: String? = null,
+    val transferToAccountId: String? = null,
+    val userClassificationOverride: Boolean = false
 )
 
 data class PaydayPattern(
