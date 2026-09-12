@@ -125,18 +125,21 @@ object BankApi {
         val accounts = response.accounts
             .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
             .map { dto ->
+                val accountType = when (dto.subtype.lowercase()) {
+                    "checking" -> AccountType.CHECKING
+                    "savings", "money market" -> AccountType.SAVINGS
+                    else -> AccountType.OTHER
+                }
                 Account(
                     name = dto.name,
-                    type = when (dto.subtype.lowercase()) {
-                        "checking" -> AccountType.CHECKING
-                        "savings", "money market" -> AccountType.SAVINGS
-                        else -> AccountType.OTHER
-                    },
+                    type = accountType,
                     balance = dto.available ?: dto.current,
                     source = AccountSource.PLAID,
                     plaidAccountId = dto.accountId,
                     mask = dto.mask,
-                    connectionLabel = dto.connectionLabel
+                    connectionLabel = dto.connectionLabel,
+                    role = if (accountType == AccountType.SAVINGS) com.baylee.billnest.model.AccountRole.SAVINGS else com.baylee.billnest.model.AccountRole.SPENDING,
+                    includeInSpendable = accountType != AccountType.SAVINGS
                 )
             }
         BankRefreshResult(accounts, response.issues, response.connectedItems)

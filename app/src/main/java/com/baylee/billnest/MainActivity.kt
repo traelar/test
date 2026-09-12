@@ -784,7 +784,14 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                         AccountType.entries.forEach { value ->
                             DropdownMenuItem(
                                 text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                onClick = { type = value; expanded = false }
+                                onClick = {
+                                    type = value
+                                    if (value == AccountType.SAVINGS) {
+                                        role = AccountRole.SAVINGS
+                                        includeInSpendable = false
+                                    }
+                                    expanded = false
+                                }
                             )
                         }
                     }
@@ -811,7 +818,11 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                         Text("Include in Spending Money")
                         Text("Account stays visible when excluded.", style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = includeInSpendable, onCheckedChange = { includeInSpendable = it })
+                    Switch(
+                        checked = includeInSpendable,
+                        onCheckedChange = { includeInSpendable = it },
+                        enabled = role != AccountRole.SAVINGS && role != AccountRole.CREDIT
+                    )
                 }
                 if (plaid) Text("Balance and bank type come from Plaid. Name, role, and spending behavior are controlled by you.")
             }
@@ -826,7 +837,7 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                             type = if (plaid) original?.type ?: type else type,
                             balance = parsedBalance,
                             role = role,
-                            includeInSpendable = includeInSpendable
+                            includeInSpendable = includeInSpendable && role != AccountRole.SAVINGS && role != AccountRole.CREDIT
                         )
                     )
                 }
