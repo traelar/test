@@ -23,6 +23,9 @@ data class Account(
     val plaidAccountId: String? = null,
     val mask: String = "",
     val connectionLabel: String? = null,
+    val role: AccountRole = AccountRole.OTHER,
+    val includeInSpendable: Boolean = true,
+    val displayOrder: Int = 0,
     val updatedAtEpochMs: Long = System.currentTimeMillis()
 )
 
