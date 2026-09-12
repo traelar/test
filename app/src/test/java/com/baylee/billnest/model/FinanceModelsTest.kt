@@ -28,4 +28,30 @@ class FinanceModelsTest {
         )
         assertEquals(80.0, items.filterNot { it.transfer }.sumOf { it.amount }, 0.001)
     }
+
+    @Test fun detectsBiweeklyPaydaysEvenWhenCheckAmountsVary() {
+        val transactions = listOf(
+            FinanceTransaction(name = "ACME Payroll", amount = 1264.22, dateIso = "2026-07-31", income = true),
+            FinanceTransaction(name = "ACME Payroll", amount = 1188.40, dateIso = "2026-08-14", income = true),
+            FinanceTransaction(name = "ACME Payroll", amount = 1301.05, dateIso = "2026-08-28", income = true),
+            FinanceTransaction(name = "Grocery store", amount = 90.0, dateIso = "2026-08-29")
+        )
+
+        val result = detectPaydayPatterns(transactions, referenceDate = java.time.LocalDate.parse("2026-09-01"))
+
+        assertEquals(1, result.size)
+        assertEquals(Frequency.BIWEEKLY, result.single().frequency)
+        assertEquals("2026-09-11", result.single().nextDateIso)
+        assertEquals(1264.22, result.single().typicalAmount, 0.001)
+    }
+
+    @Test fun ignoresIrregularDepositsAndTransfers() {
+        val transactions = listOf(
+            FinanceTransaction(name = "Transfer", amount = 800.0, dateIso = "2026-08-01", income = true, transfer = true),
+            FinanceTransaction(name = "Marketplace sale", amount = 30.0, dateIso = "2026-08-04", income = true),
+            FinanceTransaction(name = "Marketplace sale", amount = 90.0, dateIso = "2026-08-23", income = true)
+        )
+
+        assertEquals(0, detectPaydayPatterns(transactions).size)
+    }
 }
