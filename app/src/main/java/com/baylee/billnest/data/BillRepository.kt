@@ -140,7 +140,13 @@ class BillRepository(
             .associateBy { it.plaidAccountId }
         val synced = incoming.map { fresh ->
             val existing = existingPlaid[fresh.plaidAccountId]
-            if (existing == null) fresh else fresh.copy(\n                id = existing.id,\n                name = existing.name,\n                role = existing.role,\n                includeInSpendable = existing.includeInSpendable,\n                displayOrder = existing.displayOrder\n            )
+            if (existing == null) fresh else fresh.copy(
+                id = existing.id,
+                name = existing.name,
+                role = existing.role,
+                includeInSpendable = existing.includeInSpendable,
+                displayOrder = existing.displayOrder
+            )
         }
         data.copy(accounts = (manual + synced).sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name }), plaidConnected = synced.isNotEmpty())
     }
