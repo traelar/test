@@ -417,14 +417,19 @@ fun AccountsPage(
     onReconnectBank: (String) -> Unit,
     onRefreshBanks: () -> Unit
 ) {
-    val total = data.accounts.sumOf { it.balance }
+    val orderedAccounts = data.accounts.sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name })
+    val total = orderedAccounts.sumOf { it.balance }
+    val spendingMoney = orderedAccounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT }.sumOf { it.balance }
+    val savingsMoney = orderedAccounts.filter { it.role == AccountRole.SAVINGS }.sumOf { it.balance }
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Accounts", style = MaterialTheme.typography.headlineSmall) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Total available")
+                    Text("Total Money")
                     Text(currency(total), style = MaterialTheme.typography.headlineMedium)
+                    Text("Spending Money: ${currency(spendingMoney)}")
+                    Text("Savings: ${currency(savingsMoney)}")
                     Text("${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
                 }
             }
@@ -461,7 +466,7 @@ fun AccountsPage(
         if (data.accounts.isEmpty() && bankIssues.isEmpty()) {
             item { Text("No accounts yet. Tap + Account for a manual Checking/Savings account, or Connect bank for Plaid.") }
         }
-        items(data.accounts, key = { it.id }) { account ->
+        items(orderedAccounts, key = { it.id }) { account ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -469,10 +474,13 @@ fun AccountsPage(
                             Text(account.name, style = MaterialTheme.typography.titleMedium)
                             Text(account.type.name.lowercase().replaceFirstChar { it.uppercase() } + if (account.mask.isNotBlank()) " ••••${account.mask}" else "")
                             Text(if (account.source == AccountSource.PLAID) "Connected with Plaid" else "Manual account", style = MaterialTheme.typography.bodySmall)
+                            Text("${account.role.name.lowercase().replaceFirstChar { it.uppercase() }} • ${if (account.includeInSpendable) "Included in spending" else "Excluded from spending"}", style = MaterialTheme.typography.bodySmall)
                         }
                         Text(currency(account.balance), style = MaterialTheme.typography.titleLarge)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { vm.moveAccount(account.id, -1) }) { Text("↑") }
+                        TextButton(onClick = { vm.moveAccount(account.id, 1) }) { Text("↓") }
                         TextButton(onClick = { onEdit(account) }) { Text("Edit") }
                         if (account.source == AccountSource.MANUAL) {
                             TextButton(onClick = { vm.deleteAccount(account.id) }) { Text("Delete") }
