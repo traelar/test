@@ -25,7 +25,8 @@ data class FinanceTransaction(
     val income: Boolean = false,
     val transferFromAccountId: String? = null,
     val transferToAccountId: String? = null,
-    val userClassificationOverride: Boolean = false
+    val userClassificationOverride: Boolean = false,
+    val excludedFromSpending: Boolean = false
 )
 
 data class PaydayPattern(
@@ -134,7 +135,7 @@ fun detectSubscriptions(transactions: List<FinanceTransaction>): List<Subscripti
     }.sortedByDescending { it.typicalAmount }
 
 fun findBillMatches(bills: List<Bill>, transactions: List<FinanceTransaction>): List<BillMatchSuggestion> {
-    val expenses = transactions.filter { !it.transfer && !it.income }
+    val expenses = transactions.filter { !it.transfer && !it.income && !it.excludedFromSpending }
     return bills.filterNot { it.isPaidFor() }.mapNotNull { bill ->
         val due = runCatching { bill.dueDate() }.getOrNull() ?: return@mapNotNull null
         expenses.mapNotNull { transaction ->
@@ -198,7 +199,7 @@ fun calculateBudgetSpent(budget: Budget, transactions: List<FinanceTransaction>,
         BudgetPeriod.CUSTOM -> referenceDate
     }
     return transactions.filter { row ->
-        if (row.transfer || row.income || !row.category.equals(budget.category, true)) return@filter false
+        if (row.transfer || row.income || row.excludedFromSpending || !row.category.equals(budget.category, true)) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
         !date.isBefore(start) && !date.isAfter(end)
     }.sumOf { it.amount.coerceAtLeast(0.0) }
@@ -314,7 +315,10 @@ fun mergePlaidCreditDebts(existing: List<Debt>, accounts: List<Account>): List<D
     val byPlaidId = creditAccounts.associateBy { it.plaidAccountId!! }
     val updated = existing.map { debt ->
         val linked = debt.plaidAccountId?.let(byPlaidId::get)
-        if (linked == null) debt else debt.copy(balance = linked.balance.coerceAtLeast(0.0), creditLimit = linked.creditLimit.coerceAtLeast(0.0))
+        if (linked == null) debt else debt.copy(
+            balance = linked.balance.coerceAtLeast(0.0),
+            creditLimit = if (debt.creditLimit > 0.0) debt.creditLimit else linked.creditLimit.coerceAtLeast(0.0)
+        )
     }.toMutableList()
     val linkedIds = updated.mapNotNull { it.plaidAccountId }.toSet()
     creditAccounts.filterNot { it.plaidAccountId in linkedIds }.forEach { account ->
@@ -365,14 +369,14 @@ data class MoneySummary(
 )
 
 fun calculateMoneySummary(data: AppData): MoneySummary {
-    val total = data.accounts.filter { it.role != AccountRole.CREDIT }.sumOf { it.balance }
+    val total = data.accounts.filter { it.role != AccountRole.CREDIT && it.type != AccountType.CREDIT }.sumOf { it.balance }
     val retirement = data.accounts.filter { it.type == AccountType.INVESTMENT }.sumOf { it.balance }
     val savings = data.accounts.filter { it.role == AccountRole.SAVINGS && it.type != AccountType.INVESTMENT }.sumOf { it.balance }
-    val spendable = data.accounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT }.sumOf { it.balance }
+    val spendable = data.accounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT && it.type != AccountType.CREDIT }.sumOf { it.balance }
     val reserved = data.reservedFunds.sumOf { it.amount.coerceAtLeast(0.0) }
     val reservedFromSpending = data.reservedFunds.filter { fund ->
         val linked = fund.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
-        linked == null || (linked.includeInSpendable && linked.role != AccountRole.SAVINGS && linked.role != AccountRole.CREDIT)
+        linked == null || (linked.includeInSpendable && linked.role != AccountRole.SAVINGS && linked.role != AccountRole.CREDIT && linked.type != AccountType.CREDIT)
     }.sumOf { it.amount.coerceAtLeast(0.0) }
     val upcoming = data.bills.filterNot { it.isPaidFor() }.sumOf { it.amount.coerceAtLeast(0.0) }
     return MoneySummary(total, spendable, savings, retirement, reserved, reservedFromSpending, upcoming, spendable - reservedFromSpending - upcoming)
