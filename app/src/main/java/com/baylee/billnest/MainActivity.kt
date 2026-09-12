@@ -65,8 +65,8 @@ class MainActivity : FragmentActivity() {
                 }
                 val institution = result.metadata.institution?.name
                 lifecycleScope.launch {
+                    val url = vm.data.value.backendUrl
                     runCatching {
-                        val url = vm.data.value.backendUrl
                         if (reconnectItem == null) {
                             BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token!!, institution)
                         }
