@@ -97,3 +97,68 @@ test('owner disconnect removes only a same-household item after calling Plaid it
   assert.equal(await store.findPlaidItemAny('mine'), null);
   assert.deepEqual(plaidCalls, [{ endpoint: '/item/remove', body: { access_token: 'access-1' } }]);
 });
+
+test('account refresh keeps healthy accounts and reports an item that needs reconnect', async () => {
+  const store = new MemoryPlaidStore();
+  const plaid = createPlaidService(store, {
+    now: () => new Date('2026-09-12T00:00:00.000Z'),
+    encryptToken: async (token) => `encrypted:${token}`,
+    decryptToken: async (token) => token.replace('encrypted:', ''),
+    plaidPost: async (_env, endpoint, body) => {
+      if (endpoint === '/accounts/balance/get' && body.access_token === 'access-broken') {
+        const error = new Error('the login details of this item have changed');
+        error.plaid = { error_code: 'ITEM_LOGIN_REQUIRED' };
+        throw error;
+      }
+      if (endpoint === '/accounts/balance/get') {
+        return {
+          accounts: [{
+            account_id: 'acct-healthy',
+            name: 'Checking',
+            type: 'depository',
+            subtype: 'checking',
+            balances: { current: 120, available: 100 }
+          }]
+        };
+      }
+      return { ok: true };
+    }
+  });
+
+  await plaid.saveExchangedItem(ownerContext, { itemId: 'healthy', accessToken: 'access-healthy', label: 'Healthy Bank' });
+  await plaid.saveExchangedItem(ownerContext, { itemId: 'broken', accessToken: 'access-broken', label: 'Broken Bank' });
+
+  const result = await plaid.fetchAccounts(ownerContext, {});
+  assert.equal(result.accounts.length, 1);
+  assert.equal(result.accounts[0].accountId, 'acct-healthy');
+  assert.deepEqual(result.issues, [{
+    itemId: 'broken',
+    label: 'Broken Bank',
+    errorCode: 'ITEM_LOGIN_REQUIRED',
+    message: 'the login details of this item have changed',
+    requiresReconnect: true
+  }]);
+});
+
+test('reconnect creates a Plaid update-mode link token for the existing item', async () => {
+  const store = new MemoryPlaidStore();
+  const calls = [];
+  const plaid = createPlaidService(store, {
+    now: () => new Date('2026-09-12T00:00:00.000Z'),
+    encryptToken: async (token) => `encrypted:${token}`,
+    decryptToken: async (token) => token.replace('encrypted:', ''),
+    plaidPost: async (_env, endpoint, body) => {
+      calls.push({ endpoint, body });
+      if (endpoint === '/link/token/create') return { link_token: 'update-link-token', expiration: 'later' };
+      return { ok: true };
+    }
+  });
+
+  await plaid.saveExchangedItem(ownerContext, { itemId: 'mine', accessToken: 'access-1', label: 'My Bank' });
+  const result = await plaid.createUpdateLinkToken(ownerContext, {}, 'mine');
+
+  assert.equal(result.link_token, 'update-link-token');
+  assert.equal(calls.at(-1).endpoint, '/link/token/create');
+  assert.equal(calls.at(-1).body.access_token, 'access-1');
+  assert.equal('products' in calls.at(-1).body, false);
+});
