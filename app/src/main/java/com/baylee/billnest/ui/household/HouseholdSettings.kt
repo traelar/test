@@ -1,5 +1,7 @@
 package com.baylee.billnest.ui.household
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,6 +36,7 @@ import com.baylee.billnest.data.HouseholdSyncRepository
 import com.baylee.billnest.model.HouseholdDetails
 import com.baylee.billnest.model.HouseholdInvite
 import com.baylee.billnest.model.SessionData
+import com.baylee.billnest.ui.theme.BillNestColors
 import kotlinx.coroutines.launch
 
 @Composable
@@ -93,75 +97,98 @@ fun HouseholdSettings(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text("Household", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(details?.name ?: session.householdName.ifBlank { "BillNest household" })
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Household", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        details?.name ?: session.householdName.ifBlank { "BillNest household" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                TextButton(onClick = onBack) { Text("Back") }
+                OutlinedButton(onClick = onBack) { Text("Back") }
             }
         }
 
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Signed in as ${session.displayLabel.ifBlank { session.username }}")
-                    Text(if (session.isOwner) "Household owner" else "Household member")
-                    Text("Sync conflicts needing review: ${syncRepository.conflictCount}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("Refresh") }
-                        Button(
-                            onClick = {
-                                if (busy) return@Button
-                                busy = true
-                                error = null
-                                status = null
-                                scope.launch {
-                                    runCatching { syncRepository.syncNow() }
-                                        .onSuccess {
-                                            status = if (it.conflictCount == 0) "Household is synced" else "Synced with ${it.conflictCount} item(s) needing review"
-                                        }
-                                        .onFailure { error = it.message ?: "Sync failed" }
-                                    busy = false
-                                }
-                            },
-                            enabled = !busy
-                        ) { Text("Sync now") }
-                    }
-                    if (busy) CircularProgressIndicator()
-                    status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            HouseholdCard {
+                Text("Household status", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Signed in as ${session.displayLabel.ifBlank { session.username }}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    if (session.isOwner) "Owner access" else "Member access",
+                    color = if (session.isOwner) BillNestColors.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    "Sync conflicts needing review: ${syncRepository.conflictCount}",
+                    color = if (syncRepository.conflictCount > 0) BillNestColors.warning else BillNestColors.positive
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("Refresh") }
+                    Button(
+                        onClick = {
+                            if (busy) return@Button
+                            busy = true
+                            error = null
+                            status = null
+                            scope.launch {
+                                runCatching { syncRepository.syncNow() }
+                                    .onSuccess {
+                                        status = if (it.conflictCount == 0) "Household is synced" else "Synced with ${it.conflictCount} item(s) needing review"
+                                    }
+                                    .onFailure { error = it.message ?: "Sync failed" }
+                                busy = false
+                            }
+                        },
+                        enabled = !busy
+                    ) { Text("Sync now") }
                 }
+                if (busy) CircularProgressIndicator()
+                status?.let { Text(it, color = BillNestColors.positive) }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
 
         if (session.isOwner) {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Invite a household member", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Invite codes are single-use and expire after 7 days.")
-                        Button(
-                            onClick = {
-                                if (busy) return@Button
-                                busy = true
-                                error = null
-                                scope.launch {
-                                    runCatching { api.createInvite(backendUrl, session.sessionToken) }
-                                        .onSuccess { invite = it }
-                                        .onFailure { error = it.message ?: "Could not create invite" }
-                                    busy = false
-                                }
-                            },
-                            enabled = !busy
-                        ) { Text("Create invite code") }
-                        invite?.let {
-                            Text(it.inviteCode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text("Expires: ${it.expiresAt}", style = MaterialTheme.typography.bodySmall)
+                HouseholdCard {
+                    Text("Invite a household member", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Invite codes are single-use and expire after 7 days.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = {
+                            if (busy) return@Button
+                            busy = true
+                            error = null
+                            scope.launch {
+                                runCatching { api.createInvite(backendUrl, session.sessionToken) }
+                                    .onSuccess { invite = it }
+                                    .onFailure { error = it.message ?: "Could not create invite" }
+                                busy = false
+                            }
+                        },
+                        enabled = !busy
+                    ) { Text("Create invite code") }
+                    invite?.let {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .35f))
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(it.inviteCode, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text("Expires: ${it.expiresAt}", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
@@ -170,32 +197,30 @@ fun HouseholdSettings(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
-                        Text("Bank connections", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Remove duplicate bank links here. Each connection can contain several bank accounts.", style = MaterialTheme.typography.bodySmall)
+                        Text("Bank connections", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "Manage duplicate or old Plaid connections.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                     TextButton(onClick = { refreshBankConnections() }, enabled = !bankBusy) { Text("Refresh") }
                 }
             }
 
-            if (bankBusy && bankConnections.isEmpty()) {
-                item { CircularProgressIndicator() }
-            }
-            bankError?.let { message ->
-                item { Text(message, color = MaterialTheme.colorScheme.error) }
-            }
+            if (bankBusy && bankConnections.isEmpty()) item { CircularProgressIndicator() }
+            bankError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             if (!bankBusy && bankConnections.isEmpty() && bankError == null) {
-                item { Text("No connected banks found.") }
+                item { EmptyHouseholdMessage("No connected banks found.") }
             }
             items(bankConnections, key = { it.itemId }) { connection ->
-                Card(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(connection.label?.takeIf { it.isNotBlank() } ?: "Connected bank", fontWeight = FontWeight.SemiBold)
+                HouseholdCard {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(connection.label?.takeIf { it.isNotBlank() } ?: "Connected bank", style = MaterialTheme.typography.titleMedium)
+                            Text("Plaid connection", color = BillNestColors.info, style = MaterialTheme.typography.labelMedium)
                             if (connection.createdAt.isNotBlank()) {
-                                Text("Connected ${connection.createdAt.take(10)}", style = MaterialTheme.typography.bodySmall)
+                                Text("Connected ${connection.createdAt.take(10)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         TextButton(onClick = { disconnectTarget = connection }, enabled = !bankBusy) {
@@ -206,20 +231,17 @@ fun HouseholdSettings(
             }
         }
 
-        item { Text("Members", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+        item { Text("Members", style = MaterialTheme.typography.titleLarge) }
         val members = details?.members.orEmpty()
         if (members.isEmpty()) {
-            item { Text(if (busy) "Loading members…" else "No member list available yet") }
+            item { EmptyHouseholdMessage(if (busy) "Loading members…" else "No member list available yet") }
         } else {
             items(members, key = { it.userId }) { member ->
-                Card(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(member.displayLabel.ifBlank { member.username }, fontWeight = FontWeight.SemiBold)
-                            Text(member.role.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall)
+                HouseholdCard {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(member.displayLabel.ifBlank { member.username }, style = MaterialTheme.typography.titleMedium)
+                            Text(member.role.replaceFirstChar { it.uppercase() }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
                         }
                         if (session.isOwner && member.userId != details?.ownerUserId) {
                             TextButton(
@@ -238,7 +260,7 @@ fun HouseholdSettings(
                                     }
                                 },
                                 enabled = !busy
-                            ) { Text("Remove") }
+                            ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -250,9 +272,7 @@ fun HouseholdSettings(
         AlertDialog(
             onDismissRequest = { if (!bankBusy) disconnectTarget = null },
             title = { Text("Disconnect bank?") },
-            text = {
-                Text("This removes the selected Plaid connection and all accounts that came from that connection. It does not close or change anything at your bank.")
-            },
+            text = { Text("This removes the selected Plaid connection and all accounts that came from that connection. It does not close or change anything at your bank.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -277,9 +297,29 @@ fun HouseholdSettings(
                     enabled = !bankBusy
                 ) { Text("Disconnect") }
             },
-            dismissButton = {
-                TextButton(onClick = { disconnectTarget = null }, enabled = !bankBusy) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { disconnectTarget = null }, enabled = !bankBusy) { Text("Cancel") } }
         )
+    }
+}
+
+@Composable
+private fun HouseholdCard(content: @Composable Column.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+        border = BorderStroke(1.dp, BillNestColors.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    }
+}
+
+@Composable
+private fun EmptyHouseholdMessage(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BillNestColors.card)
+    ) {
+        Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
