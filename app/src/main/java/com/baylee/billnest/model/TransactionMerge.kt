@@ -41,15 +41,35 @@ fun reclassifyTransaction(
 }
 
 /**
+ * Remove a transaction from BillNest. Plaid-backed transactions leave behind a
+ * local tombstone so a later Plaid refresh cannot restore the deleted row.
+ */
+fun deleteFinanceTransaction(data: AppData, transactionId: String): AppData {
+    val existing = data.transactions.firstOrNull { it.id == transactionId } ?: return data
+    val deletedPlaidIds = if (existing.source == TransactionSource.PLAID) {
+        (data.deletedPlaidTransactionIds + transactionId).distinct()
+    } else {
+        data.deletedPlaidTransactionIds
+    }
+    return data.copy(
+        transactions = data.transactions.filterNot { it.id == transactionId },
+        deletedPlaidTransactionIds = deletedPlaidIds
+    )
+}
+
+/**
  * Refresh Plaid-owned transaction details without overwriting a classification the
- * user explicitly set inside BillNest.
+ * user explicitly set inside BillNest. Transactions the user deleted stay hidden.
  */
 fun mergePlaidTransactions(
     existing: List<FinanceTransaction>,
-    incoming: List<FinanceTransaction>
+    incoming: List<FinanceTransaction>,
+    deletedPlaidTransactionIds: Set<String> = emptySet()
 ): List<FinanceTransaction> {
-    val existingById = existing.associateBy { it.id }
-    val refreshed = incoming.map { fresh ->
+    val allowedExisting = existing.filterNot { it.id in deletedPlaidTransactionIds }
+    val allowedIncoming = incoming.filterNot { it.id in deletedPlaidTransactionIds }
+    val existingById = allowedExisting.associateBy { it.id }
+    val refreshed = allowedIncoming.map { fresh ->
         val saved = existingById[fresh.id]
         if (saved?.userClassificationOverride == true) {
             fresh.copy(
@@ -64,7 +84,7 @@ fun mergePlaidTransactions(
             fresh
         }
     }
-    val incomingIds = incoming.map { it.id }.toSet()
-    val retained = existing.filterNot { it.id in incomingIds }
+    val incomingIds = allowedIncoming.map { it.id }.toSet()
+    val retained = allowedExisting.filterNot { it.id in incomingIds }
     return (retained + refreshed).sortedByDescending { it.dateIso }
 }
