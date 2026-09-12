@@ -140,4 +140,21 @@ class TransactionClassificationTest {
         assertEquals(listOf("paycheck", "deposit"), rows.map { it.id })
         assertFalse(rows.any { it.transfer })
     }
+
+    @Test
+    fun incomeScreenHonorsManualSpendingOverrideForPlaidDeposits() {
+        val overridden = FinanceTransaction(
+            id = "plaid:spending-override",
+            name = "Reclassified deposit",
+            amount = -90.0,
+            dateIso = "2026-09-12",
+            category = "Other",
+            source = TransactionSource.PLAID,
+            income = false,
+            transfer = false,
+            userClassificationOverride = true
+        )
+
+        assertFalse(visibleIncomeTransactions(listOf(overridden)).any { it.id == overridden.id })
+    }
 }
