@@ -22,4 +22,10 @@ class BankConnectionManagementTest {
         assertEquals("item-1", result.first().itemId)
         assertEquals("Main Bank", result.first().label)
     }
+
+    @Test
+    fun refreshAvailabilityDependsOnConfiguredBackendNotCachedAccounts() {
+        assertEquals(true, canRefreshBanks("https://billnest-api.example.com"))
+        assertEquals(false, canRefreshBanks(""))
+    }
 }
