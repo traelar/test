@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 
-class BillRepository(context: Context) {
+class BillRepository(
+    context: Context,
+    private val syncDb: LocalSyncDb? = null,
+    private val onSyncNeeded: (() -> Unit)? = null
+) {
     private val store = EncryptedStore(context)
     private val initialData = migrateLegacy(store.load()).also { store.save(it) }
     private val _data = MutableStateFlow(initialData)
@@ -50,25 +54,71 @@ class BillRepository(context: Context) {
         _data.value = next
     }
 
-    fun addBill(bill: Bill) = update { it.copy(bills = it.bills + bill) }
-    fun updateBill(bill: Bill) = update { data ->
-        data.copy(bills = data.bills.map { if (it.id == bill.id) bill else it })
-    }
-    fun deleteBill(id: String) = update { it.copy(bills = it.bills.filterNot { b -> b.id == id }) }
-
-    fun addPayday(payday: Payday) = update { it.copy(paydays = it.paydays + payday) }
-    fun updatePayday(payday: Payday) = update { data -> data.copy(paydays = data.paydays.map { if (it.id == payday.id) payday else it }) }
-    fun deletePayday(id: String) = update { it.copy(paydays = it.paydays.filterNot { p -> p.id == id }) }
-
-    fun addAccount(account: Account) = update { it.copy(accounts = it.accounts + account) }
-    fun updateAccount(account: Account) = update { data ->
-        data.copy(accounts = data.accounts.map { if (it.id == account.id) account else it })
-    }
-    fun deleteAccount(id: String) = update { data ->
-        data.copy(
-            accounts = data.accounts.filterNot { it.id == id },
-            bills = data.bills.map { if (it.accountId == id) it.copy(accountId = null) else it }
+    private fun queue(draft: SyncRecordDraft?, deleted: Boolean = false) {
+        if (draft == null) return
+        syncDb?.enqueueCurrent(
+            kind = draft.kind,
+            recordId = draft.recordId,
+            deleted = deleted,
+            payloadJson = if (deleted) "{}" else draft.payloadJson
         )
+        onSyncNeeded?.invoke()
+    }
+
+    private fun queueDelete(kind: String, recordId: String) {
+        syncDb?.enqueueCurrent(kind, recordId, true, "{}")
+        onSyncNeeded?.invoke()
+    }
+
+    fun addBill(bill: Bill) {
+        update { it.copy(bills = it.bills + bill) }
+        queue(SyncMapper.billMutation(bill))
+    }
+
+    fun updateBill(bill: Bill) {
+        update { data -> data.copy(bills = data.bills.map { if (it.id == bill.id) bill else it }) }
+        queue(SyncMapper.billMutation(bill))
+    }
+
+    fun deleteBill(id: String) {
+        update { it.copy(bills = it.bills.filterNot { bill -> bill.id == id }) }
+        queueDelete("bill", id)
+    }
+
+    fun addPayday(payday: Payday) {
+        update { it.copy(paydays = it.paydays + payday) }
+        queue(SyncMapper.paydayMutation(payday))
+    }
+
+    fun updatePayday(payday: Payday) {
+        update { data -> data.copy(paydays = data.paydays.map { if (it.id == payday.id) payday else it }) }
+        queue(SyncMapper.paydayMutation(payday))
+    }
+
+    fun deletePayday(id: String) {
+        update { it.copy(paydays = it.paydays.filterNot { payday -> payday.id == id }) }
+        queueDelete("payday", id)
+    }
+
+    fun addAccount(account: Account) {
+        update { it.copy(accounts = it.accounts + account) }
+        queue(SyncMapper.accountMutation(account))
+    }
+
+    fun updateAccount(account: Account) {
+        update { data -> data.copy(accounts = data.accounts.map { if (it.id == account.id) account else it }) }
+        queue(SyncMapper.accountMutation(account))
+    }
+
+    fun deleteAccount(id: String) {
+        val existing = _data.value.accounts.firstOrNull { it.id == id }
+        update { data ->
+            data.copy(
+                accounts = data.accounts.filterNot { it.id == id },
+                bills = data.bills.map { if (it.accountId == id) it.copy(accountId = null) else it }
+            )
+        }
+        if (existing?.source == AccountSource.MANUAL) queueDelete("manual_account", id)
     }
 
     fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
@@ -88,17 +138,76 @@ class BillRepository(context: Context) {
     fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
         update { it.copy(balances = items, plaidConnected = connected) }
     fun setBiometric(enabled: Boolean) = update { it.copy(biometricLock = enabled) }
-    fun setReminderDays(days: List<Int>) = update { it.copy(reminderDays = days.distinct().sortedDescending()) }
 
-    fun markPaid(id: String) = update { data ->
-        data.copy(bills = data.bills.map { b ->
-            if (b.id != id) b else {
-                val due = b.dueDate()
-                val paid = (b.paidDates + due.toString()).distinct()
-                if (b.frequency == Frequency.ONE_TIME) b.copy(paidDates = paid)
-                else b.copy(dueDateIso = advance(due, b.frequency).toString(), paidDates = paid)
+    fun setReminderDays(days: List<Int>) {
+        val normalized = days.distinct().sortedDescending()
+        update { it.copy(reminderDays = normalized) }
+        queue(SyncMapper.settingsMutation(SharedSettings(normalized)))
+    }
+
+    fun markPaid(id: String) {
+        update { data ->
+            data.copy(bills = data.bills.map { bill ->
+                if (bill.id != id) bill else {
+                    val due = bill.dueDate()
+                    val paid = (bill.paidDates + due.toString()).distinct()
+                    if (bill.frequency == Frequency.ONE_TIME) bill.copy(paidDates = paid)
+                    else bill.copy(dueDateIso = advance(due, bill.frequency).toString(), paidDates = paid)
+                }
+            })
+        }
+        _data.value.bills.firstOrNull { it.id == id }?.let { queue(SyncMapper.billMutation(it)) }
+    }
+
+    fun applyRemoteBill(bill: Bill?, deletedId: String?) {
+        update { data ->
+            when {
+                bill != null -> data.copy(bills = upsert(data.bills, bill.id, bill) { it.id })
+                !deletedId.isNullOrBlank() -> data.copy(bills = data.bills.filterNot { it.id == deletedId })
+                else -> data
             }
-        })
+        }
+    }
+
+    fun applyRemotePayday(payday: Payday?, deletedId: String?) {
+        update { data ->
+            when {
+                payday != null -> data.copy(paydays = upsert(data.paydays, payday.id, payday) { it.id })
+                !deletedId.isNullOrBlank() -> data.copy(paydays = data.paydays.filterNot { it.id == deletedId })
+                else -> data
+            }
+        }
+    }
+
+    fun applyRemoteManualAccount(account: Account?, deletedId: String?) {
+        update { data ->
+            when {
+                account != null -> {
+                    val without = data.accounts.filterNot { it.id == account.id }
+                    data.copy(accounts = without + account.copy(source = AccountSource.MANUAL))
+                }
+                !deletedId.isNullOrBlank() -> data.copy(
+                    accounts = data.accounts.filterNot { it.id == deletedId },
+                    bills = data.bills.map { if (it.accountId == deletedId) it.copy(accountId = null) else it }
+                )
+                else -> data
+            }
+        }
+    }
+
+    fun applyRemoteSharedSettings(settings: SharedSettings) {
+        update { it.copy(reminderDays = settings.reminderDays.distinct().sortedDescending()) }
+    }
+
+    private fun <T> upsert(items: List<T>, id: String, value: T, idOf: (T) -> String): List<T> {
+        var replaced = false
+        val mapped = items.map {
+            if (idOf(it) == id) {
+                replaced = true
+                value
+            } else it
+        }
+        return if (replaced) mapped else mapped + value
     }
 
     private fun advance(d: LocalDate, f: Frequency): LocalDate = when (f) {

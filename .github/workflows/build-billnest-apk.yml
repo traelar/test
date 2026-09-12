@@ -2,7 +2,7 @@ name: Build BillNest APK
 
 on:
   push:
-    branches: [ billnest-apk-build ]
+    branches: [ billnest-apk-build, billnest-v2-foundation ]
   workflow_dispatch:
 
 jobs:
@@ -30,9 +30,9 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BillNest-v1.4.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BillNest-v2.0.0-alpha2-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: BillNest-v1.4.1-debug-apk
-          path: BillNest-v1.4.1-debug.apk
+          name: BillNest-v2.0.0-alpha2-debug-apk
+          path: BillNest-v2.0.0-alpha2-debug.apk
           if-no-files-found: error
