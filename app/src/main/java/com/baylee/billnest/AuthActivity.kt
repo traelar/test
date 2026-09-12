@@ -17,7 +17,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.baylee.billnest.data.AuthApi
-import com.baylee.billnest.data.SecureSessionStore
 import com.baylee.billnest.model.AuthUiState
 import com.baylee.billnest.ui.AuthViewModel
 import com.baylee.billnest.ui.auth.AuthGate
@@ -25,12 +24,11 @@ import com.baylee.billnest.ui.theme.BillNestTheme
 
 class AuthActivity : FragmentActivity() {
     private val authVm by viewModels<AuthViewModel> {
-        val repo = (application as BillNestApp).repo
-        val sessions = SecureSessionStore(applicationContext)
+        val app = application as BillNestApp
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                AuthViewModel(repo, sessions, AuthApi()) as T
+                AuthViewModel(app.repo, app.sessionStore, app.householdSync, AuthApi()) as T
         }
     }
 
