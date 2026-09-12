@@ -1,8 +1,11 @@
 <resources>
-    <style name="Theme.BillNest" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.BillNest" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#080B10</item>
+        <item name="android:colorAccent">#5ED6C0</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#111318</item>
-        <item name="android:navigationBarColor">#111318</item>
+        <item name="android:statusBarColor">#080B10</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:navigationBarColor">#080B10</item>
     </style>
 </resources>
