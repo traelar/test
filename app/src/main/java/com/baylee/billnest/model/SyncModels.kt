@@ -72,38 +72,45 @@ data class SharedSettings(
 object SyncMapper {
     private val gson = Gson()
 
-    fun encodeBill(bill: Bill): String = gson.toJson(bill)
-    fun decodeBill(payloadJson: String): Bill = gson.fromJson(payloadJson, Bill::class.java)
+    fun encodeBill(value: Bill): String = gson.toJson(value)
+    fun decodeBill(json: String): Bill = gson.fromJson(json, Bill::class.java)
+    fun encodePayday(value: Payday): String = gson.toJson(value)
+    fun decodePayday(json: String): Payday = gson.fromJson(json, Payday::class.java)
+    fun encodeAccount(value: Account): String = gson.toJson(value)
+    fun decodeAccount(json: String): Account = gson.fromJson(json, Account::class.java)
+    fun encodeAccountPreference(value: AccountPreference): String = gson.toJson(value)
+    fun decodeAccountPreference(json: String): AccountPreference = gson.fromJson(json, AccountPreference::class.java)
+    fun encodeTransaction(value: FinanceTransaction): String = gson.toJson(value)
+    fun decodeTransaction(json: String): FinanceTransaction = gson.fromJson(json, FinanceTransaction::class.java)
+    fun encodeBudget(value: Budget): String = gson.toJson(value)
+    fun decodeBudget(json: String): Budget = gson.fromJson(json, Budget::class.java)
+    fun encodeDebt(value: Debt): String = gson.toJson(value)
+    fun decodeDebt(json: String): Debt = gson.fromJson(json, Debt::class.java)
+    fun encodeGoal(value: SavingsGoal): String = gson.toJson(value)
+    fun decodeGoal(json: String): SavingsGoal = gson.fromJson(json, SavingsGoal::class.java)
+    fun encodeReservedFund(value: ReservedFund): String = gson.toJson(value)
+    fun decodeReservedFund(json: String): ReservedFund = gson.fromJson(json, ReservedFund::class.java)
+    fun encodeBillMatch(value: BillTransactionMatch): String = gson.toJson(value)
+    fun decodeBillMatch(json: String): BillTransactionMatch = gson.fromJson(json, BillTransactionMatch::class.java)
+    fun encodeSubscriptionOverride(value: SubscriptionOverride): String = gson.toJson(value)
+    fun decodeSubscriptionOverride(json: String): SubscriptionOverride = gson.fromJson(json, SubscriptionOverride::class.java)
+    fun encodeSettings(value: SharedSettings): String = gson.toJson(value)
+    fun decodeSettings(json: String): SharedSettings = gson.fromJson(json, SharedSettings::class.java)
 
-    fun encodePayday(payday: Payday): String = gson.toJson(payday)
-    fun decodePayday(payloadJson: String): Payday = gson.fromJson(payloadJson, Payday::class.java)
-
-    fun encodeAccount(account: Account): String = gson.toJson(account)
-    fun decodeAccount(payloadJson: String): Account = gson.fromJson(payloadJson, Account::class.java)
-
-    fun encodeAccountPreference(preference: AccountPreference): String = gson.toJson(preference)
-    fun decodeAccountPreference(payloadJson: String): AccountPreference =
-        gson.fromJson(payloadJson, AccountPreference::class.java)
-
-    fun encodeSettings(settings: SharedSettings): String = gson.toJson(settings)
-    fun decodeSettings(payloadJson: String): SharedSettings = gson.fromJson(payloadJson, SharedSettings::class.java)
-
-    fun billMutation(bill: Bill): SyncRecordDraft =
-        SyncRecordDraft("bill", bill.id, encodeBill(bill))
-
-    fun paydayMutation(payday: Payday): SyncRecordDraft =
-        SyncRecordDraft("payday", payday.id, encodePayday(payday))
-
-    fun accountMutation(account: Account): SyncRecordDraft? =
-        if (account.source == AccountSource.MANUAL) {
-            SyncRecordDraft("manual_account", account.id, encodeAccount(account))
-        } else {
-            null
-        }
-
-    fun accountPreferenceMutation(preference: AccountPreference): SyncRecordDraft =
-        SyncRecordDraft("account_preference", preference.accountKey, encodeAccountPreference(preference))
-
-    fun settingsMutation(settings: SharedSettings): SyncRecordDraft =
-        SyncRecordDraft("settings", "household", encodeSettings(settings))
+    fun billMutation(value: Bill) = SyncRecordDraft("bill", value.id, encodeBill(value))
+    fun paydayMutation(value: Payday) = SyncRecordDraft("payday", value.id, encodePayday(value))
+    fun accountMutation(value: Account): SyncRecordDraft? =
+        if (value.source == AccountSource.MANUAL) SyncRecordDraft("manual_account", value.id, encodeAccount(value)) else null
+    fun accountPreferenceMutation(value: AccountPreference) =
+        SyncRecordDraft("account_preference", value.accountKey, encodeAccountPreference(value))
+    fun manualTransactionMutation(value: FinanceTransaction) =
+        SyncRecordDraft("manual_transaction", value.id, encodeTransaction(value))
+    fun budgetMutation(value: Budget) = SyncRecordDraft("budget", value.id, encodeBudget(value))
+    fun debtMutation(value: Debt) = SyncRecordDraft("debt", value.id, encodeDebt(value))
+    fun goalMutation(value: SavingsGoal) = SyncRecordDraft("goal", value.id, encodeGoal(value))
+    fun reservedFundMutation(value: ReservedFund) = SyncRecordDraft("reserved_fund", value.id, encodeReservedFund(value))
+    fun billMatchMutation(value: BillTransactionMatch) = SyncRecordDraft("bill_match", value.id, encodeBillMatch(value))
+    fun subscriptionOverrideMutation(value: SubscriptionOverride) =
+        SyncRecordDraft("subscription_override", value.merchantKey, encodeSubscriptionOverride(value))
+    fun settingsMutation(value: SharedSettings) = SyncRecordDraft("settings", "household", encodeSettings(value))
 }
