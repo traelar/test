@@ -5,7 +5,8 @@ import java.util.UUID
 
 enum class Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, YEARLY }
 enum class AccountType { CHECKING, SAVINGS, CASH, OTHER }
-enum class AccountSource { MANUAL, PLAID }\nenum class AccountRole { SPENDING, SAVINGS, CREDIT, OTHER }
+enum class AccountSource { MANUAL, PLAID }
+enum class AccountRole { SPENDING, SAVINGS, CREDIT, OTHER }
 
 const val BILLNEST_BACKEND_URL = "https://billnest-api.joshselusion.workers.dev"
 
