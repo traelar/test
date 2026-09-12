@@ -4,7 +4,8 @@ import { D1Store } from './store.js';
 const ALLOWED_KINDS = new Set([
   'bill', 'payday', 'manual_account', 'settings', 'transaction',
   'budget', 'budget_override', 'budget_adjustment', 'debt',
-  'savings_goal', 'reserved_fund', 'subscription_preference'
+  'savings_goal', 'reserved_fund', 'subscription_preference',
+  'transaction_rule', 'transaction_tombstone', 'financial_snapshot'
 ]);
 const MAX_MUTATIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
