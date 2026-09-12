@@ -154,12 +154,7 @@ export class D1Store {
       LIMIT 1
     `).bind(itemId).first();
     if (!row) return null;
-    return {
-      itemId: row.item_id,
-      accessTokenEnc: row.access_token_enc,
-      label: row.label,
-      createdAt: row.created_at
-    };
+    return { itemId: row.item_id, accessTokenEnc: row.access_token_enc, label: row.label, createdAt: row.created_at };
   }
 
   async findPlaidItemForHousehold(householdId, itemId) {
@@ -172,14 +167,7 @@ export class D1Store {
       LIMIT 1
     `).bind(householdId, itemId).first();
     if (!row) return null;
-    return {
-      itemId: row.item_id,
-      accessTokenEnc: row.access_token_enc,
-      label: row.label,
-      createdAt: row.created_at,
-      householdId: row.household_id,
-      connectedByUserId: row.connected_by_user_id
-    };
+    return { itemId: row.item_id, accessTokenEnc: row.access_token_enc, label: row.label, createdAt: row.created_at, householdId: row.household_id, connectedByUserId: row.connected_by_user_id };
   }
 
   async listPlaidItemsAll() {
@@ -188,12 +176,7 @@ export class D1Store {
       FROM plaid_items
       ORDER BY created_at ASC
     `).all();
-    return (rows.results || []).map((row) => ({
-      itemId: row.item_id,
-      accessTokenEnc: row.access_token_enc,
-      label: row.label,
-      createdAt: row.created_at
-    }));
+    return (rows.results || []).map((row) => ({ itemId: row.item_id, accessTokenEnc: row.access_token_enc, label: row.label, createdAt: row.created_at }));
   }
 
   async listPlaidItemsForHousehold(householdId) {
@@ -205,14 +188,7 @@ export class D1Store {
       WHERE ph.household_id = ?1
       ORDER BY p.created_at ASC
     `).bind(householdId).all();
-    return (rows.results || []).map((row) => ({
-      itemId: row.item_id,
-      accessTokenEnc: row.access_token_enc,
-      label: row.label,
-      createdAt: row.created_at,
-      householdId: row.household_id,
-      connectedByUserId: row.connected_by_user_id
-    }));
+    return (rows.results || []).map((row) => ({ itemId: row.item_id, accessTokenEnc: row.access_token_enc, label: row.label, createdAt: row.created_at, householdId: row.household_id, connectedByUserId: row.connected_by_user_id }));
   }
 
   async deletePlaidItem(itemId) {
@@ -220,6 +196,102 @@ export class D1Store {
       this.db.prepare('DELETE FROM plaid_item_households WHERE item_id = ?1').bind(itemId),
       this.db.prepare('DELETE FROM plaid_items WHERE item_id = ?1').bind(itemId)
     ]);
+  }
+
+  async findAppliedSyncMutation(householdId, mutationId) {
+    const row = await this.db.prepare(`
+      SELECT household_id, mutation_id, applied_at
+      FROM sync_mutations
+      WHERE household_id = ?1 AND mutation_id = ?2
+      LIMIT 1
+    `).bind(householdId, mutationId).first();
+    if (!row) return null;
+    return { householdId: row.household_id, mutationId: row.mutation_id, appliedAt: row.applied_at };
+  }
+
+  async findFinanceRecord(householdId, kind, recordId) {
+    const row = await this.db.prepare(`
+      SELECT household_id, kind, record_id, payload_json, version,
+             updated_at, updated_by_user_id, deleted
+      FROM finance_records
+      WHERE household_id = ?1 AND kind = ?2 AND record_id = ?3
+      LIMIT 1
+    `).bind(householdId, kind, recordId).first();
+    if (!row) return null;
+    return {
+      householdId: row.household_id,
+      kind: row.kind,
+      recordId: row.record_id,
+      payloadJson: row.payload_json,
+      version: Number(row.version),
+      updatedAt: row.updated_at,
+      updatedByUserId: row.updated_by_user_id,
+      deleted: Number(row.deleted)
+    };
+  }
+
+  async applySyncMutation({ householdId, mutationId, appliedAt, record }) {
+    await this.db.batch([
+      this.db.prepare(`
+        INSERT INTO finance_records (
+          household_id, kind, record_id, payload_json, version,
+          updated_at, updated_by_user_id, deleted
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        ON CONFLICT(household_id, kind, record_id) DO UPDATE SET
+          payload_json = excluded.payload_json,
+          version = excluded.version,
+          updated_at = excluded.updated_at,
+          updated_by_user_id = excluded.updated_by_user_id,
+          deleted = excluded.deleted
+      `).bind(
+        record.householdId,
+        record.kind,
+        record.recordId,
+        record.payloadJson,
+        record.version,
+        record.updatedAt,
+        record.updatedByUserId,
+        record.deleted
+      ),
+      this.db.prepare(`
+        INSERT INTO sync_events (
+          household_id, kind, record_id, version, payload_json, deleted, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+      `).bind(
+        record.householdId,
+        record.kind,
+        record.recordId,
+        record.version,
+        record.payloadJson,
+        record.deleted,
+        record.updatedAt
+      ),
+      this.db.prepare(`
+        INSERT INTO sync_mutations (household_id, mutation_id, applied_at)
+        VALUES (?1, ?2, ?3)
+      `).bind(householdId, mutationId, appliedAt)
+    ]);
+  }
+
+  async listSyncEvents(householdId, sinceEventId, limit = 500) {
+    const rows = await this.db.prepare(`
+      SELECT event_id, household_id, kind, record_id, version,
+             payload_json, deleted, updated_at
+      FROM sync_events
+      WHERE household_id = ?1 AND event_id > ?2
+      ORDER BY event_id ASC
+      LIMIT ?3
+    `).bind(householdId, sinceEventId, limit).all();
+    return (rows.results || []).map((row) => ({
+      eventId: Number(row.event_id),
+      householdId: row.household_id,
+      kind: row.kind,
+      recordId: row.record_id,
+      version: Number(row.version),
+      payloadJson: row.payload_json,
+      deleted: Number(row.deleted),
+      updatedAt: row.updated_at
+    }));
   }
 
   async createInvite(invite) {
