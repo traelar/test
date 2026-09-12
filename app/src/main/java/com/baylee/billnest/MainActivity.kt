@@ -2,6 +2,7 @@ package com.baylee.billnest
 
 import android.Manifest
 import android.app.DatePickerDialog
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -12,10 +13,12 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -64,7 +67,7 @@ class MainActivity : FragmentActivity() {
                     runCatching {
                         val url = vm.data.value.backendUrl
                         if (reconnectItem == null) {
-                            BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token!!, institution)
+                            BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token, institution)
                         }
                         BankApi.fetchAccounts(url, vm.data.value.backendApiKey)
                     }.onSuccess { refresh ->
@@ -94,7 +97,8 @@ class MainActivity : FragmentActivity() {
                     bankIssues = bankIssues,
                     onConnectBank = { connectBank() },
                     onReconnectBank = { reconnectBank(it) },
-                    onRefreshBanks = { refreshBanks() }
+                    onRefreshBanks = { refreshBanks() },
+                    onOpenHousehold = { startActivity(Intent(this, HouseholdActivity::class.java)) }
                 )
             }
         }
@@ -121,9 +125,8 @@ class MainActivity : FragmentActivity() {
         }
         reconnectingItemId = null
         lifecycleScope.launch {
-            runCatching {
-                BankApi.createLinkToken(url, vm.data.value.backendApiKey)
-            }.onSuccess { launchPlaid(it) }
+            runCatching { BankApi.createLinkToken(url, vm.data.value.backendApiKey) }
+                .onSuccess { launchPlaid(it) }
                 .onFailure { toast(it.message ?: "Could not contact BillNest bank server") }
         }
     }
@@ -135,15 +138,15 @@ class MainActivity : FragmentActivity() {
             return
         }
         lifecycleScope.launch {
-            runCatching {
-                BankApi.createUpdateLinkToken(url, vm.data.value.backendApiKey, itemId)
-            }.onSuccess { linkToken ->
-                reconnectingItemId = itemId
-                launchPlaid(linkToken)
-            }.onFailure {
-                reconnectingItemId = null
-                toast(it.message ?: "Could not start bank reconnect")
-            }
+            runCatching { BankApi.createUpdateLinkToken(url, vm.data.value.backendApiKey, itemId) }
+                .onSuccess { linkToken ->
+                    reconnectingItemId = itemId
+                    launchPlaid(linkToken)
+                }
+                .onFailure {
+                    reconnectingItemId = null
+                    toast(it.message ?: "Could not start bank reconnect")
+                }
         }
     }
 
@@ -171,6 +174,8 @@ class MainActivity : FragmentActivity() {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 }
 
+private data class NavDestination(val id: Int, val label: String)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BillNestHome(
@@ -178,17 +183,33 @@ fun BillNestHome(
     bankIssues: List<BankConnectionIssue>,
     onConnectBank: () -> Unit,
     onReconnectBank: (String) -> Unit,
-    onRefreshBanks: () -> Unit
+    onRefreshBanks: () -> Unit,
+    onOpenHousehold: () -> Unit
 ) {
     val data by vm.data.collectAsStateWithLifecycle()
-    var tab by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(0) }
     var showAddBill by remember { mutableStateOf(false) }
     var showAddPayday by remember { mutableStateOf(false) }
     var showAddAccount by remember { mutableStateOf(false) }
+    var showAddReserve by remember { mutableStateOf(false) }
     var editingBill by remember { mutableStateOf<Bill?>(null) }
     var editingPayday by remember { mutableStateOf<Payday?>(null) }
     var editingAccount by remember { mutableStateOf<Account?>(null) }
+    var configuringAccount by remember { mutableStateOf<Account?>(null) }
+    var editingReserve by remember { mutableStateOf<ReservedFund?>(null) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
+    val destinations = listOf(
+        NavDestination(0, "Dashboard"),
+        NavDestination(1, "Bills"),
+        NavDestination(2, "Accounts"),
+        NavDestination(3, "Reserved Funds"),
+        NavDestination(4, "Calendar"),
+        NavDestination(5, "Income"),
+        NavDestination(6, "Settings")
+    )
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -196,49 +217,77 @@ fun BillNestHome(
         }
     }
 
-    val titles = listOf("Home", "Bills", "Accts", "Cal", "Income", "Settings")
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("BillNest") },
-                actions = {
-                    when (tab) {
-                        1 -> TextButton(onClick = { showAddBill = true }) { Text("+ Bill") }
-                        2 -> TextButton(onClick = { showAddAccount = true }) { Text("+ Account") }
-                        4 -> TextButton(onClick = { showAddPayday = true }) { Text("+ Payday") }
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                titles.forEachIndexed { i, name ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = {},
-                        label = { Text(name, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(18.dp))
+                Text("BillNest", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp))
+                Text("Household finance", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                Spacer(Modifier.height(14.dp))
+                destinations.forEach { destination ->
+                    NavigationDrawerItem(
+                        label = { Text(destination.label) },
+                        selected = page == destination.id,
+                        onClick = {
+                            page = destination.id
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp)
                     )
                 }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(
+                    label = { Text("Household & Sync") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenHousehold()
+                    },
+                    modifier = Modifier.padding(horizontal = 10.dp)
+                )
             }
         }
-    ) { pad ->
-        when (tab) {
-            0 -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
-            1 -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
-            2 -> AccountsPage(
-                data = data,
-                vm = vm,
-                bankIssues = bankIssues,
-                modifier = Modifier.padding(pad),
-                onEdit = { editingAccount = it },
-                onConnectBank = onConnectBank,
-                onReconnectBank = onReconnectBank,
-                onRefreshBanks = onRefreshBanks
-            )
-            3 -> CalendarPage(data, Modifier.padding(pad))
-            4 -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
-            else -> SettingsPage(data, vm, Modifier.padding(pad))
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(destinations.firstOrNull { it.id == page }?.label ?: "BillNest") },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Text("☰", style = MaterialTheme.typography.headlineSmall)
+                        }
+                    },
+                    actions = {
+                        when (page) {
+                            1 -> TextButton(onClick = { showAddBill = true }) { Text("+ Bill") }
+                            2 -> TextButton(onClick = { showAddAccount = true }) { Text("+ Account") }
+                            3 -> TextButton(onClick = { showAddReserve = true }) { Text("+ Reserve") }
+                            5 -> TextButton(onClick = { showAddPayday = true }) { Text("+ Payday") }
+                        }
+                    }
+                )
+            }
+        ) { pad ->
+            when (page) {
+                0 -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
+                1 -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
+                2 -> AccountsPage(
+                    data = data,
+                    vm = vm,
+                    bankIssues = bankIssues,
+                    modifier = Modifier.padding(pad),
+                    onEdit = { editingAccount = it },
+                    onConfigure = { configuringAccount = it },
+                    onConnectBank = onConnectBank,
+                    onReconnectBank = onReconnectBank,
+                    onRefreshBanks = onRefreshBanks
+                )
+                3 -> ReservedFundsPage(data, vm, Modifier.padding(pad), onEdit = { editingReserve = it })
+                4 -> CalendarPage(data, Modifier.padding(pad))
+                5 -> IncomePage(data, vm, Modifier.padding(pad), onEdit = { editingPayday = it })
+                else -> SettingsPage(data, vm, Modifier.padding(pad))
+            }
         }
     }
 
@@ -258,13 +307,32 @@ fun BillNestHome(
     editingPayday?.let { payday -> PaydayDialog(payday, { editingPayday = null }) { vm.updatePayday(it); editingPayday = null } }
     if (showAddAccount) AccountDialog(null, { showAddAccount = false }) { vm.addAccount(it); showAddAccount = false }
     editingAccount?.let { account -> AccountDialog(account, { editingAccount = null }) { vm.updateAccount(it); editingAccount = null } }
+    configuringAccount?.let { account ->
+        val index = data.accounts.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+        val preference = MoneyMath.preferenceFor(account, data.accountPreferences, index)
+        AccountPreferenceDialog(account, preference, { configuringAccount = null }) {
+            vm.setAccountPreference(it)
+            configuringAccount = null
+        }
+    }
+    if (showAddReserve) {
+        ReservedFundDialog(null, data, { showAddReserve = false }) {
+            vm.addReservedFund(it)
+            showAddReserve = false
+        }
+    }
+    editingReserve?.let { reserve ->
+        ReservedFundDialog(reserve, data, { editingReserve = null }) {
+            vm.updateReservedFund(it)
+            editingReserve = null
+        }
+    }
 }
 
 @Composable
 fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (Bill) -> Unit) {
     val today = LocalDate.now()
     val month = YearMonth.from(today)
-    val balance = if (data.accounts.isNotEmpty()) data.accounts.sumOf { it.balance } else data.manualBalance
     val unpaid = data.bills.filter { !it.isPaidFor() }
     val overdue = unpaid.filter { it.dueDate().isBefore(today) }
     val due30 = unpaid.filter { !it.dueDate().isBefore(today) && ChronoUnit.DAYS.between(today, it.dueDate()) <= 30 }
@@ -274,7 +342,7 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
         !d.isBefore(today) && ChronoUnit.DAYS.between(today, d) <= 30
     }.sumOf { it.amount }
     val due30Total = due30.sumOf { it.amount }
-    val safe = balance - due30Total
+    val money = MoneyMath.summary(data.accounts, data.accountPreferences, data.reservedFunds, due30Total)
     val nextPayday = data.paydays.filter { !it.nextDate().isBefore(today) }.minByOrNull { it.nextDate() }
     val billsBeforeNextPayday = nextPayday?.let { payday ->
         unpaid.filter { !it.dueDate().isBefore(today) && !it.dueDate().isAfter(payday.nextDate()) }.sumOf { it.amount }
@@ -284,15 +352,18 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
         item { Text("Money at a glance", style = MaterialTheme.typography.headlineSmall) }
         item {
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Across ${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
-                    Text(currency(balance), style = MaterialTheme.typography.headlineMedium)
-                    Text("Bills next 30 days: " + currency(due30Total))
-                    Text("Expected income next 30 days: " + currency(incoming30))
-                    Text("Safe after upcoming bills: " + currency(safe), style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Spending money", style = MaterialTheme.typography.labelLarge)
+                    Text(currency(money.spendingMoney), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Total money: ${currency(money.totalMoney)}")
+                    Text("Savings: ${currency(money.savingsMoney)} • Free savings: ${currency(money.freeSavings)}")
+                    if (money.reservedMoney > 0.0) Text("Reserved for bills/goals: ${currency(money.reservedMoney)}")
+                    Text("Bills next 30 days: ${currency(due30Total)}")
+                    Text("Expected income next 30 days: ${currency(incoming30)}")
+                    Text("Available after upcoming bills: ${currency(money.availableAfterUpcomingBills)}", style = MaterialTheme.typography.titleLarge)
                     nextPayday?.let { payday ->
-                        Text("Next payday: " + prettyDate(payday.nextDate()) + " • " + currency(payday.amount))
-                        Text("Bills before payday: " + currency(billsBeforeNextPayday))
+                        Text("Next payday: ${prettyDate(payday.nextDate())} • ${currency(payday.amount)}")
+                        Text("Bills before payday: ${currency(billsBeforeNextPayday)}")
                     }
                 }
             }
@@ -339,23 +410,15 @@ fun BillsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
         item {
             var expanded by remember { mutableStateOf(false) }
             Box {
-                OutlinedButton(onClick = { expanded = true }) { Text("Category: " + category) }
+                OutlinedButton(onClick = { expanded = true }) { Text("Category: $category") }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    categories.forEach { c ->
-                        DropdownMenuItem(text = { Text(c) }, onClick = { category = c; expanded = false })
-                    }
+                    categories.forEach { c -> DropdownMenuItem(text = { Text(c) }, onClick = { category = c; expanded = false }) }
                 }
             }
         }
         if (visible.isEmpty()) item { Text("No bills in this category.") }
         items(visible, key = { it.id }) { bill ->
-            BillRow(
-                bill,
-                vm,
-                onEdit,
-                !bill.isPaidFor() && bill.dueDate().isBefore(LocalDate.now()),
-                accountName(data, bill.accountId)
-            )
+            BillRow(bill, vm, onEdit, !bill.isPaidFor() && bill.dueDate().isBefore(LocalDate.now()), accountName(data, bill.accountId))
         }
     }
 }
@@ -366,7 +429,7 @@ fun BillRow(b: Bill, vm: MainViewModel, onEdit: (Bill) -> Unit, overdue: Boolean
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(b.name, style = MaterialTheme.typography.titleMedium)
             Text(currency(b.amount) + " • " + b.category + if (b.variableAmount) " • Variable" else "")
-            Text("Due " + prettyDate(b.dueDate()) + if (b.autopay) " • Autopay" else "")
+            Text("Due ${prettyDate(b.dueDate())}" + if (b.autopay) " • Autopay" else "")
             account?.let { Text("From: $it", style = MaterialTheme.typography.bodySmall) }
             if (overdue) Text("OVERDUE", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
             if (b.notes.isNotBlank()) Text(b.notes, style = MaterialTheme.typography.bodySmall)
@@ -386,70 +449,104 @@ fun AccountsPage(
     bankIssues: List<BankConnectionIssue>,
     modifier: Modifier = Modifier,
     onEdit: (Account) -> Unit,
+    onConfigure: (Account) -> Unit,
     onConnectBank: () -> Unit,
     onReconnectBank: (String) -> Unit,
     onRefreshBanks: () -> Unit
 ) {
-    val total = data.accounts.sumOf { it.balance }
+    val money = MoneyMath.summary(data.accounts, data.accountPreferences, data.reservedFunds)
+    val ordered = MoneyMath.orderedAccounts(data.accounts, data.accountPreferences)
+
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Accounts", style = MaterialTheme.typography.headlineSmall) }
         item {
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Total available")
-                    Text(currency(total), style = MaterialTheme.typography.headlineMedium)
-                    Text("${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Spending money", style = MaterialTheme.typography.labelLarge)
+                    Text(currency(money.spendingMoney), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Total money: ${currency(money.totalMoney)}")
+                    Text("Savings: ${currency(money.savingsMoney)}")
+                    if (money.reservedMoney > 0.0) Text("Reserved: ${currency(money.reservedMoney)} • Free savings: ${currency(money.freeSavings)}")
                 }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onConnectBank) { Text("Connect bank") }
-                OutlinedButton(onClick = onRefreshBanks, enabled = data.plaidConnected || bankIssues.isNotEmpty()) { Text("Refresh") }
+                OutlinedButton(onClick = onRefreshBanks) { Text("Refresh") }
             }
         }
-        if (data.backendUrl.isBlank()) {
-            item { Text("Set your BillNest bank server address in Settings before connecting Plaid.") }
-        }
-        items(bankIssues, key = { "bank-issue-${it.itemId}" }) { issue ->
-            Card(Modifier.fillMaxWidth()) {
+        items(bankIssues, key = { "issue-${it.itemId}" }) { issue ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(issue.label?.takeIf { it.isNotBlank() } ?: "Bank connection", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (issue.requiresReconnect) "Connection needs to be repaired" else "Bank connection needs attention",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Text(
-                        if (issue.requiresReconnect) "Your bank is asking you to sign in again before BillNest can refresh this account."
-                        else issue.message.ifBlank { "BillNest could not refresh this bank right now." },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    if (issue.requiresReconnect) {
-                        Button(onClick = { onReconnectBank(issue.itemId) }) { Text("Reconnect bank") }
-                    }
+                    Text(issue.label ?: "Bank connection", style = MaterialTheme.typography.titleMedium)
+                    Text(if (issue.requiresReconnect) "This bank needs you to sign in again." else issue.message.ifBlank { "This bank connection needs attention." })
+                    if (issue.requiresReconnect) Button(onClick = { onReconnectBank(issue.itemId) }) { Text("Reconnect bank") }
                 }
             }
         }
-        if (data.accounts.isEmpty() && bankIssues.isEmpty()) {
-            item { Text("No accounts yet. Tap + Account for a manual Checking/Savings account, or Connect bank for Plaid.") }
-        }
-        items(data.accounts, key = { it.id }) { account ->
+        if (data.accounts.isEmpty()) item { Text("No accounts yet. Add a manual account or connect a bank.") }
+        itemsIndexed(ordered, key = { _, account -> account.id }) { index, account ->
+            val originalIndex = data.accounts.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+            val preference = MoneyMath.preferenceFor(account, data.accountPreferences, originalIndex)
+            val reserved = data.reservedFunds.filter { it.enabled && it.accountId == account.id }.sumOf { it.currentReserved }
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
                             Text(account.name, style = MaterialTheme.typography.titleMedium)
                             Text(account.type.name.lowercase().replaceFirstChar { it.uppercase() } + if (account.mask.isNotBlank()) " ••••${account.mask}" else "")
-                            Text(if (account.source == AccountSource.PLAID) "Connected with Plaid" else "Manual account", style = MaterialTheme.typography.bodySmall)
+                            Text(preference.role.name.lowercase().replaceFirstChar { it.uppercase() } + if (!preference.includeInSpendingMoney) " • Not spendable" else " • Spendable", style = MaterialTheme.typography.bodySmall)
+                            if (!preference.includeInTotalMoney) Text("Excluded from Total Money", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            if (reserved > 0.0) Text("Reserved: ${currency(reserved)}", style = MaterialTheme.typography.bodySmall)
                         }
                         Text(currency(account.balance), style = MaterialTheme.typography.titleLarge)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         TextButton(onClick = { onEdit(account) }) { Text("Edit") }
-                        if (account.source == AccountSource.MANUAL) {
-                            TextButton(onClick = { vm.deleteAccount(account.id) }) { Text("Delete") }
-                        }
+                        TextButton(onClick = { onConfigure(account) }) { Text("Money settings") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        TextButton(onClick = { vm.moveAccount(account.id, -1) }, enabled = index > 0) { Text("↑ Move up") }
+                        TextButton(onClick = { vm.moveAccount(account.id, 1) }, enabled = index < ordered.lastIndex) { Text("↓ Move down") }
+                        if (account.source == AccountSource.MANUAL) TextButton(onClick = { vm.deleteAccount(account.id) }) { Text("Delete") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReservedFundsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, onEdit: (ReservedFund) -> Unit) {
+    val total = data.reservedFunds.filter { it.enabled }.sumOf { it.currentReserved }
+    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Reserved money", style = MaterialTheme.typography.labelLarge)
+                    Text(currency(total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Reserved money is still included in Total Money, but it is removed from free spending/savings calculations.")
+                }
+            }
+        }
+        if (data.reservedFunds.isEmpty()) {
+            item { Text("No reserved funds yet. Use + Reserve to create a bill bucket or sinking fund.") }
+        }
+        items(data.reservedFunds, key = { it.id }) { fund ->
+            val account = data.accounts.firstOrNull { it.id == fund.accountId }
+            val payday = data.paydays.firstOrNull { it.id == fund.fundingPaydayId }
+            val bill = data.bills.firstOrNull { it.id == fund.linkedBillId }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(fund.name, style = MaterialTheme.typography.titleMedium)
+                    Text(currency(fund.currentReserved), style = MaterialTheme.typography.titleLarge)
+                    Text("Held in: ${account?.name ?: "Unknown account"}")
+                    if (fund.contributionAmount > 0.0) Text("Planned contribution: ${currency(fund.contributionAmount)}${payday?.let { " from ${it.label}" } ?: ""}")
+                    bill?.let { Text("Linked bill: ${it.name}") }
+                    if (!fund.enabled) Text("Paused", color = MaterialTheme.colorScheme.error)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { onEdit(fund) }) { Text("Edit") }
+                        TextButton(onClick = { vm.deleteReservedFund(fund.id) }) { Text("Delete") }
                     }
                 }
             }
@@ -471,22 +568,22 @@ fun CalendarPage(data: AppData, modifier: Modifier = Modifier) {
                 TextButton(onClick = { month = month.plusMonths(1) }) { Text("›") }
             }
         }
-        item { Text("Bills: " + currency(monthBills.sumOf { it.amount }) + " • Income: " + currency(monthIncome.sumOf { it.amount }), style = MaterialTheme.typography.titleMedium) }
+        item { Text("Bills: ${currency(monthBills.sumOf { it.amount })} • Income: ${currency(monthIncome.sumOf { it.amount })}", style = MaterialTheme.typography.titleMedium) }
         if (monthBills.isEmpty() && monthIncome.isEmpty()) item { Text("Nothing scheduled this month.") }
-        items(monthBills, key = { "bill-" + it.id }) { b ->
+        items(monthBills, key = { "bill-${it.id}" }) { b ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text(prettyDate(b.dueDate()), style = MaterialTheme.typography.titleMedium)
-                    Text(b.name + " • " + currency(b.amount) + " • " + b.category)
+                    Text("${b.name} • ${currency(b.amount)} • ${b.category}")
                     accountName(data, b.accountId)?.let { Text("From: $it", style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
-        items(monthIncome, key = { "pay-" + it.id }) { p ->
+        items(monthIncome, key = { "pay-${it.id}" }) { p ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text(prettyDate(p.nextDate()), style = MaterialTheme.typography.titleMedium)
-                    Text(p.label + " • +" + currency(p.amount))
+                    Text("${p.label} • +${currency(p.amount)}")
                 }
             }
         }
@@ -503,7 +600,7 @@ fun IncomePage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(p.label, style = MaterialTheme.typography.titleMedium)
-                    Text(currency(p.amount) + " • " + prettyDate(p.nextDate()) + " • " + p.frequency.name.replace('_', ' '))
+                    Text("${currency(p.amount)} • ${prettyDate(p.nextDate())} • ${p.frequency.name.replace('_', ' ')}")
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(onClick = { onEdit(p) }) { Text("Edit") }
                         TextButton(onClick = { vm.deletePayday(p.id) }) { Text("Delete") }
@@ -520,30 +617,20 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
     var backendApiKey by remember(data.backendApiKey) { mutableStateOf(data.backendApiKey) }
     val options = listOf(7, 3, 1, 0)
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Bank connection server", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                        value = backendUrl,
-                        onValueChange = { backendUrl = it },
-                        label = { Text("Backend address") },
-                        supportingText = { Text("Example: https://your-domain.com or http://192.168.1.50:8787") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(backendUrl, { backendUrl = it }, label = { Text("Backend address") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(
                         value = backendApiKey,
                         onValueChange = { backendApiKey = it },
-                        label = { Text("Bank server key") },
+                        label = { Text("First-owner / legacy server key") },
                         visualTransformation = PasswordVisualTransformation(),
-                        supportingText = { Text("Private key used only by your BillNest app") },
+                        supportingText = { Text("Normal household bank access uses your signed-in session.") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Button(onClick = {
-                        vm.backendUrl(backendUrl)
-                        vm.backendApiKey(backendApiKey)
-                    }) { Text("Save bank connection") }
+                    Button(onClick = { vm.backendUrl(backendUrl); vm.backendApiKey(backendApiKey) }) { Text("Save bank connection") }
                     Text("Your Plaid secret stays on Cloudflare and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -555,7 +642,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
                     options.forEach { day ->
                         val checked = day in data.reminderDays
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(if (day == 0) "On due date" else day.toString() + " day" + if (day == 1) " before" else "s before")
+                            Text(if (day == 0) "On due date" else "$day day${if (day == 1) "" else "s"} before")
                             Switch(checked = checked, onCheckedChange = { enabled ->
                                 val next = if (enabled) data.reminderDays + day else data.reminderDays - day
                                 vm.reminderDays(next)
@@ -565,8 +652,8 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
                 }
             }
         }
-        item { Text("Bill and account data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v2.0.0-alpha3") }
+        item { Text("Bill, account preferences, and reserved-fund data is encrypted on-device and synced to your household when signed in.") }
+        item { Text("BillNest v2.0.0-alpha4") }
     }
 }
 
@@ -592,32 +679,28 @@ fun BillEditorDialog(original: Bill?, accounts: List<Account>, onDismiss: () -> 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 540.dp)) {
                 item { OutlinedTextField(name, { name = it }, label = { Text("Bill name") }) }
                 item { OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }) }
-                item { DatePickerButton(label = "Due date", dateIso = date, onDateSelected = { date = it }) }
+                item { DatePickerButton("Due date", date) { date = it } }
                 item {
                     Box {
                         OutlinedButton(onClick = { catExpanded = true }) { Text("Category: $category") }
-                        DropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
+                        DropdownMenu(catExpanded, { catExpanded = false }) {
                             BillCategories.forEach { c -> DropdownMenuItem(text = { Text(c) }, onClick = { category = c; catExpanded = false }) }
                         }
                     }
                 }
                 item {
                     Box {
-                        OutlinedButton(onClick = { accountExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Paid from: " + (accounts.firstOrNull { it.id == accountId }?.name ?: "Unassigned"))
-                        }
-                        DropdownMenu(expanded = accountExpanded, onDismissRequest = { accountExpanded = false }) {
+                        OutlinedButton(onClick = { accountExpanded = true }, modifier = Modifier.fillMaxWidth()) { Text("Paid from: ${accounts.firstOrNull { it.id == accountId }?.name ?: "Unassigned"}") }
+                        DropdownMenu(accountExpanded, { accountExpanded = false }) {
                             DropdownMenuItem(text = { Text("Unassigned") }, onClick = { accountId = null; accountExpanded = false })
-                            accounts.forEach { account ->
-                                DropdownMenuItem(text = { Text(account.name) }, onClick = { accountId = account.id; accountExpanded = false })
-                            }
+                            accounts.forEach { account -> DropdownMenuItem(text = { Text(account.name) }, onClick = { accountId = account.id; accountExpanded = false }) }
                         }
                     }
                 }
                 item {
                     Box {
-                        OutlinedButton(onClick = { freqExpanded = true }) { Text("Repeats: " + frequency.name.replace('_', ' ')) }
-                        DropdownMenu(expanded = freqExpanded, onDismissRequest = { freqExpanded = false }) {
+                        OutlinedButton(onClick = { freqExpanded = true }) { Text("Repeats: ${frequency.name.replace('_', ' ')}") }
+                        DropdownMenu(freqExpanded, { freqExpanded = false }) {
                             Frequency.entries.forEach { f -> DropdownMenuItem(text = { Text(f.name.replace('_', ' ')) }, onClick = { frequency = f; freqExpanded = false }) }
                         }
                     }
@@ -632,19 +715,10 @@ fun BillEditorDialog(original: Bill?, accounts: List<Account>, onDismiss: () -> 
                 val parsedAmount = amount.toDoubleOrNull()
                 val parsedDate = runCatching { LocalDate.parse(date) }.getOrNull()
                 if (parsedAmount != null && parsedDate != null) {
-                    onSave(
-                        (original ?: Bill(name = "", amount = 0.0, dueDateIso = parsedDate.toString())).copy(
-                            name = name.ifBlank { "Bill" },
-                            amount = parsedAmount,
-                            dueDateIso = parsedDate.toString(),
-                            frequency = frequency,
-                            autopay = autopay,
-                            category = category,
-                            notes = notes,
-                            variableAmount = variable,
-                            accountId = accountId
-                        )
-                    )
+                    onSave((original ?: Bill(name = "", amount = 0.0, dueDateIso = parsedDate.toString())).copy(
+                        name = name.ifBlank { "Bill" }, amount = parsedAmount, dueDateIso = parsedDate.toString(), frequency = frequency,
+                        autopay = autopay, category = category, notes = notes, variableAmount = variable, accountId = accountId
+                    ))
                 }
             }) { Text("Save") }
         },
@@ -666,23 +740,11 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Account name") })
-                OutlinedTextField(
-                    value = balance,
-                    onValueChange = { balance = it },
-                    label = { Text("Current balance") },
-                    enabled = !plaid
-                )
+                OutlinedTextField(balance, { balance = it }, label = { Text("Current balance") }, enabled = !plaid)
                 Box {
-                    OutlinedButton(onClick = { if (!plaid) expanded = true }, enabled = !plaid) {
-                        Text("Type: " + type.name.lowercase().replaceFirstChar { it.uppercase() })
-                    }
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        AccountType.entries.forEach { value ->
-                            DropdownMenuItem(
-                                text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                onClick = { type = value; expanded = false }
-                            )
-                        }
+                    OutlinedButton(onClick = { if (!plaid) expanded = true }, enabled = !plaid) { Text("Type: ${type.name.lowercase().replaceFirstChar { it.uppercase() }}") }
+                    DropdownMenu(expanded, { expanded = false }) {
+                        AccountType.entries.forEach { value -> DropdownMenuItem(text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { type = value; expanded = false }) }
                     }
                 }
                 if (plaid) Text("Balance and type come from your bank. You can rename the account here.")
@@ -692,15 +754,111 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
             Button(onClick = {
                 val parsedBalance = if (plaid) original?.balance else balance.toDoubleOrNull()
                 if (parsedBalance != null) {
-                    onSave(
-                        (original ?: Account(name = "", type = type, balance = parsedBalance)).copy(
-                            name = name.ifBlank { "Account" },
-                            type = if (plaid) original?.type ?: type else type,
-                            balance = parsedBalance
-                        )
-                    )
+                    onSave((original ?: Account(name = "", type = type, balance = parsedBalance)).copy(
+                        name = name.ifBlank { "Account" }, type = if (plaid) original?.type ?: type else type, balance = parsedBalance
+                    ))
                 }
             }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun AccountPreferenceDialog(account: Account, original: AccountPreference, onDismiss: () -> Unit, onSave: (AccountPreference) -> Unit) {
+    var role by remember { mutableStateOf(original.role) }
+    var includeTotal by remember { mutableStateOf(original.includeInTotalMoney) }
+    var includeSpending by remember { mutableStateOf(original.includeInSpendingMoney) }
+    var expanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Money settings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(account.name, style = MaterialTheme.typography.titleMedium)
+                Box {
+                    OutlinedButton(onClick = { expanded = true }) { Text("Role: ${role.name.lowercase().replaceFirstChar { it.uppercase() }}") }
+                    DropdownMenu(expanded, { expanded = false }) {
+                        AccountRole.entries.forEach { value -> DropdownMenuItem(text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { role = value; expanded = false }) }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) { Text("Include in Total Money"); Text("Turn off to exclude this account from household totals.", style = MaterialTheme.typography.bodySmall) }
+                    Switch(includeTotal, { includeTotal = it })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) { Text("Count as Spending Money"); Text("Turn off for savings or money you do not want treated as spendable.", style = MaterialTheme.typography.bodySmall) }
+                    Switch(includeSpending, { includeSpending = it })
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(original.copy(role = role, includeInTotalMoney = includeTotal, includeInSpendingMoney = includeSpending)) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun ReservedFundDialog(original: ReservedFund?, data: AppData, onDismiss: () -> Unit, onSave: (ReservedFund) -> Unit) {
+    var name by remember { mutableStateOf(original?.name ?: "") }
+    var accountId by remember { mutableStateOf(original?.accountId ?: data.accounts.firstOrNull()?.id.orEmpty()) }
+    var currentReserved by remember { mutableStateOf(original?.currentReserved?.toString() ?: "") }
+    var contribution by remember { mutableStateOf(original?.contributionAmount?.toString() ?: "") }
+    var paydayId by remember { mutableStateOf(original?.fundingPaydayId) }
+    var billId by remember { mutableStateOf(original?.linkedBillId) }
+    var enabled by remember { mutableStateOf(original?.enabled ?: true) }
+    var accountMenu by remember { mutableStateOf(false) }
+    var paydayMenu by remember { mutableStateOf(false) }
+    var billMenu by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (original == null) "Add reserved fund" else "Edit reserved fund") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.heightIn(max = 540.dp)) {
+                item { OutlinedTextField(name, { name = it }, label = { Text("Name") }, supportingText = { Text("Example: Mortgage Reserve, Insurance, Christmas") }) }
+                item {
+                    Box {
+                        OutlinedButton(onClick = { accountMenu = true }, enabled = data.accounts.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Held in: ${data.accounts.firstOrNull { it.id == accountId }?.name ?: "Select account"}") }
+                        DropdownMenu(accountMenu, { accountMenu = false }) {
+                            data.accounts.forEach { a -> DropdownMenuItem(text = { Text(a.name) }, onClick = { accountId = a.id; accountMenu = false }) }
+                        }
+                    }
+                }
+                item { OutlinedTextField(currentReserved, { currentReserved = it }, label = { Text("Amount currently reserved") }) }
+                item { OutlinedTextField(contribution, { contribution = it }, label = { Text("Planned contribution amount") }, supportingText = { Text("Optional; set the amount you intend to reserve per selected payday.") }) }
+                item {
+                    Box {
+                        OutlinedButton(onClick = { paydayMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Funding payday: ${data.paydays.firstOrNull { it.id == paydayId }?.label ?: "None"}") }
+                        DropdownMenu(paydayMenu, { paydayMenu = false }) {
+                            DropdownMenuItem(text = { Text("None") }, onClick = { paydayId = null; paydayMenu = false })
+                            data.paydays.forEach { p -> DropdownMenuItem(text = { Text(p.label) }, onClick = { paydayId = p.id; paydayMenu = false }) }
+                        }
+                    }
+                }
+                item {
+                    Box {
+                        OutlinedButton(onClick = { billMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Linked bill: ${data.bills.firstOrNull { it.id == billId }?.name ?: "None"}") }
+                        DropdownMenu(billMenu, { billMenu = false }) {
+                            DropdownMenuItem(text = { Text("None") }, onClick = { billId = null; billMenu = false })
+                            data.bills.forEach { b -> DropdownMenuItem(text = { Text(b.name) }, onClick = { billId = b.id; billMenu = false }) }
+                        }
+                    }
+                }
+                item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Enabled"); Switch(enabled, { enabled = it }) } }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val reserved = currentReserved.toDoubleOrNull() ?: 0.0
+                val planned = contribution.toDoubleOrNull() ?: 0.0
+                if (accountId.isNotBlank()) {
+                    onSave((original ?: ReservedFund(name = "", accountId = accountId)).copy(
+                        name = name.ifBlank { "Reserved Fund" }, accountId = accountId, currentReserved = reserved.coerceAtLeast(0.0),
+                        contributionAmount = planned.coerceAtLeast(0.0), fundingPaydayId = paydayId, linkedBillId = billId, enabled = enabled
+                    ))
+                }
+            }, enabled = accountId.isNotBlank()) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -720,13 +878,11 @@ fun PaydayDialog(original: Payday?, onDismiss: () -> Unit, onSave: (Payday) -> U
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(label, { label = it }, label = { Text("Name") })
                 OutlinedTextField(amount, { amount = it }, label = { Text("Take-home amount") })
-                DatePickerButton(label = "Next payday", dateIso = date, onDateSelected = { date = it })
+                DatePickerButton("Next payday", date) { date = it }
                 Box {
-                    OutlinedButton(onClick = { expanded = true }) { Text("Repeats: " + frequency.name.replace('_', ' ')) }
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        listOf(Frequency.WEEKLY, Frequency.BIWEEKLY, Frequency.MONTHLY).forEach { f ->
-                            DropdownMenuItem(text = { Text(f.name.replace('_', ' ')) }, onClick = { frequency = f; expanded = false })
-                        }
+                    OutlinedButton(onClick = { expanded = true }) { Text("Repeats: ${frequency.name.replace('_', ' ')}") }
+                    DropdownMenu(expanded, { expanded = false }) {
+                        listOf(Frequency.WEEKLY, Frequency.BIWEEKLY, Frequency.MONTHLY).forEach { f -> DropdownMenuItem(text = { Text(f.name.replace('_', ' ')) }, onClick = { frequency = f; expanded = false }) }
                     }
                 }
             }
@@ -736,14 +892,9 @@ fun PaydayDialog(original: Payday?, onDismiss: () -> Unit, onSave: (Payday) -> U
                 val parsedAmount = amount.toDoubleOrNull()
                 val parsedDate = runCatching { LocalDate.parse(date) }.getOrNull()
                 if (parsedAmount != null && parsedDate != null) {
-                    onSave(
-                        (original ?: Payday(label = "Paycheck", amount = parsedAmount, nextDateIso = parsedDate.toString())).copy(
-                            label = label.ifBlank { "Paycheck" },
-                            amount = parsedAmount,
-                            nextDateIso = parsedDate.toString(),
-                            frequency = frequency
-                        )
-                    )
+                    onSave((original ?: Payday(label = "Paycheck", amount = parsedAmount, nextDateIso = parsedDate.toString())).copy(
+                        label = label.ifBlank { "Paycheck" }, amount = parsedAmount, nextDateIso = parsedDate.toString(), frequency = frequency
+                    ))
                 }
             }) { Text("Save") }
         },
@@ -766,13 +917,9 @@ fun DatePickerButton(label: String, dateIso: String, onDateSelected: (String) ->
             ).show()
         },
         modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(label + ": " + prettyDate(current))
-    }
+    ) { Text("$label: ${prettyDate(current)}") }
 }
 
-private fun accountName(data: AppData, accountId: String?): String? =
-    accountId?.let { id -> data.accounts.firstOrNull { it.id == id }?.name }
-
+private fun accountName(data: AppData, accountId: String?): String? = accountId?.let { id -> data.accounts.firstOrNull { it.id == id }?.name }
 private fun currency(value: Double): String = NumberFormat.getCurrencyInstance().format(value)
 private fun prettyDate(date: LocalDate): String = date.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
