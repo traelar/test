@@ -22,6 +22,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.baylee.billnest.data.BankApi
+import com.baylee.billnest.data.BankConnectionIssue
 import com.baylee.billnest.model.*
 import com.baylee.billnest.ui.MainViewModel
 import com.baylee.billnest.ui.theme.BillNestTheme
@@ -46,11 +47,15 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private var bankIssues by mutableStateOf<List<BankConnectionIssue>>(emptyList())
+    private var reconnectingItemId: String? = null
+
     private val linkAccountToPlaid = registerForActivityResult(OpenPlaidLink()) { result ->
         when (result) {
             is LinkSuccess -> {
+                val reconnectItem = reconnectingItemId
                 val token = result.publicToken
-                if (token.isNullOrBlank()) {
+                if (reconnectItem == null && token.isNullOrBlank()) {
                     toast("Plaid did not return a bank token")
                     return@registerForActivityResult
                 }
@@ -58,15 +63,23 @@ class MainActivity : FragmentActivity() {
                 lifecycleScope.launch {
                     runCatching {
                         val url = vm.data.value.backendUrl
-                        BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token, institution)
+                        if (reconnectItem == null) {
+                            BankApi.exchangePublicToken(url, vm.data.value.backendApiKey, token!!, institution)
+                        }
                         BankApi.fetchAccounts(url, vm.data.value.backendApiKey)
-                    }.onSuccess { accounts ->
-                        vm.syncPlaidAccounts(accounts)
-                        toast("Bank connected")
-                    }.onFailure { toast(it.message ?: "Could not finish bank connection") }
+                    }.onSuccess { refresh ->
+                        reconnectingItemId = null
+                        bankIssues = refresh.issues
+                        vm.syncPlaidAccounts(refresh.accounts)
+                        toast(if (reconnectItem == null) "Bank connected" else "Bank reconnected")
+                    }.onFailure {
+                        reconnectingItemId = null
+                        toast(it.message ?: if (reconnectItem == null) "Could not finish bank connection" else "Could not reconnect bank")
+                    }
                 }
             }
             is LinkExit -> {
+                reconnectingItemId = null
                 result.error?.let { toast(it.displayMessage ?: it.errorMessage ?: "Plaid connection closed") }
             }
         }
@@ -78,10 +91,25 @@ class MainActivity : FragmentActivity() {
             BillNestTheme {
                 BillNestHome(
                     vm = vm,
+                    bankIssues = bankIssues,
                     onConnectBank = { connectBank() },
+                    onReconnectBank = { reconnectBank(it) },
                     onRefreshBanks = { refreshBanks() }
                 )
             }
+        }
+    }
+
+    private fun launchPlaid(linkToken: String) {
+        runCatching {
+            val session = Plaid.createPlaidLinkSession(
+                this@MainActivity,
+                linkTokenConfiguration { token = linkToken }
+            )
+            linkAccountToPlaid.launch(session)
+        }.onFailure {
+            reconnectingItemId = null
+            toast(it.message ?: "Could not open Plaid")
         }
     }
 
@@ -91,18 +119,31 @@ class MainActivity : FragmentActivity() {
             toast("Add your BillNest bank server address in Settings first")
             return
         }
+        reconnectingItemId = null
         lifecycleScope.launch {
             runCatching {
                 BankApi.createLinkToken(url, vm.data.value.backendApiKey)
+            }.onSuccess { launchPlaid(it) }
+                .onFailure { toast(it.message ?: "Could not contact BillNest bank server") }
+        }
+    }
+
+    private fun reconnectBank(itemId: String) {
+        val url = vm.data.value.backendUrl
+        if (url.isBlank()) {
+            toast("Add your BillNest bank server address in Settings first")
+            return
+        }
+        lifecycleScope.launch {
+            runCatching {
+                BankApi.createUpdateLinkToken(url, vm.data.value.backendApiKey, itemId)
             }.onSuccess { linkToken ->
-                runCatching {
-                    val session = Plaid.createPlaidLinkSession(
-                        this@MainActivity,
-                        linkTokenConfiguration { token = linkToken }
-                    )
-                    linkAccountToPlaid.launch(session)
-                }.onFailure { toast(it.message ?: "Could not open Plaid") }
-            }.onFailure { toast(it.message ?: "Could not contact BillNest bank server") }
+                reconnectingItemId = itemId
+                launchPlaid(linkToken)
+            }.onFailure {
+                reconnectingItemId = null
+                toast(it.message ?: "Could not start bank reconnect")
+            }
         }
     }
 
@@ -114,9 +155,14 @@ class MainActivity : FragmentActivity() {
         }
         lifecycleScope.launch {
             runCatching { BankApi.fetchAccounts(url, vm.data.value.backendApiKey) }
-                .onSuccess {
-                    vm.syncPlaidAccounts(it)
-                    toast("Bank balances refreshed")
+                .onSuccess { refresh ->
+                    bankIssues = refresh.issues
+                    vm.syncPlaidAccounts(refresh.accounts)
+                    when {
+                        refresh.issues.any { it.requiresReconnect } -> toast("A bank connection needs to be reconnected")
+                        refresh.issues.isNotEmpty() -> toast("Some bank connections need attention")
+                        else -> toast("Bank balances refreshed")
+                    }
                 }
                 .onFailure { toast(it.message ?: "Could not refresh bank balances") }
         }
@@ -129,7 +175,9 @@ class MainActivity : FragmentActivity() {
 @Composable
 fun BillNestHome(
     vm: MainViewModel,
+    bankIssues: List<BankConnectionIssue>,
     onConnectBank: () -> Unit,
+    onReconnectBank: (String) -> Unit,
     onRefreshBanks: () -> Unit
 ) {
     val data by vm.data.collectAsStateWithLifecycle()
@@ -181,9 +229,11 @@ fun BillNestHome(
             2 -> AccountsPage(
                 data = data,
                 vm = vm,
+                bankIssues = bankIssues,
                 modifier = Modifier.padding(pad),
                 onEdit = { editingAccount = it },
                 onConnectBank = onConnectBank,
+                onReconnectBank = onReconnectBank,
                 onRefreshBanks = onRefreshBanks
             )
             3 -> CalendarPage(data, Modifier.padding(pad))
@@ -333,9 +383,11 @@ fun BillRow(b: Bill, vm: MainViewModel, onEdit: (Bill) -> Unit, overdue: Boolean
 fun AccountsPage(
     data: AppData,
     vm: MainViewModel,
+    bankIssues: List<BankConnectionIssue>,
     modifier: Modifier = Modifier,
     onEdit: (Account) -> Unit,
     onConnectBank: () -> Unit,
+    onReconnectBank: (String) -> Unit,
     onRefreshBanks: () -> Unit
 ) {
     val total = data.accounts.sumOf { it.balance }
@@ -353,13 +405,33 @@ fun AccountsPage(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onConnectBank) { Text("Connect bank") }
-                OutlinedButton(onClick = onRefreshBanks, enabled = data.plaidConnected) { Text("Refresh") }
+                OutlinedButton(onClick = onRefreshBanks, enabled = data.plaidConnected || bankIssues.isNotEmpty()) { Text("Refresh") }
             }
         }
         if (data.backendUrl.isBlank()) {
             item { Text("Set your BillNest bank server address in Settings before connecting Plaid.") }
         }
-        if (data.accounts.isEmpty()) {
+        items(bankIssues, key = { "bank-issue-${it.itemId}" }) { issue ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(issue.label?.takeIf { it.isNotBlank() } ?: "Bank connection", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (issue.requiresReconnect) "Connection needs to be repaired" else "Bank connection needs attention",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        if (issue.requiresReconnect) "Your bank is asking you to sign in again before BillNest can refresh this account."
+                        else issue.message.ifBlank { "BillNest could not refresh this bank right now." },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (issue.requiresReconnect) {
+                        Button(onClick = { onReconnectBank(issue.itemId) }) { Text("Reconnect bank") }
+                    }
+                }
+            }
+        }
+        if (data.accounts.isEmpty() && bankIssues.isEmpty()) {
             item { Text("No accounts yet. Tap + Account for a manual Checking/Savings account, or Connect bank for Plaid.") }
         }
         items(data.accounts, key = { it.id }) { account ->
@@ -461,17 +533,17 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-              value = backendApiKey,
-              onValueChange = { backendApiKey = it },
-              label = { Text("Bank server key") },
-              visualTransformation = PasswordVisualTransformation(),
-              supportingText = { Text("Private key used only by your BillNest app") },
-              modifier = Modifier.fillMaxWidth()
-          )
-          Button(onClick = {
-              vm.backendUrl(backendUrl)
-              vm.backendApiKey(backendApiKey)
-          }) { Text("Save bank connection") }
+                        value = backendApiKey,
+                        onValueChange = { backendApiKey = it },
+                        label = { Text("Bank server key") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        supportingText = { Text("Private key used only by your BillNest app") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = {
+                        vm.backendUrl(backendUrl)
+                        vm.backendApiKey(backendApiKey)
+                    }) { Text("Save bank connection") }
                     Text("Your Plaid secret stays on Cloudflare and is never stored in the APK.", style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -494,7 +566,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
             }
         }
         item { Text("Bill and account data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v1.4.0") }
+        item { Text("BillNest v2.0.0-alpha3") }
     }
 }
 
