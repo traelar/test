@@ -89,6 +89,15 @@ object SyncMapper {
     fun encodeTransaction(value: FinanceTransaction): String = gson.toJson(value)
     fun decodeTransaction(value: String): FinanceTransaction = gson.fromJson(value, FinanceTransaction::class.java)
 
+    fun encodeTransactionRule(value: TransactionRule): String = gson.toJson(value)
+    fun decodeTransactionRule(value: String): TransactionRule = gson.fromJson(value, TransactionRule::class.java)
+
+    fun encodeTransactionTombstone(value: TransactionTombstone): String = gson.toJson(value)
+    fun decodeTransactionTombstone(value: String): TransactionTombstone = gson.fromJson(value, TransactionTombstone::class.java)
+
+    fun encodeFinancialSnapshot(value: FinancialSnapshot): String = gson.toJson(value)
+    fun decodeFinancialSnapshot(value: String): FinancialSnapshot = gson.fromJson(value, FinancialSnapshot::class.java)
+
     fun encodeBudget(value: Budget): String = gson.toJson(value)
     fun decodeBudget(value: String): Budget {
         val root = JsonParser.parseString(value).asJsonObject
@@ -119,6 +128,9 @@ object SyncMapper {
 
     fun settingsMutation(settings: SharedSettings): SyncRecordDraft = SyncRecordDraft("settings", "household", encodeSettings(settings))
     fun transactionMutation(value: FinanceTransaction) = SyncRecordDraft("transaction", value.id, encodeTransaction(value))
+    fun transactionRuleMutation(value: TransactionRule) = SyncRecordDraft("transaction_rule", value.id, encodeTransactionRule(value))
+    fun transactionTombstoneMutation(value: TransactionTombstone) = SyncRecordDraft("transaction_tombstone", value.transactionId, encodeTransactionTombstone(value))
+    fun financialSnapshotMutation(value: FinancialSnapshot) = SyncRecordDraft("financial_snapshot", value.dateIso, encodeFinancialSnapshot(value))
     fun budgetMutation(value: Budget) = SyncRecordDraft("budget", value.id, encodeBudget(value))
     fun budgetOverrideMutation(value: BudgetTransactionOverride) = SyncRecordDraft("budget_override", value.id, encodeBudgetOverride(value))
     fun budgetAdjustmentMutation(value: BudgetAdjustment) = SyncRecordDraft("budget_adjustment", value.id, encodeBudgetAdjustment(value))
