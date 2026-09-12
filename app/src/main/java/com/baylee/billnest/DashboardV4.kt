@@ -225,30 +225,27 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
         plan?.let { p ->
             item {
                 DashboardCard {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Next paycheck plan", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "${p.paydayLabel} • ${dashboardDate(p.dateIso)}",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            dashboardMoney(p.unassigned),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = if (p.unassigned >= 0) BillNestColors.positive else BillNestColors.danger,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                    Text("Next paycheck plan", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Unassigned after bills, reserves, savings, debt minimums, and variable budgets.",
+                        "${p.paydayLabel} • ${dashboardDate(p.dateIso)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "Unassigned",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        dashboardMoney(p.unassigned),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = if (p.unassigned >= 0) BillNestColors.positive else BillNestColors.danger,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        "After bills, reserves, savings, debt minimums, and variable budgets.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
