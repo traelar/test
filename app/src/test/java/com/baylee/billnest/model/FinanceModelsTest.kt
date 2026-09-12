@@ -2,8 +2,19 @@ package com.baylee.billnest.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
 
 class FinanceModelsTest {
+    @Test fun debtDueDateUsesReadableNextMonthlyOccurrence() {
+        val debt = Debt(name = "Loan", type = DebtType.LOAN, balance = 1000.0, dueDay = 15)
+        assertEquals(LocalDate.of(2026, 9, 15), nextDebtDueDate(debt, LocalDate.of(2026, 9, 10)))
+        assertEquals(LocalDate.of(2026, 10, 15), nextDebtDueDate(debt, LocalDate.of(2026, 9, 20)))
+    }
+
+    @Test fun debtDueDateClampsShortMonths() {
+        val debt = Debt(name = "Loan", type = DebtType.LOAN, balance = 1000.0, dueDay = 31)
+        assertEquals(LocalDate.of(2026, 2, 28), nextDebtDueDate(debt, LocalDate.of(2026, 2, 1)))
+    }
     @Test fun reservedMoneyIsNotCountedAsFreeSpending() {
         val data = AppData(
             accounts = listOf(

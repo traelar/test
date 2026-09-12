@@ -74,7 +74,10 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
             } }
         }
         if (data.debts.isEmpty()) item { Text("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
-        items(data.debts, key = { it.id }) { row -> FinanceRow(row.name, currencyV2(row.balance), "${row.type.name.replace('_', ' ')} • ${row.apr}% APR • ${currencyV2(row.minimumPayment)} minimum • due day ${row.dueDay}") { vm.deleteDebt(row.id) } }
+        items(data.debts, key = { it.id }) { row ->
+            val due = nextDebtDueDate(row).format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+            FinanceRow(row.name, currencyV2(row.balance), "${row.type.name.replace('_', ' ')} • ${row.apr}% APR • ${currencyV2(row.minimumPayment)} minimum • Due $due") { vm.deleteDebt(row.id) }
+        }
     }
     if (editor) DebtEditorDialog({ editor = false }) { vm.saveDebt(it); editor = false }
 }
@@ -240,7 +243,7 @@ private fun DebtEditorDialog(onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
     var balance by remember { mutableStateOf("") }
     var apr by remember { mutableStateOf("") }
     var minimum by remember { mutableStateOf("") }
-    var dueDay by remember { mutableStateOf("") }
+    var dueDate by remember { mutableStateOf(LocalDate.now().plusDays(7).toString()) }
     var type by remember { mutableStateOf(DebtType.CREDIT_CARD) }
     var expanded by remember { mutableStateOf(false) }
     AlertDialog(
@@ -252,11 +255,12 @@ private fun DebtEditorDialog(onDismiss: () -> Unit, onSave: (Debt) -> Unit) {
             OutlinedTextField(balance, { balance = it }, label = { Text("Current balance") })
             OutlinedTextField(apr, { apr = it }, label = { Text("APR percent") })
             OutlinedTextField(minimum, { minimum = it }, label = { Text("Minimum monthly payment") })
-            OutlinedTextField(dueDay, { dueDay = it }, label = { Text("Due day of month") })
+            DatePickerButton("Next due date", dueDate) { dueDate = it }
         } },
         confirmButton = { Button(onClick = {
             balance.toDoubleOrNull()?.let { parsedBalance ->
-                onSave(Debt(name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = (dueDay.toIntOrNull() ?: 1).coerceIn(1, 31)))
+                val selectedDueDate = runCatching { LocalDate.parse(dueDate) }.getOrDefault(LocalDate.now().plusDays(7))
+                onSave(Debt(name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth))
             }
         }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } }

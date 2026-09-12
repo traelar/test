@@ -293,6 +293,13 @@ data class Debt(
     val dueDay: Int = 1
 )
 
+fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate {
+    fun inMonth(month: java.time.YearMonth): LocalDate =
+        month.atDay(debt.dueDay.coerceIn(1, month.lengthOfMonth()))
+    val thisMonth = inMonth(java.time.YearMonth.from(today))
+    return if (thisMonth.isBefore(today)) inMonth(java.time.YearMonth.from(today).plusMonths(1)) else thisMonth
+}
+
 data class SavingsGoal(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
