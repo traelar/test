@@ -60,6 +60,29 @@ CREATE TABLE IF NOT EXISTS plaid_item_households (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS plaid_transaction_cursors (
+  item_id TEXT PRIMARY KEY,
+  cursor TEXT,
+  last_synced_at TEXT,
+  last_error_code TEXT,
+  last_error_message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS plaid_transactions (
+  transaction_id TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  merchant_name TEXT,
+  amount REAL NOT NULL,
+  iso_date TEXT NOT NULL,
+  pending INTEGER NOT NULL DEFAULT 0,
+  category_primary TEXT,
+  category_detailed TEXT,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS finance_records (
   household_id TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -96,14 +119,9 @@ CREATE TABLE IF NOT EXISTS auth_rate_limits (
   attempt_count INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_token_hash
-  ON sessions(token_hash);
-
-CREATE INDEX IF NOT EXISTS idx_household_members_user_id
-  ON household_members(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_sync_events_household_event
-  ON sync_events(household_id, event_id);
-
-CREATE INDEX IF NOT EXISTS idx_finance_records_household_kind
-  ON finance_records(household_id, kind);
+CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_household_members_user_id ON household_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_sync_events_household_event ON sync_events(household_id, event_id);
+CREATE INDEX IF NOT EXISTS idx_finance_records_household_kind ON finance_records(household_id, kind);
+CREATE INDEX IF NOT EXISTS idx_plaid_transactions_household_date ON plaid_transactions(household_id, iso_date DESC);
+CREATE INDEX IF NOT EXISTS idx_plaid_transactions_household_account ON plaid_transactions(household_id, account_id);
