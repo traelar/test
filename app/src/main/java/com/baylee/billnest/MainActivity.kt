@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.data.BankConnectionIssue
+import com.baylee.billnest.data.canRefreshBanks
 import com.baylee.billnest.model.*
 import com.baylee.billnest.ui.MainViewModel
 import com.baylee.billnest.ui.theme.BillNestTheme
@@ -100,6 +101,7 @@ class MainActivity : FragmentActivity() {
                 )
             }
         }
+        refreshBanks(showSuccessToast = false)
     }
 
     private fun launchPlaid(linkToken: String) {
@@ -149,7 +151,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun refreshBanks() {
+    private fun refreshBanks(showSuccessToast: Boolean = true) {
         val url = vm.data.value.backendUrl
         if (url.isBlank()) {
             toast("Add your BillNest bank server address in Settings first")
@@ -163,7 +165,7 @@ class MainActivity : FragmentActivity() {
                     when {
                         refresh.issues.any { it.requiresReconnect } -> toast("A bank connection needs to be reconnected")
                         refresh.issues.isNotEmpty() -> toast("Some bank connections need attention")
-                        else -> toast("Bank balances refreshed")
+                        showSuccessToast -> toast("Bank balances refreshed")
                     }
                 }
                 .onFailure { toast(it.message ?: "Could not refresh bank balances") }
@@ -439,7 +441,7 @@ fun AccountsPage(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onConnectBank) { Text("Connect bank") }
-                OutlinedButton(onClick = onRefreshBanks, enabled = data.plaidConnected || bankIssues.isNotEmpty()) { Text("Refresh") }
+                OutlinedButton(onClick = onRefreshBanks, enabled = canRefreshBanks(data.backendUrl)) { Text("Refresh") }
             }
         }
         if (data.backendUrl.isBlank()) {
@@ -603,7 +605,7 @@ fun SettingsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier
             }
         }
         item { Text("Bill and account data is encrypted on-device using Android Keystore.") }
-        item { Text("BillNest v2.0.0-alpha3") }
+        item { Text("BillNest v2.0.0-alpha4") }
     }
 }
 
