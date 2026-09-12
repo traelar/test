@@ -38,10 +38,7 @@ import com.plaid.link.result.LinkExit
 import com.plaid.link.result.LinkSuccess
 import kotlinx.coroutines.launch
 
-/**
- * Current BillNest finance shell. This keeps the existing finance screens intact
- * while routing Income and Budgets to the transaction-aware v2 experiences.
- */
+/** Current BillNest finance shell with the Alpha19 planning and insights experience. */
 class FinanceActivity : FragmentActivity() {
     private val vm by viewModels<MainViewModel> {
         val repo = (application as BillNestApp).repo
@@ -211,8 +208,9 @@ fun BillNestHomeV2(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val destinations = listOf(
-        "Dashboard", "Accounts", "Transactions", "Bills", "Budgets",
-        "Debt", "Savings / Goals", "Reserved Funds", "Subscriptions", "Income", "Calendar", "Household", "Settings"
+        "Dashboard", "Accounts", "Transactions", "Bills", "Budgets", "Debt",
+        "Paycheck Plan", "Insights", "Savings / Goals", "Reserved Funds", "Subscriptions",
+        "Income", "Calendar", "Household", "Settings"
     )
     var destination by remember { mutableStateOf("Dashboard") }
     val destinationHistory = remember { mutableStateListOf<String>() }
@@ -282,7 +280,7 @@ fun BillNestHomeV2(
             }
         ) { pad ->
             when (destination) {
-                "Dashboard" -> Dashboard(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
+                "Dashboard" -> DashboardV3(data, Modifier.padding(pad))
                 "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
                 "Accounts" -> AccountsPage(
                     data = data,
@@ -294,16 +292,18 @@ fun BillNestHomeV2(
                     onReconnectBank = onReconnectBank,
                     onRefreshBanks = onRefreshBanks
                 )
-                "Transactions" -> TransactionsPage(data, vm, Modifier.padding(pad))
+                "Transactions" -> TransactionsPageV3(data, vm, Modifier.padding(pad))
                 "Budgets" -> BudgetsPageV2(data, vm, Modifier.padding(pad))
-                "Debt" -> DebtPage(data, vm, Modifier.padding(pad))
+                "Debt" -> DebtPageV3(data, vm, Modifier.padding(pad))
+                "Paycheck Plan" -> PaycheckPlanPageV3(data, Modifier.padding(pad))
+                "Insights" -> InsightsPageV3(data, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
                 "Subscriptions" -> SubscriptionsPage(data, vm, Modifier.padding(pad))
                 "Calendar" -> CalendarPage(data, Modifier.padding(pad))
                 "Income" -> IncomePageV2(data, vm, Modifier.padding(pad), onEditPayday = { editingPayday = it })
                 "Household" -> LaunchedEffect(Unit) { context.startActivity(Intent(context, HouseholdActivity::class.java)) }
-                "Settings" -> SettingsPage(data, vm, Modifier.padding(pad))
+                "Settings" -> SettingsPageV3(data, vm, Modifier.padding(pad))
                 else -> V2ComingSoonPage(destination, Modifier.padding(pad))
             }
         }
@@ -334,8 +334,19 @@ fun BillNestHomeV2(
         }
     }
     if (showAddAccount) {
-        AccountDialog(null, { showAddAccount = false }) {
-            vm.addAccount(it)
+        AccountDialog(null, { showAddAccount = false }) { account ->
+            if (account.type == AccountType.CREDIT || account.role == AccountRole.CREDIT) {
+                vm.saveDebt(
+                    Debt(
+                        name = account.name,
+                        type = DebtType.CREDIT_CARD,
+                        balance = account.balance.coerceAtLeast(0.0),
+                        creditLimit = account.creditLimit.coerceAtLeast(0.0)
+                    )
+                )
+            } else {
+                vm.addAccount(account)
+            }
             showAddAccount = false
         }
     }
