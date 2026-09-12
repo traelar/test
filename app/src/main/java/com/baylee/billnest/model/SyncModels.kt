@@ -1,6 +1,8 @@
 package com.baylee.billnest.model
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
 
 data class SyncRecordDraft(
     val kind: String,
@@ -83,10 +85,23 @@ object SyncMapper {
 
     fun encodeSettings(settings: SharedSettings): String = gson.toJson(settings)
     fun decodeSettings(payloadJson: String): SharedSettings = gson.fromJson(payloadJson, SharedSettings::class.java)
+
     fun encodeTransaction(value: FinanceTransaction): String = gson.toJson(value)
     fun decodeTransaction(value: String): FinanceTransaction = gson.fromJson(value, FinanceTransaction::class.java)
+
     fun encodeBudget(value: Budget): String = gson.toJson(value)
-    fun decodeBudget(value: String): Budget = gson.fromJson(value, Budget::class.java)
+    fun decodeBudget(value: String): Budget {
+        val root = JsonParser.parseString(value).asJsonObject
+        normalizeBudgetJson(root)
+        return gson.fromJson(root, Budget::class.java)
+    }
+
+    fun encodeBudgetOverride(value: BudgetTransactionOverride): String = gson.toJson(value)
+    fun decodeBudgetOverride(value: String): BudgetTransactionOverride = gson.fromJson(value, BudgetTransactionOverride::class.java)
+
+    fun encodeBudgetAdjustment(value: BudgetAdjustment): String = gson.toJson(value)
+    fun decodeBudgetAdjustment(value: String): BudgetAdjustment = gson.fromJson(value, BudgetAdjustment::class.java)
+
     fun encodeDebt(value: Debt): String = gson.toJson(value)
     fun decodeDebt(value: String): Debt = gson.fromJson(value, Debt::class.java)
     fun encodeGoal(value: SavingsGoal): String = gson.toJson(value)
@@ -96,25 +111,33 @@ object SyncMapper {
     fun encodeSubscriptionPreference(value: SubscriptionPreference): String = gson.toJson(value)
     fun decodeSubscriptionPreference(value: String): SubscriptionPreference = gson.fromJson(value, SubscriptionPreference::class.java)
 
-    fun billMutation(bill: Bill): SyncRecordDraft =
-        SyncRecordDraft("bill", bill.id, encodeBill(bill))
-
-    fun paydayMutation(payday: Payday): SyncRecordDraft =
-        SyncRecordDraft("payday", payday.id, encodePayday(payday))
+    fun billMutation(bill: Bill): SyncRecordDraft = SyncRecordDraft("bill", bill.id, encodeBill(bill))
+    fun paydayMutation(payday: Payday): SyncRecordDraft = SyncRecordDraft("payday", payday.id, encodePayday(payday))
 
     fun accountMutation(account: Account): SyncRecordDraft? =
-        if (account.source == AccountSource.MANUAL) {
-            SyncRecordDraft("manual_account", account.id, encodeAccount(account))
-        } else {
-            null
-        }
+        if (account.source == AccountSource.MANUAL) SyncRecordDraft("manual_account", account.id, encodeAccount(account)) else null
 
-    fun settingsMutation(settings: SharedSettings): SyncRecordDraft =
-        SyncRecordDraft("settings", "household", encodeSettings(settings))
+    fun settingsMutation(settings: SharedSettings): SyncRecordDraft = SyncRecordDraft("settings", "household", encodeSettings(settings))
     fun transactionMutation(value: FinanceTransaction) = SyncRecordDraft("transaction", value.id, encodeTransaction(value))
     fun budgetMutation(value: Budget) = SyncRecordDraft("budget", value.id, encodeBudget(value))
+    fun budgetOverrideMutation(value: BudgetTransactionOverride) = SyncRecordDraft("budget_override", value.id, encodeBudgetOverride(value))
+    fun budgetAdjustmentMutation(value: BudgetAdjustment) = SyncRecordDraft("budget_adjustment", value.id, encodeBudgetAdjustment(value))
     fun debtMutation(value: Debt) = SyncRecordDraft("debt", value.id, encodeDebt(value))
     fun goalMutation(value: SavingsGoal) = SyncRecordDraft("savings_goal", value.id, encodeGoal(value))
     fun reservedFundMutation(value: ReservedFund) = SyncRecordDraft("reserved_fund", value.id, encodeReservedFund(value))
     fun subscriptionPreferenceMutation(value: SubscriptionPreference) = SyncRecordDraft("subscription_preference", value.merchantKey, encodeSubscriptionPreference(value))
+
+    internal fun normalizeBudgetJson(root: com.google.gson.JsonObject) {
+        listOf(
+            "includedCategories", "excludedCategories", "includedMerchants", "excludedMerchants",
+            "includedAccountIds", "excludedAccountIds"
+        ).forEach { field ->
+            if (!root.has(field) || root.get(field).isJsonNull) root.add(field, JsonArray())
+        }
+        if (!root.has("rolloverMode") || root.get("rolloverMode").isJsonNull) {
+            root.addProperty("rolloverMode", if (root.get("rollover")?.asBoolean == true) "CARRY_UNUSED" else "RESET")
+        }
+        if (!root.has("warningPercent") || root.get("warningPercent").isJsonNull) root.addProperty("warningPercent", 90)
+        if (!root.has("paceTracking") || root.get("paceTracking").isJsonNull) root.addProperty("paceTracking", true)
+    }
 }
