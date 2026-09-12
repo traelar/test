@@ -18,12 +18,7 @@ function fakeD1(preparedSql) {
       return {
         bind() { return this; },
         async run() { return { success: true }; },
-        async all() {
-          if (text.startsWith('SELECT item_id, label, created_at FROM plaid_items')) {
-            return { results: [] };
-          }
-          return { results: [] };
-        },
+        async all() { return { results: [] }; },
         async first() { return null; }
       };
     }
@@ -54,6 +49,7 @@ test('GET /api/plaid/items initializes the household schema without multiline ex
     'CREATE TABLE IF NOT EXISTS plaid_item_households',
     'CREATE TABLE IF NOT EXISTS finance_records',
     'CREATE TABLE IF NOT EXISTS sync_events',
+    'CREATE TABLE IF NOT EXISTS sync_mutations',
     'CREATE TABLE IF NOT EXISTS auth_rate_limits'
   ];
 
