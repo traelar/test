@@ -1,7 +1,20 @@
 import { httpError, json, readJson } from './http.js';
 import { D1Store } from './store.js';
 
-const ALLOWED_KINDS = new Set(['bill', 'payday', 'manual_account', 'settings']);
+const ALLOWED_KINDS = new Set([
+  'bill',
+  'payday',
+  'manual_account',
+  'account_preference',
+  'manual_transaction',
+  'budget',
+  'debt',
+  'goal',
+  'reserved_fund',
+  'subscription_override',
+  'bill_match',
+  'settings'
+]);
 const MAX_MUTATIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 const MAX_CHANGES = 500;
