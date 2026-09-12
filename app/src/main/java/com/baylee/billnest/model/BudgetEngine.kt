@@ -153,7 +153,7 @@ fun eligibleVariableSpendingTransactions(
         .mapTo(mutableSetOf()) { it.transactionId }
 
     return data.transactions.filter { row ->
-        if (row.transfer || row.income || row.id in inferredIncomeIds || row.id in fixedBillIds) return@filter false
+        if (row.transfer || row.income || row.excludedFromSpending || row.id in inferredIncomeIds || row.id in fixedBillIds) return@filter false
         if (row.amount <= 0.0) return@filter false
         if (row.category.trim().lowercase() in NON_VARIABLE_CATEGORIES) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
