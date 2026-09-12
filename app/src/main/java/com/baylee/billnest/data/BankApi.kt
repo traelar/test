@@ -105,6 +105,7 @@ object BankApi {
             .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
             .map { dto ->
                 Account(
+                    id = "plaid:${dto.accountId}",
                     name = dto.name,
                     type = when (dto.subtype.lowercase()) {
                         "checking" -> AccountType.CHECKING
