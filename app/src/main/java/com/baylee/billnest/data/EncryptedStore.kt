@@ -49,6 +49,7 @@ class EncryptedStore(private val context: Context) {
         // Fill fields added after v1.2 before Gson creates Kotlin data classes.
         val root = JsonParser.parseString(decoded).asJsonObject
         if (!root.has("accounts") || root.get("accounts").isJsonNull) root.add("accounts", JsonArray())
+        if (!root.has("budgets") || root.get("budgets").isJsonNull) root.add("budgets", JsonArray())
         if (!root.has("deletedPlaidTransactionIds") || root.get("deletedPlaidTransactionIds").isJsonNull) {
             root.add("deletedPlaidTransactionIds", JsonArray())
         }
@@ -58,7 +59,7 @@ class EncryptedStore(private val context: Context) {
         if (!root.has("budgetAdjustments") || root.get("budgetAdjustments").isJsonNull) {
             root.add("budgetAdjustments", JsonArray())
         }
-        root.getAsJsonArray("budgets")?.forEach { element ->
+        root.getAsJsonArray("budgets").forEach { element ->
             if (element.isJsonObject) SyncMapper.normalizeBudgetJson(element.asJsonObject)
         }
         if (!root.has("backendUrl") || root.get("backendUrl").isJsonNull) root.addProperty("backendUrl", "")
