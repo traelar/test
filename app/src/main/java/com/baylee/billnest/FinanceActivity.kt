@@ -333,24 +333,13 @@ fun BillNestHomeV2(
         }
     }
     if (showAddAccount) {
-        AccountDialog(null, { showAddAccount = false }) { account ->
-            if (account.type == AccountType.CREDIT || account.role == AccountRole.CREDIT) {
-                vm.saveDebt(
-                    Debt(
-                        name = account.name,
-                        type = DebtType.CREDIT_CARD,
-                        balance = account.balance.coerceAtLeast(0.0),
-                        creditLimit = account.creditLimit.coerceAtLeast(0.0)
-                    )
-                )
-            } else {
-                vm.addAccount(account)
-            }
+        AssetAccountDialog(null, { showAddAccount = false }) {
+            vm.addAccount(it)
             showAddAccount = false
         }
     }
     editingAccount?.let { account ->
-        AccountDialog(account, { editingAccount = null }) {
+        AssetAccountDialog(account, { editingAccount = null }) {
             vm.updateAccount(it)
             editingAccount = null
         }
