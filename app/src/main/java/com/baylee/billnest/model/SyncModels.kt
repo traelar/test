@@ -81,6 +81,10 @@ object SyncMapper {
     fun encodeAccount(account: Account): String = gson.toJson(account)
     fun decodeAccount(payloadJson: String): Account = gson.fromJson(payloadJson, Account::class.java)
 
+    fun encodeAccountPreference(preference: AccountPreference): String = gson.toJson(preference)
+    fun decodeAccountPreference(payloadJson: String): AccountPreference =
+        gson.fromJson(payloadJson, AccountPreference::class.java)
+
     fun encodeSettings(settings: SharedSettings): String = gson.toJson(settings)
     fun decodeSettings(payloadJson: String): SharedSettings = gson.fromJson(payloadJson, SharedSettings::class.java)
 
@@ -96,6 +100,9 @@ object SyncMapper {
         } else {
             null
         }
+
+    fun accountPreferenceMutation(preference: AccountPreference): SyncRecordDraft =
+        SyncRecordDraft("account_preference", preference.accountKey, encodeAccountPreference(preference))
 
     fun settingsMutation(settings: SharedSettings): SyncRecordDraft =
         SyncRecordDraft("settings", "household", encodeSettings(settings))
