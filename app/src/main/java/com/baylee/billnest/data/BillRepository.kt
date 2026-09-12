@@ -116,8 +116,9 @@ class BillRepository(
         update { data ->
             val ordered = data.accounts.sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name }).toMutableList()
             val from = ordered.indexOfFirst { it.id == accountId }
+            if (from < 0 || ordered.isEmpty()) return@update data
             val to = (from + direction).coerceIn(0, ordered.lastIndex)
-            if (from < 0 || from == to) return@update data
+            if (from == to) return@update data
             val moved = ordered.removeAt(from)
             ordered.add(to, moved)
             data.copy(accounts = ordered.mapIndexed { index, account -> account.copy(displayOrder = index) })
@@ -164,27 +165,80 @@ class BillRepository(
         )
     }
 
-    fun saveBudget(value: Budget) { update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }; queue(SyncMapper.budgetMutation(value)) }
-    fun deleteBudget(id: String) { update { it.copy(budgets = it.budgets.filterNot { row -> row.id == id }) }; queueDelete("budget", id) }
+    fun saveBudget(value: Budget) {
+        update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }
+        queue(SyncMapper.budgetMutation(value))
+    }
+
+    fun deleteBudget(id: String) {
+        val relatedOverrides = _data.value.budgetTransactionOverrides.filter { it.budgetId == id }.map { it.id }
+        val relatedAdjustments = _data.value.budgetAdjustments.filter { it.sourceBudgetId == id || it.destinationBudgetId == id }.map { it.id }
+        update { data ->
+            data.copy(
+                budgets = data.budgets.filterNot { it.id == id },
+                budgetTransactionOverrides = data.budgetTransactionOverrides.filterNot { it.budgetId == id },
+                budgetAdjustments = data.budgetAdjustments.filterNot { it.sourceBudgetId == id || it.destinationBudgetId == id }
+            )
+        }
+        queueDelete("budget", id)
+        relatedOverrides.forEach { queueDelete("budget_override", it) }
+        relatedAdjustments.forEach { queueDelete("budget_adjustment", it) }
+    }
+
+    fun setTransactionBudget(transactionId: String, budgetId: String?, referenceDate: LocalDate = LocalDate.now()) {
+        val beforeIds = _data.value.budgetTransactionOverrides.mapTo(mutableSetOf()) { it.id }
+        update { data -> com.baylee.billnest.model.assignTransactionToBudget(data, transactionId, budgetId, referenceDate) }
+        _data.value.budgetTransactionOverrides
+            .filterNot { it.id in beforeIds }
+            .forEach { queue(SyncMapper.budgetOverrideMutation(it)) }
+    }
+
+    fun moveBudgetMoney(sourceBudgetId: String, destinationBudgetId: String, amount: Double, referenceDate: LocalDate = LocalDate.now()) {
+        val beforeIds = _data.value.budgetAdjustments.mapTo(mutableSetOf()) { it.id }
+        update { data -> com.baylee.billnest.model.moveBudgetMoney(data, sourceBudgetId, destinationBudgetId, amount, referenceDate) }
+        _data.value.budgetAdjustments
+            .filterNot { it.id in beforeIds }
+            .forEach { queue(SyncMapper.budgetAdjustmentMutation(it)) }
+    }
+
     fun saveDebt(value: Debt) {
         val removedDuplicateIds = _data.value.debts.filter { it.id != value.id && !value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId }.map { it.id }
         update { data -> data.copy(debts = upsertDebtRecord(data.debts, value)) }
         removedDuplicateIds.forEach { queueDelete("debt", it) }
         queue(SyncMapper.debtMutation(value))
     }
-    fun deleteDebt(id: String) { update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }; queueDelete("debt", id) }
-    fun saveGoal(value: SavingsGoal) { update { data -> data.copy(savingsGoals = upsert(data.savingsGoals, value.id, value) { it.id }) }; queue(SyncMapper.goalMutation(value)) }
-    fun deleteGoal(id: String) { update { it.copy(savingsGoals = it.savingsGoals.filterNot { row -> row.id == id }) }; queueDelete("savings_goal", id) }
+
+    fun deleteDebt(id: String) {
+        update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }
+        queueDelete("debt", id)
+    }
+
+    fun saveGoal(value: SavingsGoal) {
+        update { data -> data.copy(savingsGoals = upsert(data.savingsGoals, value.id, value) { it.id }) }
+        queue(SyncMapper.goalMutation(value))
+    }
+
+    fun deleteGoal(id: String) {
+        update { it.copy(savingsGoals = it.savingsGoals.filterNot { row -> row.id == id }) }
+        queueDelete("savings_goal", id)
+    }
+
     fun saveReservedFund(value: ReservedFund) {
         val normalized = value.copy(amount = value.amount.coerceAtLeast(0.0))
         update { data -> data.copy(reservedFunds = upsert(data.reservedFunds, value.id, normalized) { it.id }) }
         queue(SyncMapper.reservedFundMutation(normalized))
     }
-    fun deleteReservedFund(id: String) { update { it.copy(reservedFunds = it.reservedFunds.filterNot { row -> row.id == id }) }; queueDelete("reserved_fund", id) }
+
+    fun deleteReservedFund(id: String) {
+        update { it.copy(reservedFunds = it.reservedFunds.filterNot { row -> row.id == id }) }
+        queueDelete("reserved_fund", id)
+    }
+
     fun fundReserved(id: String, amount: Double) {
         update { data -> data.copy(reservedFunds = data.reservedFunds.map { if (it.id == id) it.copy(amount = (it.amount + amount).coerceAtLeast(0.0)) else it }) }
         _data.value.reservedFunds.firstOrNull { it.id == id }?.let { queue(SyncMapper.reservedFundMutation(it)) }
     }
+
     fun saveSubscriptionPreference(value: SubscriptionPreference) {
         update { data -> data.copy(subscriptionPreferences = upsert(data.subscriptionPreferences, value.merchantKey, value) { it.merchantKey }) }
         queue(SyncMapper.subscriptionPreferenceMutation(value))
@@ -206,8 +260,7 @@ class BillRepository(
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }
     fun setBackendApiKey(value: String) = update { it.copy(backendApiKey = value.trim()) }
     fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
-    fun setBalances(items: List<AccountBalance>, connected: Boolean = true) =
-        update { it.copy(balances = items, plaidConnected = connected) }
+    fun setBalances(items: List<AccountBalance>, connected: Boolean = true) = update { it.copy(balances = items, plaidConnected = connected) }
     fun setBiometric(enabled: Boolean) = update { it.copy(biometricLock = enabled) }
 
     fun setReminderDays(days: List<Int>) {
@@ -277,19 +330,23 @@ class BillRepository(
     }
 
     fun applyRemoteFinance(kind: String, payload: String?, deletedId: String?) {
-        update { data -> when (kind) {
-            "transaction" -> {
-                val updated = remoteList(data.transactions, payload?.let(SyncMapper::decodeTransaction), deletedId) { it.id }
-                    .filterNot { it.id in data.deletedPlaidTransactionIds }
-                data.copy(transactions = updated)
+        update { data ->
+            when (kind) {
+                "transaction" -> {
+                    val updated = remoteList(data.transactions, payload?.let(SyncMapper::decodeTransaction), deletedId) { it.id }
+                        .filterNot { it.id in data.deletedPlaidTransactionIds }
+                    data.copy(transactions = updated)
+                }
+                "budget" -> data.copy(budgets = remoteList(data.budgets, payload?.let(SyncMapper::decodeBudget), deletedId) { it.id })
+                "budget_override" -> data.copy(budgetTransactionOverrides = remoteList(data.budgetTransactionOverrides, payload?.let(SyncMapper::decodeBudgetOverride), deletedId) { it.id })
+                "budget_adjustment" -> data.copy(budgetAdjustments = remoteList(data.budgetAdjustments, payload?.let(SyncMapper::decodeBudgetAdjustment), deletedId) { it.id })
+                "debt" -> data.copy(debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id })
+                "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
+                "reserved_fund" -> data.copy(reservedFunds = remoteList(data.reservedFunds, payload?.let(SyncMapper::decodeReservedFund), deletedId) { it.id })
+                "subscription_preference" -> data.copy(subscriptionPreferences = remoteList(data.subscriptionPreferences, payload?.let(SyncMapper::decodeSubscriptionPreference), deletedId) { it.merchantKey })
+                else -> data
             }
-            "budget" -> data.copy(budgets = remoteList(data.budgets, payload?.let(SyncMapper::decodeBudget), deletedId) { it.id })
-            "debt" -> data.copy(debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id })
-            "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
-            "reserved_fund" -> data.copy(reservedFunds = remoteList(data.reservedFunds, payload?.let(SyncMapper::decodeReservedFund), deletedId) { it.id })
-            "subscription_preference" -> data.copy(subscriptionPreferences = remoteList(data.subscriptionPreferences, payload?.let(SyncMapper::decodeSubscriptionPreference), deletedId) { it.merchantKey })
-            else -> data
-        } }
+        }
     }
 
     private fun <T> remoteList(items: List<T>, value: T?, deletedId: String?, idOf: (T) -> String): List<T> = when {
