@@ -693,7 +693,10 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
     var name by remember { mutableStateOf(original?.name ?: "") }
     var balance by remember { mutableStateOf(original?.balance?.toString() ?: "") }
     var type by remember { mutableStateOf(original?.type ?: AccountType.CHECKING) }
+    var role by remember { mutableStateOf(original?.role ?: AccountRole.OTHER) }
+    var includeInSpendable by remember { mutableStateOf(original?.includeInSpendable ?: true) }
     var expanded by remember { mutableStateOf(false) }
+    var roleExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
