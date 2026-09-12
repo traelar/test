@@ -76,6 +76,8 @@ data class AppData(
     val transactions: List<FinanceTransaction> = emptyList(),
     val deletedPlaidTransactionIds: List<String> = emptyList(),
     val budgets: List<Budget> = emptyList(),
+    val budgetTransactionOverrides: List<BudgetTransactionOverride> = emptyList(),
+    val budgetAdjustments: List<BudgetAdjustment> = emptyList(),
     val debts: List<Debt> = emptyList(),
     val savingsGoals: List<SavingsGoal> = emptyList(),
     val reservedFunds: List<ReservedFund> = emptyList(),
