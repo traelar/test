@@ -66,15 +66,25 @@ data class PaycheckPlan(
 
 private val fixedSpendingCategories = setOf(
     "housing", "utilities", "phone/internet", "insurance", "credit card",
-    "debt", "savings", "transfer", "income", "subscriptions"
+    "debt", "savings", "transfer", "income", "subscriptions",
+    "saving", "reserve", "reserved funds", "investment", "retirement",
+    "debt payment", "credit card payment", "loan payment", "mortgage payment"
 )
+
+fun isNonVariableSpendingCategory(category: String): Boolean {
+    val normalized = category.trim()
+        .replace('_', ' ')
+        .lowercase()
+        .replace(Regex("\\s+"), " ")
+    return normalized in fixedSpendingCategories || normalized.startsWith("transfer ")
+}
 
 fun isVariableSpendingForInsights(row: FinanceTransaction): Boolean =
     !row.transfer &&
         !row.income &&
         !row.excludedFromSpending &&
         row.amount > 0.0 &&
-        row.category.trim().lowercase() !in fixedSpendingCategories
+        !isNonVariableSpendingCategory(row.category)
 
 fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
     fun rowsFor(target: YearMonth): List<FinanceTransaction> = data.transactions.filter { row ->
