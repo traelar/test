@@ -53,6 +53,15 @@ class EncryptedStore(private val context: Context) {
         if (!root.has("deletedPlaidTransactionIds") || root.get("deletedPlaidTransactionIds").isJsonNull) {
             root.add("deletedPlaidTransactionIds", JsonArray())
         }
+        if (!root.has("transactionRules") || root.get("transactionRules").isJsonNull) {
+            root.add("transactionRules", JsonArray())
+        }
+        if (!root.has("transactionTombstones") || root.get("transactionTombstones").isJsonNull) {
+            root.add("transactionTombstones", JsonArray())
+        }
+        if (!root.has("financialSnapshots") || root.get("financialSnapshots").isJsonNull) {
+            root.add("financialSnapshots", JsonArray())
+        }
         if (!root.has("budgetTransactionOverrides") || root.get("budgetTransactionOverrides").isJsonNull) {
             root.add("budgetTransactionOverrides", JsonArray())
         }
