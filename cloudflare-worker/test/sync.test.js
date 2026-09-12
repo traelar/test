@@ -142,6 +142,28 @@ test('stale baseVersion returns a conflict instead of overwriting server state',
   assert.equal(result.conflicts[0].serverRecord.payload.amount, 140);
 });
 
+test('write that loses the optimistic-version race becomes a conflict', async () => {
+  class RaceStore extends MemorySyncStore {
+    async applySyncMutation({ householdId, record }) {
+      this.records.set(this.key(householdId, record.kind, record.recordId), {
+        ...record,
+        payloadJson: JSON.stringify({ id: record.recordId, name: 'Winner from other phone', amount: 150 }),
+        version: record.version,
+        updatedByUserId: 'other-phone'
+      });
+      return false;
+    }
+  }
+
+  const store = new RaceStore();
+  const { sync } = service(store);
+  const result = await sync.sync(ownerContext, { sinceEventId: 0, mutations: [mutation()] });
+
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].serverRecord.payload.amount, 150);
+});
+
 test('delete produces a tombstone event', async () => {
   const { sync } = service();
   await sync.sync(ownerContext, { sinceEventId: 0, mutations: [mutation()] });
