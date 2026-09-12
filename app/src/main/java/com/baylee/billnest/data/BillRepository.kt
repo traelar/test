@@ -150,8 +150,7 @@ class BillRepository(
         val accountIds = data.accounts.filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
             .associate { it.plaidAccountId!! to it.id }
         val mapped = incoming.map { row -> row.copy(accountId = accountIds[row.accountId] ?: row.accountId) }
-        val incomingIds = mapped.map { it.id }.toSet()
-        data.copy(transactions = (data.transactions.filterNot { it.id in incomingIds } + mapped).sortedByDescending { it.dateIso })
+        data.copy(transactions = mergePlaidTransactions(data.transactions, mapped))
     }
     fun saveBudget(value: Budget) { update { data -> data.copy(budgets = upsert(data.budgets, value.id, value) { it.id }) }; queue(SyncMapper.budgetMutation(value)) }
     fun deleteBudget(id: String) { update { it.copy(budgets = it.budgets.filterNot { row -> row.id == id }) }; queueDelete("budget", id) }
