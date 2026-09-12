@@ -14,8 +14,8 @@ android {
         applicationId = "com.baylee.billnest"
         minSdk = 28
         targetSdk = 36
-        versionCode = 10
-        versionName = "2.0.0-alpha3"
+        versionCode = 11
+        versionName = "2.0.0-alpha4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
