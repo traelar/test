@@ -53,6 +53,24 @@ class FinanceModelsTest {
         assertEquals(5500.0, summary.totalMoney, 0.001)
     }
 
+    @Test fun plaidCreditRefreshUpdatesLinkedDebtWithoutDuplicates() {
+        val account = Account(name = "Card", type = AccountType.CREDIT, balance = 425.0, source = AccountSource.PLAID, plaidAccountId = "plaid-card", creditLimit = 2000.0)
+        val existing = Debt(name = "My Card", type = DebtType.CREDIT_CARD, balance = 500.0, apr = 24.9, plaidAccountId = "plaid-card")
+        val merged = mergePlaidCreditDebts(listOf(existing), listOf(account))
+        assertEquals(1, merged.size)
+        assertEquals(existing.id, merged.single().id)
+        assertEquals(425.0, merged.single().balance, 0.001)
+        assertEquals(2000.0, merged.single().creditLimit, 0.001)
+        assertEquals(24.9, merged.single().apr, 0.001)
+    }
+
+    @Test fun plaidCreditRefreshCreatesOneDebtForNewLinkedCard() {
+        val account = Account(name = "New Card", type = AccountType.CREDIT, balance = 150.0, source = AccountSource.PLAID, plaidAccountId = "new-card", creditLimit = 1000.0)
+        val twice = mergePlaidCreditDebts(mergePlaidCreditDebts(emptyList(), listOf(account)), listOf(account))
+        assertEquals(1, twice.size)
+        assertEquals("new-card", twice.single().plaidAccountId)
+    }
+
     @Test fun transfersDoNotCountAsSpending() {
         val items = listOf(
             FinanceTransaction(name = "Groceries", amount = 80.0, dateIso = "2026-09-12"),

@@ -10,4 +10,8 @@ class PlaidInvestmentAccountTest {
         assertEquals(AccountType.INVESTMENT, plaidAccountType("investment", "retirement"))
         assertEquals(AccountType.INVESTMENT, plaidAccountType("investment", "other"))
     }
+
+    @Test fun creditCardsAreClassifiedAsCreditAccounts() {
+        assertEquals(AccountType.CREDIT, plaidAccountType("credit", "credit card"))
+    }
 }
