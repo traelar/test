@@ -74,6 +74,85 @@ function publicChange(event) {
   };
 }
 
+function changedRows(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
+}
+
+async function applyMutationWithVersionCheck(store, args, baseVersion) {
+  if (!store.db?.prepare) {
+    const result = await store.applySyncMutation(args);
+    return result !== false;
+  }
+
+  const db = store.db;
+  const record = args.record;
+  let writeResult;
+  if (baseVersion === 0) {
+    writeResult = await db.prepare(`
+      INSERT INTO finance_records (
+        household_id, kind, record_id, payload_json, version,
+        updated_at, updated_by_user_id, deleted
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ON CONFLICT(household_id, kind, record_id) DO NOTHING
+    `).bind(
+      record.householdId,
+      record.kind,
+      record.recordId,
+      record.payloadJson,
+      record.version,
+      record.updatedAt,
+      record.updatedByUserId,
+      record.deleted
+    ).run();
+  } else {
+    writeResult = await db.prepare(`
+      UPDATE finance_records
+      SET payload_json = ?4,
+          version = ?5,
+          updated_at = ?6,
+          updated_by_user_id = ?7,
+          deleted = ?8
+      WHERE household_id = ?1
+        AND kind = ?2
+        AND record_id = ?3
+        AND version = ?9
+    `).bind(
+      record.householdId,
+      record.kind,
+      record.recordId,
+      record.payloadJson,
+      record.version,
+      record.updatedAt,
+      record.updatedByUserId,
+      record.deleted,
+      baseVersion
+    ).run();
+  }
+
+  if (changedRows(writeResult) !== 1) return false;
+
+  await db.batch([
+    db.prepare(`
+      INSERT INTO sync_events (
+        household_id, kind, record_id, version, payload_json, deleted, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    `).bind(
+      record.householdId,
+      record.kind,
+      record.recordId,
+      record.version,
+      record.payloadJson,
+      record.deleted,
+      record.updatedAt
+    ),
+    db.prepare(`
+      INSERT INTO sync_mutations (household_id, mutation_id, applied_at)
+      VALUES (?1, ?2, ?3)
+    `).bind(args.householdId, args.mutationId, args.appliedAt)
+  ]);
+  return true;
+}
+
 export function createSyncService(store, options = {}) {
   const nowProvider = options.now || (() => new Date());
 
@@ -127,12 +206,24 @@ export function createSyncService(store, options = {}) {
         deleted: mutation.deleted ? 1 : 0
       };
 
-      await store.applySyncMutation({
+      const writeSucceeded = await applyMutationWithVersionCheck(store, {
         householdId: context.householdId,
         mutationId: mutation.mutationId,
         appliedAt: updatedAt,
         record
-      });
+      }, mutation.baseVersion);
+
+      if (!writeSucceeded) {
+        const latest = await store.findFinanceRecord(context.householdId, mutation.kind, mutation.recordId);
+        conflicts.push({
+          mutationId: mutation.mutationId,
+          kind: mutation.kind,
+          recordId: mutation.recordId,
+          baseVersion: mutation.baseVersion,
+          serverRecord: latest ? publicRecord(latest) : null
+        });
+        continue;
+      }
 
       applied.push({
         mutationId: mutation.mutationId,
@@ -159,4 +250,4 @@ export async function handleSyncHttp(request, env, context, store = new D1Store(
   return json(await service.sync(context, await readJson(request)));
 }
 
-export { validateRequest };
+export { validateRequest, applyMutationWithVersionCheck };
