@@ -45,7 +45,12 @@ class BillRepository(
             savedBackend == "https://billnest-api.joshsolution.workers.dev" -> BILLNEST_BACKEND_URL
             else -> savedBackend
         }
-        return data.copy(accounts = importedAccounts, backendUrl = backend)
+        return data.copy(
+            accounts = importedAccounts,
+            accountPreferences = data.accountPreferences.filter { pref -> importedAccounts.any { it.id == pref.accountId } },
+            reservedFunds = data.reservedFunds.filter { fund -> importedAccounts.any { it.id == fund.accountId } },
+            backendUrl = backend
+        )
     }
 
     private fun update(transform: (AppData) -> AppData) {
@@ -70,6 +75,19 @@ class BillRepository(
         onSyncNeeded?.invoke()
     }
 
+    private fun queueSharedSettings() {
+        val data = _data.value
+        queue(
+            SyncMapper.settingsMutation(
+                SharedSettings(
+                    reminderDays = data.reminderDays,
+                    accountPreferences = data.accountPreferences,
+                    reservedFunds = data.reservedFunds
+                )
+            )
+        )
+    }
+
     fun addBill(bill: Bill) {
         update { it.copy(bills = it.bills + bill) }
         queue(SyncMapper.billMutation(bill))
@@ -81,8 +99,14 @@ class BillRepository(
     }
 
     fun deleteBill(id: String) {
-        update { it.copy(bills = it.bills.filterNot { bill -> bill.id == id }) }
+        update { data ->
+            data.copy(
+                bills = data.bills.filterNot { bill -> bill.id == id },
+                reservedFunds = data.reservedFunds.map { if (it.linkedBillId == id) it.copy(linkedBillId = null) else it }
+            )
+        }
         queueDelete("bill", id)
+        queueSharedSettings()
     }
 
     fun addPayday(payday: Payday) {
@@ -96,8 +120,14 @@ class BillRepository(
     }
 
     fun deletePayday(id: String) {
-        update { it.copy(paydays = it.paydays.filterNot { payday -> payday.id == id }) }
+        update { data ->
+            data.copy(
+                paydays = data.paydays.filterNot { payday -> payday.id == id },
+                reservedFunds = data.reservedFunds.map { if (it.fundingPaydayId == id) it.copy(fundingPaydayId = null) else it }
+            )
+        }
         queueDelete("payday", id)
+        queueSharedSettings()
     }
 
     fun addAccount(account: Account) {
@@ -115,10 +145,56 @@ class BillRepository(
         update { data ->
             data.copy(
                 accounts = data.accounts.filterNot { it.id == id },
+                accountPreferences = data.accountPreferences.filterNot { it.accountId == id },
+                reservedFunds = data.reservedFunds.filterNot { it.accountId == id },
                 bills = data.bills.map { if (it.accountId == id) it.copy(accountId = null) else it }
             )
         }
         if (existing?.source == AccountSource.MANUAL) queueDelete("manual_account", id)
+        queueSharedSettings()
+    }
+
+    fun setAccountPreference(preference: AccountPreference) {
+        update { data ->
+            val next = data.accountPreferences.filterNot { it.accountId == preference.accountId } + preference
+            data.copy(accountPreferences = next)
+        }
+        queueSharedSettings()
+    }
+
+    fun moveAccount(accountId: String, delta: Int) {
+        if (delta == 0) return
+        update { data ->
+            val ordered = MoneyMath.orderedAccounts(data.accounts, data.accountPreferences).toMutableList()
+            val current = ordered.indexOfFirst { it.id == accountId }
+            if (current < 0) return@update data
+            val target = (current + delta).coerceIn(0, ordered.lastIndex)
+            if (target == current) return@update data
+            val moved = ordered.removeAt(current)
+            ordered.add(target, moved)
+            val previous = data.accountPreferences.associateBy { it.accountId }
+            val preferences = ordered.mapIndexed { index, account ->
+                val base = previous[account.id] ?: MoneyMath.preferenceFor(account, emptyList(), index)
+                base.copy(displayOrder = index)
+            }
+            data.copy(accountPreferences = preferences)
+        }
+        queueSharedSettings()
+    }
+
+    fun addReservedFund(fund: ReservedFund) {
+        update { it.copy(reservedFunds = it.reservedFunds + fund) }
+        queueSharedSettings()
+    }
+
+    fun updateReservedFund(fund: ReservedFund) {
+        update { data -> data.copy(reservedFunds = data.reservedFunds.map { if (it.id == fund.id) fund else it }) }
+        queueSharedSettings()
+    }
+
+    fun deleteReservedFund(id: String) {
+        update { data -> data.copy(reservedFunds = data.reservedFunds.filterNot { it.id == id }) }
+        queueSharedSettings()
     }
 
     fun syncPlaidAccounts(incoming: List<Account>) = update { data ->
@@ -142,7 +218,7 @@ class BillRepository(
     fun setReminderDays(days: List<Int>) {
         val normalized = days.distinct().sortedDescending()
         update { it.copy(reminderDays = normalized) }
-        queue(SyncMapper.settingsMutation(SharedSettings(normalized)))
+        queueSharedSettings()
     }
 
     fun markPaid(id: String) {
@@ -188,6 +264,8 @@ class BillRepository(
                 }
                 !deletedId.isNullOrBlank() -> data.copy(
                     accounts = data.accounts.filterNot { it.id == deletedId },
+                    accountPreferences = data.accountPreferences.filterNot { it.accountId == deletedId },
+                    reservedFunds = data.reservedFunds.filterNot { it.accountId == deletedId },
                     bills = data.bills.map { if (it.accountId == deletedId) it.copy(accountId = null) else it }
                 )
                 else -> data
@@ -196,7 +274,13 @@ class BillRepository(
     }
 
     fun applyRemoteSharedSettings(settings: SharedSettings) {
-        update { it.copy(reminderDays = settings.reminderDays.distinct().sortedDescending()) }
+        update {
+            it.copy(
+                reminderDays = settings.reminderDays.distinct().sortedDescending(),
+                accountPreferences = settings.accountPreferences,
+                reservedFunds = settings.reservedFunds
+            )
+        }
     }
 
     private fun <T> upsert(items: List<T>, id: String, value: T, idOf: (T) -> String): List<T> {
