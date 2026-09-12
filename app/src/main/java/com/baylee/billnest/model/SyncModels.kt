@@ -66,7 +66,9 @@ data class SyncSummary(
 )
 
 data class SharedSettings(
-    val reminderDays: List<Int> = listOf(7, 3, 1, 0)
+    val reminderDays: List<Int> = listOf(7, 3, 1, 0),
+    val accountPreferences: List<AccountPreference> = emptyList(),
+    val reservedFunds: List<ReservedFund> = emptyList()
 )
 
 object SyncMapper {
