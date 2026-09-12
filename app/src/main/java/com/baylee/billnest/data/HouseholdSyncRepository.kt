@@ -148,6 +148,12 @@ class HouseholdSyncRepository(
                 }
             }
         }
+        data.accountPreferences.forEach { preference ->
+            if (syncDb.currentVersion("account_preference", preference.accountKey) == 0) {
+                val draft = SyncMapper.accountPreferenceMutation(preference)
+                syncDb.enqueueCurrent(draft.kind, draft.recordId, false, draft.payloadJson)
+            }
+        }
         if (syncDb.currentVersion("settings", "household") == 0) {
             val settings = SyncMapper.settingsMutation(SharedSettings(data.reminderDays))
             syncDb.enqueueCurrent(settings.kind, settings.recordId, false, settings.payloadJson)
@@ -167,6 +173,10 @@ class HouseholdSyncRepository(
             "manual_account" -> repo.applyRemoteManualAccount(
                 account = if (change.deleted) null else SyncMapper.decodeAccount(change.payloadJson),
                 deletedId = if (change.deleted) change.recordId else null
+            )
+            "account_preference" -> repo.applyRemoteAccountPreference(
+                preference = if (change.deleted) null else SyncMapper.decodeAccountPreference(change.payloadJson),
+                deletedKey = if (change.deleted) change.recordId else null
             )
             "settings" -> if (!change.deleted) {
                 repo.applyRemoteSharedSettings(SyncMapper.decodeSettings(change.payloadJson))
