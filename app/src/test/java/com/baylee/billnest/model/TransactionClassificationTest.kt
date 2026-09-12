@@ -106,4 +106,38 @@ class TransactionClassificationTest {
         assertEquals(null, updated.transferToAccountId)
         assertTrue(updated.userClassificationOverride)
     }
+
+    @Test
+    fun incomeScreenRowsExcludeTransactionsReclassifiedAsTransfers() {
+        val paycheck = FinanceTransaction(
+            id = "paycheck",
+            name = "Employer payroll",
+            amount = -1200.0,
+            dateIso = "2026-09-12",
+            category = "Income",
+            source = TransactionSource.PLAID,
+            income = true
+        )
+        val transfer = paycheck.copy(
+            id = "transfer",
+            name = "Savings transfer",
+            category = "Transfer",
+            income = false,
+            transfer = true,
+            transferFromAccountId = "savings",
+            transferToAccountId = "checking",
+            userClassificationOverride = true
+        )
+        val inferredDeposit = paycheck.copy(
+            id = "deposit",
+            name = "Refund deposit",
+            category = "Other",
+            income = false
+        )
+
+        val rows = visibleIncomeTransactions(listOf(paycheck, transfer, inferredDeposit))
+
+        assertEquals(listOf("paycheck", "deposit"), rows.map { it.id })
+        assertFalse(rows.any { it.transfer })
+    }
 }
