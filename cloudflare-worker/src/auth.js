@@ -25,6 +25,12 @@ function normalizeHouseholdName(value) {
   return name;
 }
 
+function normalizeInviteCode(value) {
+  const canonical = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (canonical.length !== 16) throw httpError(400, 'Invite code is invalid');
+  return canonical;
+}
+
 function asDate(value) {
   return value instanceof Date ? value : new Date(value);
 }
@@ -70,19 +76,23 @@ export function createAuthService(store, options = {}) {
     await store.writeRateLimit(state.bucket, now().getTime(), 0);
   }
 
-  async function issueSession(user, membership) {
-    if (!membership) throw httpError(403, 'User is not assigned to a household');
+  async function buildSession(userId) {
     const rawToken = randomToken(32);
     const createdAt = now();
-    const session = {
-      sessionId: crypto.randomUUID(),
-      userId: user.userId,
-      tokenHash: await sha256Hex(rawToken),
-      createdAt: createdAt.toISOString(),
-      expiresAt: addDays(createdAt, SESSION_DAYS).toISOString(),
-      lastSeenAt: createdAt.toISOString()
+    return {
+      rawToken,
+      session: {
+        sessionId: crypto.randomUUID(),
+        userId,
+        tokenHash: await sha256Hex(rawToken),
+        createdAt: createdAt.toISOString(),
+        expiresAt: addDays(createdAt, SESSION_DAYS).toISOString(),
+        lastSeenAt: createdAt.toISOString()
+      }
     };
-    await store.createSession(session);
+  }
+
+  function sessionResult(rawToken, user, membership) {
     return {
       sessionToken: rawToken,
       user: {
@@ -96,6 +106,13 @@ export function createAuthService(store, options = {}) {
         displayLabel: membership.displayLabel
       }
     };
+  }
+
+  async function issueSession(user, membership) {
+    if (!membership) throw httpError(403, 'User is not assigned to a household');
+    const built = await buildSession(user.userId);
+    await store.createSession(built.session);
+    return sessionResult(built.rawToken, user, membership);
   }
 
   async function bootstrap({ username: rawUsername, password, householdName: rawHouseholdName }) {
@@ -161,6 +178,72 @@ export function createAuthService(store, options = {}) {
     return issueSession(user, membership);
   }
 
+  async function registerWithInvite({ inviteCode, username: rawUsername, password }) {
+    const { username, usernameNorm } = normalizeUsername(rawUsername);
+    const limit = await rateState('register', usernameNorm);
+    const canonicalCode = normalizeInviteCode(inviteCode);
+    const codeHash = await sha256Hex(canonicalCode);
+    const nowIso = now().toISOString();
+
+    const anyInvite = store.findInviteByCodeHash
+      ? await store.findInviteByCodeHash(codeHash)
+      : null;
+    if (anyInvite?.redeemedAt) {
+      await recordFailure(limit);
+      throw httpError(409, 'Invite code has already been used');
+    }
+
+    const invite = await store.findUsableInviteByCodeHash(codeHash, nowIso);
+    if (!invite) {
+      await recordFailure(limit);
+      throw httpError(404, 'Invite code is invalid or expired');
+    }
+    if (await store.findUserByNormalizedUsername(usernameNorm)) {
+      throw httpError(409, 'Username is already in use');
+    }
+
+    const household = await store.getHouseholdById(invite.householdId);
+    if (!household) throw httpError(404, 'Household not found');
+    const passwordData = await hashPassword(password);
+    const user = {
+      userId: crypto.randomUUID(),
+      username,
+      usernameNorm,
+      passwordSalt: passwordData.salt,
+      passwordHash: passwordData.hash,
+      passwordIterations: passwordData.iterations,
+      createdAt: nowIso
+    };
+    const membership = {
+      householdId: household.householdId,
+      userId: user.userId,
+      role: 'member',
+      displayLabel: username,
+      joinedAt: nowIso,
+      householdName: household.name
+    };
+    const built = await buildSession(user.userId);
+
+    if (store.createInvitedMemberBundle) {
+      await store.createInvitedMemberBundle({
+        user,
+        member: membership,
+        session: built.session,
+        inviteId: invite.inviteId,
+        redeemedAt: nowIso
+      });
+    } else {
+      await store.createUser(user);
+      await store.addHouseholdMember(membership);
+      await store.createSession(built.session);
+      const redeemed = await store.redeemInvite(invite.inviteId, nowIso);
+      if (!redeemed) throw httpError(409, 'Invite code has already been used');
+    }
+
+    await resetRateLimit(limit);
+    return sessionResult(built.rawToken, user, membership);
+  }
+
   async function logout(sessionToken) {
     if (!sessionToken) return;
     await store.deleteSessionByTokenHash(await sha256Hex(sessionToken));
@@ -189,7 +272,7 @@ export function createAuthService(store, options = {}) {
     };
   }
 
-  return { bootstrap, login, logout, contextForSession };
+  return { bootstrap, login, registerWithInvite, logout, contextForSession };
 }
 
 export async function authenticateSession(request, env) {
@@ -209,6 +292,7 @@ export async function handleAuthHttp(request, env, store = new D1Store(env.DB), 
   const matches = (
     (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') ||
     (request.method === 'POST' && url.pathname === '/api/auth/login') ||
+    (request.method === 'POST' && url.pathname === '/api/auth/register') ||
     (request.method === 'POST' && url.pathname === '/api/auth/logout') ||
     (request.method === 'GET' && url.pathname === '/api/me')
   );
@@ -227,6 +311,10 @@ export async function handleAuthHttp(request, env, store = new D1Store(env.DB), 
 
     if (request.method === 'POST' && url.pathname === '/api/auth/login') {
       return json(await service.login(await readJson(request)));
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/auth/register') {
+      return json(await service.registerWithInvite(await readJson(request)));
     }
 
     const token = getBearerToken(request);
@@ -255,4 +343,4 @@ export async function handleAuthHttp(request, env, store = new D1Store(env.DB), 
   }
 }
 
-export { normalizeUsername };
+export { normalizeUsername, normalizeInviteCode };
