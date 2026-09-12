@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
+import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.ui.household.HouseholdSettings
 import com.baylee.billnest.ui.theme.BillNestTheme
 
@@ -37,6 +38,11 @@ class HouseholdActivity : FragmentActivity() {
             session = session,
             backendUrl = app.repo.data.value.backendUrl,
             syncRepository = app.householdSync,
+            onBankConnectionsChanged = {
+                val data = app.repo.data.value
+                val refresh = BankApi.fetchAccounts(data.backendUrl, data.backendApiKey)
+                app.repo.syncPlaidAccounts(refresh.accounts)
+            },
             onBack = { finish() }
         )
     }
