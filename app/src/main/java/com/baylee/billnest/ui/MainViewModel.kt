@@ -28,6 +28,9 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun syncPlaidTransactions(v: List<FinanceTransaction>) = repo.syncPlaidTransactions(v)
     fun saveBudget(v: Budget) = repo.saveBudget(v)
     fun deleteBudget(id: String) = repo.deleteBudget(id)
+    fun setTransactionBudget(transactionId: String, budgetId: String?) = repo.setTransactionBudget(transactionId, budgetId)
+    fun moveBudgetMoney(sourceBudgetId: String, destinationBudgetId: String, amount: Double) =
+        repo.moveBudgetMoney(sourceBudgetId, destinationBudgetId, amount)
     fun saveDebt(v: Debt) = repo.saveDebt(v)
     fun deleteDebt(id: String) = repo.deleteDebt(id)
     fun saveGoal(v: SavingsGoal) = repo.saveGoal(v)
