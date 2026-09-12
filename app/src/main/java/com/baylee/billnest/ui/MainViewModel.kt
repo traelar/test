@@ -25,6 +25,8 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun reminderDays(v: List<Int>) = repo.setReminderDays(v)
     fun saveTransaction(v: FinanceTransaction) = repo.saveTransaction(v)
     fun deleteTransaction(id: String) = repo.deleteTransaction(id)
+    fun saveTransactionRule(v: TransactionRule) = repo.saveTransactionRule(v)
+    fun deleteTransactionRule(id: String) = repo.deleteTransactionRule(id)
     fun syncPlaidTransactions(v: List<FinanceTransaction>) = repo.syncPlaidTransactions(v)
     fun saveBudget(v: Budget) = repo.saveBudget(v)
     fun deleteBudget(id: String) = repo.deleteBudget(id)
