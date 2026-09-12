@@ -57,14 +57,13 @@ class FinanceFeatureModelTest {
 
     @Test
     fun `snowball and avalanche produce different priority ordering`() {
-        val smallHighApr = Debt(name = "Small Card", type = DebtType.CREDIT_CARD, balance = 800.0, aprPercent = 29.0)
+        val smallLowApr = Debt(name = "Small Card", type = DebtType.CREDIT_CARD, balance = 800.0, aprPercent = 12.0)
         val largeLowApr = Debt(name = "Large Loan", type = DebtType.PERSONAL_LOAN, balance = 5000.0, aprPercent = 8.0)
         val largeHigherApr = Debt(name = "Another Card", type = DebtType.CREDIT_CARD, balance = 3000.0, aprPercent = 24.0)
-        val debts = listOf(largeLowApr, largeHigherApr, smallHighApr)
+        val debts = listOf(largeLowApr, largeHigherApr, smallLowApr)
 
         assertEquals("Small Card", DebtPlanner.prioritize(debts, DebtPayoffStrategy.SNOWBALL).first().name)
-        assertEquals("Small Card", DebtPlanner.prioritize(debts, DebtPayoffStrategy.AVALANCHE).first().name)
-        assertEquals("Another Card", DebtPlanner.prioritize(debts, DebtPayoffStrategy.AVALANCHE)[1].name)
+        assertEquals("Another Card", DebtPlanner.prioritize(debts, DebtPayoffStrategy.AVALANCHE).first().name)
         assertFalse(DebtPlanner.prioritize(debts, DebtPayoffStrategy.SNOWBALL) == DebtPlanner.prioritize(debts, DebtPayoffStrategy.AVALANCHE))
     }
 }
