@@ -44,7 +44,7 @@ async function derivePassword(password, salt, iterations) {
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password, saltBase64 = null, iterations = 210000) {
+export async function hashPassword(password, saltBase64 = null, iterations = 100000) {
   if (typeof password !== 'string' || password.length < 10 || password.length > 200) {
     throw httpError(400, 'Password must be 10 to 200 characters');
   }
