@@ -93,21 +93,87 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
 
 @Composable
 fun ReservedFundsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
-    var editor by remember { mutableStateOf(false) }
-    FinanceList(modifier, "Reserved Funds", "Add reserve", { editor = true }) {
+    var editing by remember { mutableStateOf<ReservedFund?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    FinanceList(modifier, "Reserved Funds", "Add reserve", { adding = true }) {
         item { Text("Reserved: ${currencyV2(data.reservedFunds.sumOf { it.amount })}", style = MaterialTheme.typography.titleLarge) }
         if (data.reservedFunds.isEmpty()) item { Text("Earmark money for bills or future expenses without removing it from Total Money.") }
         items(data.reservedFunds, key = { it.id }) { row ->
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(row.name, style = MaterialTheme.typography.titleMedium); Text(currencyV2(row.amount), style = MaterialTheme.typography.titleLarge)
                 Text((data.accounts.firstOrNull { it.id == row.accountId }?.name ?: "No account linked") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "")
-                Row { TextButton({ vm.fundReserved(row.id, 25.0) }) { Text("Add $25") }; TextButton({ vm.fundReserved(row.id, -25.0) }) { Text("Release $25") }; TextButton({ vm.deleteReservedFund(row.id) }) { Text("Delete") } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton({ editing = row }) { Text("Edit") }
+                    TextButton({ vm.fundReserved(row.id, 25.0) }) { Text("Add $25") }
+                    TextButton({ vm.fundReserved(row.id, -25.0) }) { Text("Release $25") }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton({ vm.deleteReservedFund(row.id) }) { Text("Delete") }
+                }
             } }
         }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.RESERVE, data, { editor = false }) { name, amount, option, _, contribution, _ ->
-        vm.saveReservedFund(ReservedFund(name = name, amount = amount, accountId = option.ifBlank { null }, paydayContribution = contribution)); editor = false
+    if (adding || editing != null) ReserveEditorDialog(data, editing, { adding = false; editing = null }) {
+        vm.saveReservedFund(it)
+        adding = false
+        editing = null
     }
+}
+
+@Composable
+private fun ReserveEditorDialog(data: AppData, existing: ReservedFund?, onDismiss: () -> Unit, onSave: (ReservedFund) -> Unit) {
+    var name by remember(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
+    var amount by remember(existing?.id) { mutableStateOf(existing?.amount?.toString().orEmpty()) }
+    var target by remember(existing?.id) { mutableStateOf(existing?.targetAmount?.toString().orEmpty()) }
+    var contribution by remember(existing?.id) { mutableStateOf(existing?.paydayContribution?.toString().orEmpty()) }
+    var accountId by remember(existing?.id) { mutableStateOf(existing?.accountId.orEmpty()) }
+    var billId by remember(existing?.id) { mutableStateOf(existing?.billId.orEmpty()) }
+    var consumeWhenPaid by remember(existing?.id) { mutableStateOf(existing?.consumeWhenBillPaid ?: false) }
+    var accountExpanded by remember { mutableStateOf(false) }
+    var billExpanded by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "Add reserved fund" else "Edit reserved fund") },
+        text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Name") })
+            OutlinedTextField(amount, { amount = it }, label = { Text("Current reserved amount") })
+            OutlinedTextField(target, { target = it }, label = { Text("Target amount (optional)") })
+            OutlinedTextField(contribution, { contribution = it }, label = { Text("Add automatically from each payday") })
+            Box {
+                OutlinedButton({ accountExpanded = true }) { Text("Account: ${data.accounts.firstOrNull { it.id == accountId }?.name ?: "None"}") }
+                DropdownMenu(accountExpanded, { accountExpanded = false }) {
+                    DropdownMenuItem({ Text("None") }, { accountId = ""; accountExpanded = false })
+                    data.accounts.forEach { account -> DropdownMenuItem({ Text(account.name) }, { accountId = account.id; accountExpanded = false }) }
+                }
+            }
+            Box {
+                OutlinedButton({ billExpanded = true }) { Text("Bill: ${data.bills.firstOrNull { it.id == billId }?.name ?: "None"}") }
+                DropdownMenu(billExpanded, { billExpanded = false }) {
+                    DropdownMenuItem({ Text("None") }, { billId = ""; billExpanded = false })
+                    data.bills.forEach { bill -> DropdownMenuItem({ Text(bill.name) }, { billId = bill.id; billExpanded = false }) }
+                }
+            }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(consumeWhenPaid, { consumeWhenPaid = it }, enabled = billId.isNotBlank())
+                Text("Use this reserve when the linked bill is paid")
+            }
+        } },
+        confirmButton = { Button(onClick = {
+            amount.toDoubleOrNull()?.let { parsedAmount ->
+                onSave(ReservedFund(
+                    id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                    name = name.ifBlank { "Reserved fund" },
+                    amount = parsedAmount.coerceAtLeast(0.0),
+                    targetAmount = target.toDoubleOrNull()?.coerceAtLeast(0.0),
+                    accountId = accountId.ifBlank { null },
+                    billId = billId.ifBlank { null },
+                    paydayContribution = contribution.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
+                    consumeWhenBillPaid = consumeWhenPaid && billId.isNotBlank()
+                ))
+            }
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
