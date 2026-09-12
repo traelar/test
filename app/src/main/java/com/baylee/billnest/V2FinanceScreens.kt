@@ -21,7 +21,8 @@ private enum class EditorKind { TRANSACTION, BUDGET, DEBT, GOAL, RESERVE }
 
 @Composable
 fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
-    var editor by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<FinanceTransaction?>(null) }
     var query by remember { mutableStateOf("") }
     var typeFilter by remember { mutableStateOf("All") }
     var filterExpanded by remember { mutableStateOf(false) }
@@ -34,7 +35,7 @@ fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
         }
     }.sortedByDescending { it.dateIso }
 
-    FinanceList(modifier, "Transactions", "Add transaction", { editor = true }) {
+    FinanceList(modifier, "Transactions", "Add transaction", { adding = true }) {
         item {
             OutlinedTextField(
                 value = query,
@@ -66,18 +67,32 @@ fun TransactionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
                 row.transfer -> BillNestColors.info
                 else -> MaterialTheme.colorScheme.onSurface
             }
+            val transferRoute = if (row.transfer) {
+                val from = data.accounts.firstOrNull { it.id == row.transferFromAccountId }?.name
+                val to = data.accounts.firstOrNull { it.id == row.transferToAccountId }?.name
+                if (from != null && to != null) " • $from → $to" else ""
+            } else ""
             FinanceRow(
                 title = row.name,
                 amount = if (row.transfer) "Transfer" else currencyV2(row.amount),
-                subtitle = "$kind • ${row.dateIso}",
+                subtitle = "$kind • ${row.dateIso}$transferRoute",
                 amountColor = amountColor,
+                onEdit = { editing = row },
                 onDelete = { vm.deleteTransaction(row.id) }
             )
         }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.TRANSACTION, data, { editor = false }) { name, amount, option, income, _, transfer ->
-        vm.saveTransaction(FinanceTransaction(name = name, amount = amount, dateIso = LocalDate.now().toString(), category = option.ifBlank { if (income) "Income" else "Other" }, income = income, transfer = transfer))
-        editor = false
+    if (adding || editing != null) {
+        TransactionEditorDialog(
+            data = data,
+            existing = editing,
+            onDismiss = { adding = false; editing = null },
+            onSave = {
+                vm.saveTransaction(it)
+                adding = false
+                editing = null
+            }
+        )
     }
 }
 
@@ -368,7 +383,14 @@ private fun FinanceList(modifier: Modifier, title: String, action: String, onAdd
 }
 
 @Composable
-private fun FinanceRow(title: String, amount: String, subtitle: String, amountColor: Color = MaterialTheme.colorScheme.onSurface, onDelete: () -> Unit) {
+private fun FinanceRow(
+    title: String,
+    amount: String,
+    subtitle: String,
+    amountColor: Color = MaterialTheme.colorScheme.onSurface,
+    onEdit: (() -> Unit)? = null,
+    onDelete: () -> Unit
+) {
     PremiumFinanceCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -377,7 +399,10 @@ private fun FinanceRow(title: String, amount: String, subtitle: String, amountCo
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(amount, style = MaterialTheme.typography.titleMedium, color = amountColor)
-                TextButton(onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                Row {
+                    onEdit?.let { edit -> TextButton(edit) { Text("Edit") } }
+                    TextButton(onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
             }
         }
     }
