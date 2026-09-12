@@ -67,6 +67,7 @@ data class AppData(
     val bills: List<Bill> = emptyList(),
     val paydays: List<Payday> = emptyList(),
     val accounts: List<Account> = emptyList(),
+    val accountPreferences: List<AccountPreference> = emptyList(),
     val backendUrl: String = BILLNEST_BACKEND_URL,
     val backendApiKey: String = "",
     val manualBalance: Double = 0.0,
