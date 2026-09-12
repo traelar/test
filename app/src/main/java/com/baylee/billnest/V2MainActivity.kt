@@ -11,7 +11,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.data.BankConnectionIssue
-import com.baylee.billnest.data.BillNestApp
 import com.baylee.billnest.data.FinanceAutomationCoordinator
 import com.baylee.billnest.data.TransactionApi
 import com.baylee.billnest.ui.MainViewModel
