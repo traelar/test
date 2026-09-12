@@ -25,6 +25,11 @@ data class PlaidAccountsResponse(val accounts: List<PlaidAccountDto> = emptyList
 
 object BankApi {
     private val gson = Gson()
+    @Volatile private var sessionToken: String? = null
+
+    fun setSessionToken(token: String?) {
+        sessionToken = token?.trim()?.takeIf { it.isNotBlank() }
+    }
 
     private fun base(raw: String): String {
         val value = raw.trim().trimEnd('/')
@@ -34,8 +39,13 @@ object BankApi {
         return value
     }
 
+    private fun authToken(legacyApiKey: String): String {
+        return sessionToken ?: legacyApiKey.trim().takeIf { it.isNotBlank() }
+        ?: throw IOException("Sign in to BillNest before connecting or refreshing a bank")
+    }
+
     suspend fun createLinkToken(backendUrl: String, apiKey: String): String = withContext(Dispatchers.IO) {
-        val json = request(base(backendUrl) + "/api/plaid/link-token", "POST", "{}", apiKey)
+        val json = request(base(backendUrl) + "/api/plaid/link-token", "POST", "{}", authToken(apiKey))
         val token = gson.fromJson(json, PlaidLinkTokenResponse::class.java).linkToken
         if (token.isBlank()) throw IOException("Backend did not return a Plaid link token")
         token
@@ -43,11 +53,11 @@ object BankApi {
 
     suspend fun exchangePublicToken(backendUrl: String, apiKey: String, publicToken: String, label: String?) = withContext(Dispatchers.IO) {
         val body = gson.toJson(mapOf("publicToken" to publicToken, "label" to (label ?: "Bank")))
-        request(base(backendUrl) + "/api/plaid/exchange", "POST", body, apiKey)
+        request(base(backendUrl) + "/api/plaid/exchange", "POST", body, authToken(apiKey))
     }
 
     suspend fun fetchAccounts(backendUrl: String, apiKey: String): List<Account> = withContext(Dispatchers.IO) {
-        val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null, apiKey)
+        val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null, authToken(apiKey))
         gson.fromJson(json, PlaidAccountsResponse::class.java).accounts
             .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
             .map { dto ->
@@ -67,14 +77,13 @@ object BankApi {
             }
     }
 
-    private fun request(url: String, method: String, body: String?, apiKey: String): String {
-        if (apiKey.isBlank()) throw IOException("Enter your BillNest bank server key in Settings")
+    private fun request(url: String, method: String, body: String?, bearerToken: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
             readTimeout = 30000
             setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer ${apiKey.trim()}")
+            setRequestProperty("Authorization", "Bearer $bearerToken")
             doInput = true
             if (body != null) {
                 doOutput = true
