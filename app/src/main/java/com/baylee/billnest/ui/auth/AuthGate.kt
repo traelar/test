@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.baylee.billnest.ui.AuthViewModel
 
-private enum class AuthMode { SIGN_IN, SETUP, JOIN }
+private enum class AuthMode { SIGN_IN, CREATE_ACCOUNT, JOIN }
 
 @Composable
 fun AuthGate(vm: AuthViewModel) {
@@ -42,6 +42,7 @@ fun AuthGate(vm: AuthViewModel) {
     var password by remember { mutableStateOf("") }
     var householdName by remember { mutableStateOf("") }
     var inviteCode by remember { mutableStateOf("") }
+    var setupKey by remember { mutableStateOf("") }
 
     Box(
         modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -67,15 +68,25 @@ fun AuthGate(vm: AuthViewModel) {
                         mode = AuthMode.SIGN_IN
                         vm.clearError()
                     }
+                    ModeButton("Create", mode == AuthMode.CREATE_ACCOUNT, Modifier.weight(1f)) {
+                        mode = AuthMode.CREATE_ACCOUNT
+                        vm.clearError()
+                    }
                     ModeButton("Join", mode == AuthMode.JOIN, Modifier.weight(1f)) {
                         mode = AuthMode.JOIN
                         vm.clearError()
                     }
-                    ModeButton("Set up", mode == AuthMode.SETUP, Modifier.weight(1f)) {
-                        mode = AuthMode.SETUP
-                        vm.clearError()
-                    }
                 }
+
+                Text(
+                    when (mode) {
+                        AuthMode.SIGN_IN -> "Sign in"
+                        AuthMode.CREATE_ACCOUNT -> "Create account"
+                        AuthMode.JOIN -> "Join household"
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
 
                 when (mode) {
                     AuthMode.JOIN -> OutlinedTextField(
@@ -85,14 +96,25 @@ fun AuthGate(vm: AuthViewModel) {
                         label = { Text("Household invite code") },
                         singleLine = true
                     )
-                    AuthMode.SETUP -> OutlinedTextField(
-                        value = householdName,
-                        onValueChange = { householdName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Household name") },
-                        singleLine = true
-                    )
-                    else -> Unit
+                    AuthMode.CREATE_ACCOUNT -> {
+                        OutlinedTextField(
+                            value = householdName,
+                            onValueChange = { householdName = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Household name") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = setupKey,
+                            onValueChange = { setupKey = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("First-owner setup key") },
+                            supportingText = { Text("Enter it here if this phone does not already have it saved.") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation()
+                        )
+                    }
+                    AuthMode.SIGN_IN -> Unit
                 }
 
                 OutlinedTextField(
@@ -125,13 +147,13 @@ fun AuthGate(vm: AuthViewModel) {
                         when (mode) {
                             AuthMode.SIGN_IN -> vm.login(username, password)
                             AuthMode.JOIN -> vm.registerWithInvite(inviteCode, username, password)
-                            AuthMode.SETUP -> vm.bootstrap(username, password, householdName)
+                            AuthMode.CREATE_ACCOUNT -> vm.bootstrap(username, password, householdName, setupKey)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !busy && username.isNotBlank() && password.length >= 10 &&
                         (mode != AuthMode.JOIN || inviteCode.isNotBlank()) &&
-                        (mode != AuthMode.SETUP || householdName.isNotBlank())
+                        (mode != AuthMode.CREATE_ACCOUNT || householdName.isNotBlank())
                 ) {
                     if (busy) {
                         CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(20.dp))
@@ -140,16 +162,16 @@ fun AuthGate(vm: AuthViewModel) {
                             when (mode) {
                                 AuthMode.SIGN_IN -> "Sign in"
                                 AuthMode.JOIN -> "Join household"
-                                AuthMode.SETUP -> "Set up this household"
+                                AuthMode.CREATE_ACCOUNT -> "Create account & household"
                             }
                         )
                     }
                 }
 
-                if (mode == AuthMode.SETUP) {
+                if (mode == AuthMode.CREATE_ACCOUNT) {
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "First-owner setup uses the encrypted BillNest server key already saved on this phone. It is not shared with other household members.",
+                        "The setup key is only needed to authorize the first household owner. After that, use your BillNest username and password.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
