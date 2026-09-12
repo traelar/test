@@ -66,6 +66,11 @@ function serviceWith(store = new MemoryStore()) {
   };
 }
 
+test('password hash stays within the Cloudflare PBKDF2 iteration ceiling', async () => {
+  const stored = await hashPassword('Correct Horse Battery Staple');
+  assert.ok(stored.iterations <= 100000);
+});
+
 test('password hash verifies the right password and rejects a wrong password', async () => {
   const stored = await hashPassword('Correct Horse Battery Staple');
   assert.equal(await verifyPassword('Correct Horse Battery Staple', stored), true);
