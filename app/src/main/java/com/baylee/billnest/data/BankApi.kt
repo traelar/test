@@ -21,7 +21,23 @@ data class PlaidAccountDto(
     val available: Double? = null,
     val connectionLabel: String? = null
 )
-data class PlaidAccountsResponse(val accounts: List<PlaidAccountDto> = emptyList())
+data class BankConnectionIssue(
+    val itemId: String = "",
+    val label: String? = null,
+    val errorCode: String = "",
+    val message: String = "",
+    val requiresReconnect: Boolean = false
+)
+data class PlaidAccountsResponse(
+    val accounts: List<PlaidAccountDto> = emptyList(),
+    val connectedItems: Int = 0,
+    val issues: List<BankConnectionIssue> = emptyList()
+)
+data class BankRefreshResult(
+    val accounts: List<Account>,
+    val issues: List<BankConnectionIssue>,
+    val connectedItems: Int
+)
 
 object BankApi {
     private val gson = Gson()
@@ -51,14 +67,28 @@ object BankApi {
         token
     }
 
+    suspend fun createUpdateLinkToken(backendUrl: String, apiKey: String, itemId: String): String = withContext(Dispatchers.IO) {
+        val safeItemId = java.net.URLEncoder.encode(itemId, Charsets.UTF_8.name())
+        val json = request(
+            base(backendUrl) + "/api/plaid/items/$safeItemId/link-token",
+            "POST",
+            "{}",
+            authToken(apiKey)
+        )
+        val token = gson.fromJson(json, PlaidLinkTokenResponse::class.java).linkToken
+        if (token.isBlank()) throw IOException("Backend did not return a bank reconnect token")
+        token
+    }
+
     suspend fun exchangePublicToken(backendUrl: String, apiKey: String, publicToken: String, label: String?) = withContext(Dispatchers.IO) {
         val body = gson.toJson(mapOf("publicToken" to publicToken, "label" to (label ?: "Bank")))
         request(base(backendUrl) + "/api/plaid/exchange", "POST", body, authToken(apiKey))
     }
 
-    suspend fun fetchAccounts(backendUrl: String, apiKey: String): List<Account> = withContext(Dispatchers.IO) {
+    suspend fun fetchAccounts(backendUrl: String, apiKey: String): BankRefreshResult = withContext(Dispatchers.IO) {
         val json = request(base(backendUrl) + "/api/plaid/accounts", "GET", null, authToken(apiKey))
-        gson.fromJson(json, PlaidAccountsResponse::class.java).accounts
+        val response = gson.fromJson(json, PlaidAccountsResponse::class.java)
+        val accounts = response.accounts
             .filter { it.type.equals("depository", ignoreCase = true) || it.type.isBlank() }
             .map { dto ->
                 Account(
@@ -75,6 +105,7 @@ object BankApi {
                     connectionLabel = dto.connectionLabel
                 )
             }
+        BankRefreshResult(accounts, response.issues, response.connectedItems)
     }
 
     private fun request(url: String, method: String, body: String?, bearerToken: String): String {
