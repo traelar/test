@@ -5,6 +5,13 @@ import org.junit.Test
 import java.time.LocalDate
 
 class FinanceModelsTest {
+    @Test fun assetAccountListExcludesCreditDebtAccounts() {
+        val checking = Account(name = "Checking", type = AccountType.CHECKING, role = AccountRole.SPENDING)
+        val savings = Account(name = "Savings", type = AccountType.SAVINGS, role = AccountRole.SAVINGS)
+        val credit = Account(name = "Credit Card", type = AccountType.CREDIT, role = AccountRole.CREDIT)
+        assertEquals(listOf(checking, savings), visibleAssetAccounts(listOf(checking, credit, savings)))
+    }
+
     @Test fun debtDueDateUsesReadableNextMonthlyOccurrence() {
         val debt = Debt(name = "Loan", type = DebtType.LOAN, balance = 1000.0, dueDay = 15)
         assertEquals(LocalDate.of(2026, 9, 15), nextDebtDueDate(debt, LocalDate.of(2026, 9, 10)))
