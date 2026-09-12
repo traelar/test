@@ -6,9 +6,12 @@ import java.util.UUID
 
 enum class TransactionSource { MANUAL, PLAID }
 enum class DebtType { CREDIT_CARD, LOAN, MORTGAGE, OTHER }
-enum class BudgetPeriod { WEEKLY, BIWEEKLY, MONTHLY, YEARLY, CUSTOM }
+enum class BudgetPeriod { WEEKLY, BIWEEKLY, PAYCHECK, MONTHLY, YEARLY, CUSTOM }
 enum class DebtStrategy { SNOWBALL, AVALANCHE }
 enum class SubscriptionStatus { CONFIRMED, IGNORED }
+enum class BudgetRolloverMode { RESET, CARRY_UNUSED, CARRY_BALANCE }
+enum class BudgetPace { UNDER, ON_TRACK, WARNING, OVER }
+enum class BudgetOverrideAction { ASSIGN, EXCLUDE }
 
 data class FinanceTransaction(
     val id: String = UUID.randomUUID().toString(),
@@ -182,14 +185,14 @@ fun calculateBudgetSpent(budget: Budget, transactions: List<FinanceTransaction>,
     val explicitEnd = budget.endDateIso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     val start = explicitStart ?: when (budget.period) {
         BudgetPeriod.WEEKLY -> referenceDate.minusDays((referenceDate.dayOfWeek.value - 1).toLong())
-        BudgetPeriod.BIWEEKLY -> referenceDate.minusDays(((referenceDate.dayOfYear - 1) % 14).toLong())
+        BudgetPeriod.BIWEEKLY, BudgetPeriod.PAYCHECK -> referenceDate.minusDays(((referenceDate.dayOfYear - 1) % 14).toLong())
         BudgetPeriod.MONTHLY -> referenceDate.withDayOfMonth(1)
         BudgetPeriod.YEARLY -> referenceDate.withDayOfYear(1)
         BudgetPeriod.CUSTOM -> referenceDate
     }
     val end = explicitEnd ?: when (budget.period) {
         BudgetPeriod.WEEKLY -> start.plusDays(6)
-        BudgetPeriod.BIWEEKLY -> start.plusDays(13)
+        BudgetPeriod.BIWEEKLY, BudgetPeriod.PAYCHECK -> start.plusDays(13)
         BudgetPeriod.MONTHLY -> start.plusMonths(1).minusDays(1)
         BudgetPeriod.YEARLY -> start.plusYears(1).minusDays(1)
         BudgetPeriod.CUSTOM -> referenceDate
@@ -267,9 +270,7 @@ fun mergePlaidAccounts(
         )
     }
     val receivedIds = incoming.mapNotNull { it.plaidAccountId }.toSet()
-    val temporarilyUnavailable = if (retainMissing) {
-        existingPlaid.values.filter { it.plaidAccountId !in receivedIds }
-    } else emptyList()
+    val temporarilyUnavailable = if (retainMissing) existingPlaid.values.filter { it.plaidAccountId !in receivedIds } else emptyList()
     return (manual + refreshed + temporarilyUnavailable)
         .distinctBy { it.id }
         .sortedWith(compareBy<Account> { it.displayOrder }.thenBy { it.name })
@@ -283,7 +284,17 @@ data class Budget(
     val period: BudgetPeriod = BudgetPeriod.MONTHLY,
     val rollover: Boolean = false,
     val startDateIso: String? = null,
-    val endDateIso: String? = null
+    val endDateIso: String? = null,
+    val includedCategories: List<String> = emptyList(),
+    val excludedCategories: List<String> = emptyList(),
+    val includedMerchants: List<String> = emptyList(),
+    val excludedMerchants: List<String> = emptyList(),
+    val includedAccountIds: List<String> = emptyList(),
+    val excludedAccountIds: List<String> = emptyList(),
+    val paydayId: String? = null,
+    val rolloverMode: BudgetRolloverMode = BudgetRolloverMode.RESET,
+    val warningPercent: Int = 90,
+    val paceTracking: Boolean = true
 )
 
 data class Debt(
@@ -316,8 +327,7 @@ fun upsertDebtRecord(existing: List<Debt>, value: Debt): List<Debt> = existing
     .filterNot { it.id == value.id || (!value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId) } + value
 
 fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate {
-    fun inMonth(month: java.time.YearMonth): LocalDate =
-        month.atDay(debt.dueDay.coerceIn(1, month.lengthOfMonth()))
+    fun inMonth(month: java.time.YearMonth): LocalDate = month.atDay(debt.dueDay.coerceIn(1, month.lengthOfMonth()))
     val thisMonth = inMonth(java.time.YearMonth.from(today))
     return if (thisMonth.isBefore(today)) inMonth(java.time.YearMonth.from(today).plusMonths(1)) else thisMonth
 }
