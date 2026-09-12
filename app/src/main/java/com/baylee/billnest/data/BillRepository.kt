@@ -8,7 +8,8 @@ import java.time.LocalDate
 
 class BillRepository(
     context: Context,
-    private val syncDb: LocalSyncDb? = null
+    private val syncDb: LocalSyncDb? = null,
+    private val onSyncNeeded: (() -> Unit)? = null
 ) {
     private val store = EncryptedStore(context)
     private val initialData = migrateLegacy(store.load()).also { store.save(it) }
@@ -61,10 +62,12 @@ class BillRepository(
             deleted = deleted,
             payloadJson = if (deleted) "{}" else draft.payloadJson
         )
+        onSyncNeeded?.invoke()
     }
 
     private fun queueDelete(kind: String, recordId: String) {
         syncDb?.enqueueCurrent(kind, recordId, true, "{}")
+        onSyncNeeded?.invoke()
     }
 
     fun addBill(bill: Bill) {
