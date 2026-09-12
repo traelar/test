@@ -12,7 +12,7 @@ class BillRepository(
     private val onSyncNeeded: (() -> Unit)? = null
 ) {
     private val store = EncryptedStore(context)
-    private val initialData = migrateLegacy(store.load()).also { store.save(it) }
+    private val initialData = captureFinancialSnapshot(migrateLegacy(store.load())).also { store.save(it) }
     private val _data = MutableStateFlow(initialData)
     val data: StateFlow<AppData> = _data
 
@@ -70,6 +70,12 @@ class BillRepository(
         onSyncNeeded?.invoke()
     }
 
+    private fun captureTodaySnapshot() {
+        update { captureFinancialSnapshot(it) }
+        _data.value.financialSnapshots.lastOrNull { it.dateIso == LocalDate.now().toString() }
+            ?.let { queue(SyncMapper.financialSnapshotMutation(it)) }
+    }
+
     fun addBill(bill: Bill) {
         update { it.copy(bills = it.bills + bill) }
         queue(SyncMapper.billMutation(bill))
@@ -110,6 +116,7 @@ class BillRepository(
     fun addAccount(account: Account) {
         update { it.copy(accounts = it.accounts + account) }
         queue(SyncMapper.accountMutation(account))
+        captureTodaySnapshot()
     }
 
     fun moveAccount(accountId: String, direction: Int) {
@@ -129,6 +136,7 @@ class BillRepository(
     fun updateAccount(account: Account) {
         update { data -> data.copy(accounts = data.accounts.map { if (it.id == account.id) account else it }) }
         queue(SyncMapper.accountMutation(account))
+        captureTodaySnapshot()
     }
 
     fun deleteAccount(id: String) {
@@ -140,6 +148,7 @@ class BillRepository(
             )
         }
         if (existing?.source == AccountSource.MANUAL) queueDelete("manual_account", id)
+        captureTodaySnapshot()
     }
 
     fun saveTransaction(value: FinanceTransaction) {
@@ -148,19 +157,40 @@ class BillRepository(
     }
 
     fun deleteTransaction(id: String) {
+        val before = _data.value.transactionTombstones.mapTo(mutableSetOf()) { it.transactionId }
         update { data -> deleteFinanceTransaction(data, id) }
         queueDelete("transaction", id)
+        _data.value.transactionTombstones
+            .filterNot { it.transactionId in before }
+            .forEach { queue(SyncMapper.transactionTombstoneMutation(it)) }
+    }
+
+    fun saveTransactionRule(value: TransactionRule) {
+        update { data ->
+            val rules = upsert(data.transactionRules, value.id, value) { it.id }
+            data.copy(
+                transactionRules = rules,
+                transactions = applyTransactionRules(data.transactions, rules)
+            )
+        }
+        queue(SyncMapper.transactionRuleMutation(value))
+    }
+
+    fun deleteTransactionRule(id: String) {
+        update { data -> data.copy(transactionRules = data.transactionRules.filterNot { it.id == id }) }
+        queueDelete("transaction_rule", id)
     }
 
     fun syncPlaidTransactions(incoming: List<FinanceTransaction>) = update { data ->
         val accountIds = data.accounts.filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
             .associate { it.plaidAccountId!! to it.id }
         val mapped = incoming.map { row -> row.copy(accountId = accountIds[row.accountId] ?: row.accountId) }
+        val ruled = applyTransactionRules(mapped, data.transactionRules)
         data.copy(
             transactions = mergePlaidTransactions(
                 existing = data.transactions,
-                incoming = mapped,
-                deletedPlaidTransactionIds = data.deletedPlaidTransactionIds.toSet()
+                incoming = ruled,
+                deletedPlaidTransactionIds = transactionTombstoneIds(data)
             )
         )
     }
@@ -206,11 +236,13 @@ class BillRepository(
         update { data -> data.copy(debts = upsertDebtRecord(data.debts, value)) }
         removedDuplicateIds.forEach { queueDelete("debt", it) }
         queue(SyncMapper.debtMutation(value))
+        captureTodaySnapshot()
     }
 
     fun deleteDebt(id: String) {
         update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }
         queueDelete("debt", id)
+        captureTodaySnapshot()
     }
 
     fun saveGoal(value: SavingsGoal) {
@@ -255,11 +287,15 @@ class BillRepository(
         val debts = mergePlaidCreditDebts(before.debts, merged)
         update { it.copy(accounts = merged, debts = debts, plaidConnected = merged.any { account -> account.source == AccountSource.PLAID }) }
         debts.filter { debt -> before.debts.firstOrNull { it.id == debt.id } != debt }.forEach { queue(SyncMapper.debtMutation(it)) }
+        captureTodaySnapshot()
     }
 
     fun setBackendUrl(value: String) = update { it.copy(backendUrl = value.trim().ifBlank { BILLNEST_BACKEND_URL }) }
     fun setBackendApiKey(value: String) = update { it.copy(backendApiKey = value.trim()) }
-    fun setManualBalance(value: Double) = update { it.copy(manualBalance = value) }
+    fun setManualBalance(value: Double) {
+        update { it.copy(manualBalance = value) }
+        captureTodaySnapshot()
+    }
     fun setBalances(items: List<AccountBalance>, connected: Boolean = true) = update { it.copy(balances = items, plaidConnected = connected) }
     fun setBiometric(enabled: Boolean) = update { it.copy(biometricLock = enabled) }
 
@@ -334,9 +370,33 @@ class BillRepository(
             when (kind) {
                 "transaction" -> {
                     val updated = remoteList(data.transactions, payload?.let(SyncMapper::decodeTransaction), deletedId) { it.id }
-                        .filterNot { it.id in data.deletedPlaidTransactionIds }
+                        .filterNot { it.id in transactionTombstoneIds(data) }
                     data.copy(transactions = updated)
                 }
+                "transaction_rule" -> {
+                    val rules = remoteList(data.transactionRules, payload?.let(SyncMapper::decodeTransactionRule), deletedId) { it.id }
+                    data.copy(transactionRules = rules, transactions = applyTransactionRules(data.transactions, rules))
+                }
+                "transaction_tombstone" -> {
+                    val tombstones = remoteList(
+                        data.transactionTombstones,
+                        payload?.let(SyncMapper::decodeTransactionTombstone),
+                        deletedId
+                    ) { it.transactionId }
+                    val activeIds = tombstones.mapTo(mutableSetOf()) { it.transactionId }
+                    data.copy(
+                        transactionTombstones = tombstones,
+                        deletedPlaidTransactionIds = (data.deletedPlaidTransactionIds + activeIds).distinct(),
+                        transactions = data.transactions.filterNot { it.id in activeIds }
+                    )
+                }
+                "financial_snapshot" -> data.copy(
+                    financialSnapshots = remoteList(
+                        data.financialSnapshots,
+                        payload?.let(SyncMapper::decodeFinancialSnapshot),
+                        deletedId
+                    ) { it.dateIso }.sortedBy { it.dateIso }
+                )
                 "budget" -> data.copy(budgets = remoteList(data.budgets, payload?.let(SyncMapper::decodeBudget), deletedId) { it.id })
                 "budget_override" -> data.copy(budgetTransactionOverrides = remoteList(data.budgetTransactionOverrides, payload?.let(SyncMapper::decodeBudgetOverride), deletedId) { it.id })
                 "budget_adjustment" -> data.copy(budgetAdjustments = remoteList(data.budgetAdjustments, payload?.let(SyncMapper::decodeBudgetAdjustment), deletedId) { it.id })
