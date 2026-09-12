@@ -720,7 +720,31 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                         }
                     }
                 }
-                if (plaid) Text("Balance and type come from your bank. You can rename the account here.")
+                Box {
+                    OutlinedButton(onClick = { roleExpanded = true }) {
+                        Text("Role: " + role.name.lowercase().replaceFirstChar { it.uppercase() })
+                    }
+                    DropdownMenu(expanded = roleExpanded, onDismissRequest = { roleExpanded = false }) {
+                        AccountRole.entries.forEach { value ->
+                            DropdownMenuItem(
+                                text = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                onClick = {
+                                    role = value
+                                    if (value == AccountRole.SAVINGS || value == AccountRole.CREDIT) includeInSpendable = false
+                                    roleExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Include in Spending Money")
+                        Text("Account stays visible when excluded.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = includeInSpendable, onCheckedChange = { includeInSpendable = it })
+                }
+                if (plaid) Text("Balance and bank type come from Plaid. Name, role, and spending behavior are controlled by you.")
             }
         },
         confirmButton = {
@@ -731,7 +755,9 @@ fun AccountDialog(original: Account?, onDismiss: () -> Unit, onSave: (Account) -
                         (original ?: Account(name = "", type = type, balance = parsedBalance)).copy(
                             name = name.ifBlank { "Account" },
                             type = if (plaid) original?.type ?: type else type,
-                            balance = parsedBalance
+                            balance = parsedBalance,
+                            role = role,
+                            includeInSpendable = includeInSpendable
                         )
                     )
                 }
