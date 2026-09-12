@@ -42,6 +42,17 @@ class FinanceModelsTest {
         assertEquals(1000.0, summary.availableAfterUpcomingBills, 0.001)
     }
 
+    @Test fun retirementIsSeparatedFromOrdinarySavings() {
+        val data = AppData(accounts = listOf(
+            Account(name = "Savings", type = AccountType.SAVINGS, balance = 500.0, role = AccountRole.SAVINGS, includeInSpendable = false),
+            Account(name = "401k", type = AccountType.INVESTMENT, balance = 5000.0, role = AccountRole.SAVINGS, includeInSpendable = false)
+        ))
+        val summary = calculateMoneySummary(data)
+        assertEquals(500.0, summary.savings, 0.001)
+        assertEquals(5000.0, summary.retirement, 0.001)
+        assertEquals(5500.0, summary.totalMoney, 0.001)
+    }
+
     @Test fun transfersDoNotCountAsSpending() {
         val items = listOf(
             FinanceTransaction(name = "Groceries", amount = 80.0, dateIso = "2026-09-12"),

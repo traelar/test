@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -217,6 +218,15 @@ fun BillNestHome(
         "Debt", "Savings / Goals", "Reserved Funds", "Subscriptions", "Income", "Calendar", "Household", "Settings"
     )
     var destination by remember { mutableStateOf("Dashboard") }
+    val destinationHistory = remember { mutableStateListOf<String>() }
+
+    BackHandler(enabled = drawerState.isOpen || destinationHistory.isNotEmpty() || destination != "Dashboard") {
+        when {
+            drawerState.isOpen -> scope.launch { drawerState.close() }
+            destinationHistory.isNotEmpty() -> destination = destinationHistory.removeAt(destinationHistory.lastIndex)
+            destination != "Dashboard" -> destination = "Dashboard"
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -242,7 +252,10 @@ fun BillNestHome(
                             label = { Text(name) },
                             selected = destination == name,
                             onClick = {
-                                destination = name
+                                if (name != destination) {
+                                    destinationHistory.add(destination)
+                                    destination = name
+                                }
                                 scope.launch { drawerState.close() }
                             },
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
@@ -348,6 +361,7 @@ fun Dashboard(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier, o
                     Text(currency(balance), style = MaterialTheme.typography.headlineMedium)
                     Text("Spending Money: " + currency(money.spendingMoney))
                     Text("Savings: " + currency(money.savings))
+                    Text("Retirement: " + currency(money.retirement))
                     Text("Reserved Money: " + currency(money.reserved))
                     Text("Bills next 30 days: " + currency(due30Total))
                     Text("Expected income next 30 days: " + currency(incoming30))
@@ -489,6 +503,7 @@ fun AccountsPage(
                     Text(currency(money.totalMoney), style = MaterialTheme.typography.headlineMedium)
                     Text("Spending Money: ${currency(money.spendingMoney)}")
                     Text("Savings: ${currency(money.savings)}")
+                    Text("Retirement: ${currency(money.retirement)}")
                     Text("Reserved: ${currency(money.reserved)}")
                     Text("${data.accounts.size} account${if (data.accounts.size == 1) "" else "s"}")
                 }

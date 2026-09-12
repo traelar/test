@@ -326,6 +326,7 @@ data class MoneySummary(
     val totalMoney: Double,
     val spendingMoney: Double,
     val savings: Double,
+    val retirement: Double,
     val reserved: Double,
     val reservedFromSpending: Double,
     val upcomingBills: Double,
@@ -334,7 +335,8 @@ data class MoneySummary(
 
 fun calculateMoneySummary(data: AppData): MoneySummary {
     val total = data.accounts.filter { it.role != AccountRole.CREDIT }.sumOf { it.balance }
-    val savings = data.accounts.filter { it.role == AccountRole.SAVINGS }.sumOf { it.balance }
+    val retirement = data.accounts.filter { it.type == AccountType.INVESTMENT }.sumOf { it.balance }
+    val savings = data.accounts.filter { it.role == AccountRole.SAVINGS && it.type != AccountType.INVESTMENT }.sumOf { it.balance }
     val spendable = data.accounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS && it.role != AccountRole.CREDIT }.sumOf { it.balance }
     val reserved = data.reservedFunds.sumOf { it.amount.coerceAtLeast(0.0) }
     val reservedFromSpending = data.reservedFunds.filter { fund ->
@@ -342,5 +344,5 @@ fun calculateMoneySummary(data: AppData): MoneySummary {
         linked == null || (linked.includeInSpendable && linked.role != AccountRole.SAVINGS && linked.role != AccountRole.CREDIT)
     }.sumOf { it.amount.coerceAtLeast(0.0) }
     val upcoming = data.bills.filterNot { it.isPaidFor() }.sumOf { it.amount.coerceAtLeast(0.0) }
-    return MoneySummary(total, spendable, savings, reserved, reservedFromSpending, upcoming, spendable - reservedFromSpending - upcoming)
+    return MoneySummary(total, spendable, savings, retirement, reserved, reservedFromSpending, upcoming, spendable - reservedFromSpending - upcoming)
 }
