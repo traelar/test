@@ -82,7 +82,7 @@ class AuthActivity : FragmentActivity() {
                     ) { CircularProgressIndicator() }
                     LaunchedEffect(current.session.sessionToken) {
                         launchedMain = true
-                        startActivity(Intent(this@AuthActivity, MainActivity::class.java))
+                        startActivity(Intent(this@AuthActivity, FinanceActivity::class.java))
                     }
                 } else {
                     SignedInHub(current.session, vm)
@@ -117,7 +117,7 @@ class AuthActivity : FragmentActivity() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Button(
-                        onClick = { startActivity(Intent(this@AuthActivity, MainActivity::class.java)) },
+                        onClick = { startActivity(Intent(this@AuthActivity, FinanceActivity::class.java)) },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Open BillNest") }
                     OutlinedButton(
