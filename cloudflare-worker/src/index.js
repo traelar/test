@@ -2,6 +2,7 @@ import { authenticateSession, getBearerToken, handleAuthHttp } from './auth.js';
 import { handleHouseholdHttp } from './households.js';
 import { handlePlaidHttp, normalizeAccounts, encryptToken, decryptToken } from './plaid.js';
 import { ensureSchema } from './schema.js';
+import { handleSyncHttp } from './sync.js';
 
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -36,6 +37,10 @@ async function route(request, env) {
   if (householdResponse) return householdResponse;
 
   const context = await authorizeApiRequest(request, env);
+
+  const syncResponse = await handleSyncHttp(request, env, context);
+  if (syncResponse) return syncResponse;
+
   const plaidResponse = await handlePlaidHttp(request, env, context);
   if (plaidResponse) return plaidResponse;
 
