@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,6 +38,7 @@ import com.baylee.billnest.model.AuthUiState
 import com.baylee.billnest.model.SessionData
 import com.baylee.billnest.ui.AuthViewModel
 import com.baylee.billnest.ui.auth.AuthGate
+import com.baylee.billnest.ui.theme.BillNestColors
 import com.baylee.billnest.ui.theme.BillNestTheme
 
 class AuthActivity : FragmentActivity() {
@@ -62,18 +66,20 @@ class AuthActivity : FragmentActivity() {
         var launchedMain by rememberSaveable { mutableStateOf(false) }
 
         when (val current = state) {
-            AuthUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            AuthUiState.Loading -> Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
             AuthUiState.SignedOut -> {
                 launchedMain = false
                 AuthGate(vm)
             }
             is AuthUiState.SignedIn -> {
                 if (!launchedMain) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                        contentAlignment = Alignment.Center
+                    ) { CircularProgressIndicator() }
                     LaunchedEffect(current.session.sessionToken) {
                         launchedMain = true
                         startActivity(Intent(this@AuthActivity, MainActivity::class.java))
@@ -88,17 +94,28 @@ class AuthActivity : FragmentActivity() {
     @Composable
     private fun SignedInHub(session: SessionData, vm: AuthViewModel) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(20.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(20.dp),
             contentAlignment = Alignment.Center
         ) {
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BillNestColors.cardRaised),
+                border = BorderStroke(1.dp, BillNestColors.border),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
                 Column(
                     Modifier.padding(22.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("BillNest", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text(session.householdName.ifBlank { "Your household" }, style = MaterialTheme.typography.titleMedium)
-                    Text("Signed in as ${session.displayLabel.ifBlank { session.username }}")
+                    Text("BillNest", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(session.householdName.ifBlank { "Your household" }, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Signed in as ${session.displayLabel.ifBlank { session.username }}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Button(
                         onClick = { startActivity(Intent(this@AuthActivity, MainActivity::class.java)) },
                         modifier = Modifier.fillMaxWidth()
