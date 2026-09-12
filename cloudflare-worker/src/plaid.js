@@ -4,6 +4,12 @@ import { D1Store } from './store.js';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+const RECONNECT_ERROR_CODES = new Set([
+  'ITEM_LOGIN_REQUIRED',
+  'PENDING_EXPIRATION',
+  'PENDING_DISCONNECT'
+]);
+
 export function plaidBaseUrl(envName) {
   return String(envName || 'sandbox').toLowerCase() === 'production'
     ? 'https://production.plaid.com'
@@ -81,6 +87,17 @@ export function normalizeAccounts(accounts = [], itemId = null, connectionLabel 
   }));
 }
 
+function issueFromPlaidError(item, error) {
+  const errorCode = String(error?.plaid?.error_code || 'PLAID_ERROR');
+  return {
+    itemId: item.itemId,
+    label: item.label || null,
+    errorCode,
+    message: error?.message || errorCode,
+    requiresReconnect: RECONNECT_ERROR_CODES.has(errorCode)
+  };
+}
+
 export function createPlaidService(store, options = {}) {
   const nowProvider = options.now || (() => new Date());
   const encrypt = options.encryptToken || ((token, env) => encryptToken(env, token));
@@ -143,6 +160,18 @@ export function createPlaidService(store, options = {}) {
     });
   }
 
+  async function createUpdateLinkToken(context, env, itemId) {
+    const accessToken = await getItemAccessToken(context, itemId, env);
+    return post(env, '/link/token/create', {
+      client_name: 'BillNest',
+      language: 'en',
+      country_codes: ['US'],
+      android_package_name: 'com.baylee.billnest',
+      user: { client_user_id: 'billnest-personal' },
+      access_token: accessToken
+    });
+  }
+
   async function exchangePublicToken(context, env, publicToken, label) {
     if (!publicToken) throw httpError(400, 'publicToken is required');
     const result = await post(env, '/item/public_token/exchange', { public_token: publicToken });
@@ -152,12 +181,18 @@ export function createPlaidService(store, options = {}) {
   async function fetchAccounts(context, env) {
     const items = await listItemRecords(context);
     const accounts = [];
+    const issues = [];
     for (const item of items) {
-      const accessToken = await decrypt(item.accessTokenEnc, env);
-      const result = await post(env, '/accounts/balance/get', { access_token: accessToken });
-      accounts.push(...normalizeAccounts(result.accounts, item.itemId, item.label || null));
+      try {
+        const accessToken = await decrypt(item.accessTokenEnc, env);
+        const result = await post(env, '/accounts/balance/get', { access_token: accessToken });
+        accounts.push(...normalizeAccounts(result.accounts, item.itemId, item.label || null));
+      } catch (error) {
+        if (!error?.plaid) throw error;
+        issues.push(issueFromPlaidError(item, error));
+      }
     }
-    return { accounts, connectedItems: items.length };
+    return { accounts, connectedItems: items.length, issues };
   }
 
   async function removeItem(context, itemId, env) {
@@ -170,7 +205,16 @@ export function createPlaidService(store, options = {}) {
     return { ok: true };
   }
 
-  return { saveExchangedItem, getItemAccessToken, listItems, createLinkToken, exchangePublicToken, fetchAccounts, removeItem };
+  return {
+    saveExchangedItem,
+    getItemAccessToken,
+    listItems,
+    createLinkToken,
+    createUpdateLinkToken,
+    exchangePublicToken,
+    fetchAccounts,
+    removeItem
+  };
 }
 
 export async function handlePlaidHttp(request, env, context, store = new D1Store(env.DB)) {
@@ -192,6 +236,14 @@ export async function handlePlaidHttp(request, env, context, store = new D1Store
   }
   if (request.method === 'GET' && url.pathname === '/api/plaid/items') {
     return json({ items: await service.listItems(context) });
+  }
+  if (request.method === 'POST' && url.pathname.startsWith('/api/plaid/items/') && url.pathname.endsWith('/link-token')) {
+    const prefix = '/api/plaid/items/';
+    const suffix = '/link-token';
+    const itemId = decodeURIComponent(url.pathname.slice(prefix.length, -suffix.length));
+    if (!itemId) return json({ error: 'Bank connection not found' }, 404);
+    const result = await service.createUpdateLinkToken(context, env, itemId);
+    return json({ linkToken: result.link_token, expiration: result.expiration });
   }
   if (request.method === 'DELETE' && url.pathname.startsWith('/api/plaid/items/')) {
     const itemId = decodeURIComponent(url.pathname.slice('/api/plaid/items/'.length));
