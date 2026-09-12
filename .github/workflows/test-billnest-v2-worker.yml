@@ -1,0 +1,20 @@
+name: Test BillNest v2 Worker
+
+on:
+  push:
+    branches: [ billnest-v2-foundation ]
+    paths:
+      - 'cloudflare-worker/**'
+      - '.github/workflows/test-billnest-v2-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Cloudflare Worker syntax
+        run: |
+          for file in cloudflare-worker/src/*.js; do node --check "$file"; done
+      - name: Run Cloudflare Worker regression tests
+        run: node --test cloudflare-worker/test/*.test.js
