@@ -41,8 +41,8 @@ fun reclassifyTransaction(
 }
 
 /**
- * Remove a transaction from BillNest. Plaid-backed transactions leave behind a
- * local tombstone so a later Plaid refresh cannot restore the deleted row.
+ * Remove a transaction from BillNest. Plaid-backed transactions leave behind both
+ * the legacy local ID and the household-syncable tombstone used by alpha19+.
  */
 fun deleteFinanceTransaction(data: AppData, transactionId: String): AppData {
     val existing = data.transactions.firstOrNull { it.id == transactionId } ?: return data
@@ -51,9 +51,17 @@ fun deleteFinanceTransaction(data: AppData, transactionId: String): AppData {
     } else {
         data.deletedPlaidTransactionIds
     }
+    val tombstones = if (existing.source == TransactionSource.PLAID &&
+        data.transactionTombstones.none { it.transactionId == transactionId }
+    ) {
+        data.transactionTombstones + TransactionTombstone(transactionId = transactionId)
+    } else {
+        data.transactionTombstones
+    }
     return data.copy(
         transactions = data.transactions.filterNot { it.id == transactionId },
-        deletedPlaidTransactionIds = deletedPlaidIds
+        deletedPlaidTransactionIds = deletedPlaidIds,
+        transactionTombstones = tombstones
     )
 }
 
