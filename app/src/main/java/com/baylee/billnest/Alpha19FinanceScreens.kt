@@ -340,7 +340,7 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
 }
 
 @Composable
-private fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {
+fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {
     var merchant by remember(source?.id) { mutableStateOf(source?.name.orEmpty()) }
     var rename by remember(source?.id) { mutableStateOf("") }
     var category by remember(source?.id) { mutableStateOf(source?.category?.takeUnless { it.equals("Other", true) }.orEmpty()) }
