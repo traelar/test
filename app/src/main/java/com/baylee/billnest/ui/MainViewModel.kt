@@ -6,8 +6,8 @@ import com.baylee.billnest.model.*
 
 class MainViewModel(val repo: BillRepository) : ViewModel() {
     val data = repo.data
-    fun add(b: Bill) = repo.addBill(b)
-    fun updateBill(b: Bill) = repo.updateBill(b)
+    fun add(b: Bill) = repo.addBill(reconcileBillPaymentState(b, data.value.transactions))
+    fun updateBill(b: Bill) = repo.updateBill(reconcileBillPaymentState(b, data.value.transactions))
     fun paid(id: String) = repo.markPaid(id)
     fun delete(id: String) = repo.deleteBill(id)
     fun addPayday(p: Payday) = repo.addPayday(p)
