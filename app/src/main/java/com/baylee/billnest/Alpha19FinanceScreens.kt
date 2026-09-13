@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.baylee.billnest.model.*
@@ -717,6 +718,7 @@ private fun PlanLine(label: String, amount: Double) {
 
 @Composable
 fun SettingsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     var backendUrl by remember(data.backendUrl) { mutableStateOf(data.backendUrl) }
     var backendApiKey by remember(data.backendApiKey) { mutableStateOf(data.backendApiKey) }
     val options = listOf(7, 3, 1, 0)
@@ -750,6 +752,28 @@ fun SettingsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
             AlphaCard {
                 Text("Data & household sync", style = MaterialTheme.typography.titleMedium)
                 Text("Local finance data is encrypted with Android Keystore. Household finance records, transaction rules, deletion tombstones, and financial snapshots use the same authoritative household sync stream.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            AlphaCard {
+                Text("Backup & export", style = MaterialTheme.typography.titleMedium)
+                Text("Export a portable BillNest backup or a transaction CSV through Android's share sheet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/csv"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "BillNest transactions")
+                        putExtra(android.content.Intent.EXTRA_TEXT, exportTransactionsCsv(data))
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Export BillNest transactions"))
+                }, modifier = Modifier.fillMaxWidth()) { Text("Export transactions CSV") }
+                OutlinedButton(onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "BillNest backup")
+                        putExtra(android.content.Intent.EXTRA_TEXT, exportBillNestBackupJson(data))
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Export BillNest backup"))
+                }, modifier = Modifier.fillMaxWidth()) { Text("Export BillNest backup") }
             }
         }
         item {
