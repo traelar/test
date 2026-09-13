@@ -1,0 +1,11 @@
+--- a/src/ui/skills_tab.gd
++++ b/src/ui/skills_tab.gd
+@@ -122,7 +122,7 @@ func _render() -> void:
+         button.mouse_filter = Control.MOUSE_FILTER_STOP
+         button.text = "%s  %s\n      Lv %d" % [String(detail.get("sigil", "?")), String(detail.get("name", "Skill")), int(detail.get("level", 1))]
+         button.add_theme_font_size_override("font_size", 12)
+-        var selected := skill_id == _selected_skill
++        var selected: bool = StringName(skill_id) == _selected_skill
+         button.add_theme_stylebox_override("normal", _skill_style(selected, false))
+         button.add_theme_stylebox_override("hover", _skill_style(selected, true))
+         button.add_theme_stylebox_override("pressed", _skill_style(true, true))
