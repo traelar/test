@@ -426,12 +426,12 @@ private fun BudgetEditorSheet(
     var period by remember(existing?.id) { mutableStateOf(existing?.period ?: BudgetPeriod.MONTHLY) }
     var categories by remember(existing?.id) {
         mutableStateOf(
-            (existing?.includedCategories?.takeIf { it.isNotEmpty() }
+            existing?.includedCategories?.takeIf { it.isNotEmpty() }
                 ?: existing?.category?.takeIf { it != "Other" }?.let(::listOf)
-                ?: emptyList()).joinToString(", ")
+                ?: emptyList()
         )
     }
-    var excludedCategories by remember(existing?.id) { mutableStateOf(existing?.excludedCategories?.joinToString(", ").orEmpty()) }
+    var excludedCategories by remember(existing?.id) { mutableStateOf(existing?.excludedCategories ?: emptyList()) }
     var merchants by remember(existing?.id) { mutableStateOf(existing?.includedMerchants?.joinToString(", ").orEmpty()) }
     var excludedMerchants by remember(existing?.id) { mutableStateOf(existing?.excludedMerchants?.joinToString(", ").orEmpty()) }
     var selectedAccounts by remember(existing?.id) { mutableStateOf(existing?.includedAccountIds?.toSet() ?: emptySet()) }
@@ -475,7 +475,7 @@ private fun BudgetEditorSheet(
                         onClick = {
                             name = suggestion.category
                             amount = suggestion.recommendedAmount.toString()
-                            categories = suggestion.category
+                            categories = listOf(suggestion.category)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -490,12 +490,12 @@ private fun BudgetEditorSheet(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
-            OutlinedTextField(
-                value = categories,
-                onValueChange = { categories = it },
-                label = { Text("Categories included") },
-                supportingText = { Text("One or several, separated by commas. Example: Groceries, Household") },
-                modifier = Modifier.fillMaxWidth()
+            CategoryMultiPickerField(
+                data = data,
+                selected = categories,
+                onSelectedChange = { categories = it },
+                label = "Categories included",
+                extraOptions = categories + excludedCategories
             )
 
             EditorSection("2", "Amount & period")
@@ -578,11 +578,12 @@ private fun BudgetEditorSheet(
                 Text(if (showAdvanced) "Hide advanced rules" else "Advanced include / exclude rules")
             }
             if (showAdvanced) {
-                OutlinedTextField(
-                    value = excludedCategories,
-                    onValueChange = { excludedCategories = it },
-                    label = { Text("Exclude categories") },
-                    modifier = Modifier.fillMaxWidth()
+                CategoryMultiPickerField(
+                    data = data,
+                    selected = excludedCategories,
+                    onSelectedChange = { excludedCategories = it },
+                    label = "Exclude categories",
+                    extraOptions = categories + excludedCategories
                 )
                 OutlinedTextField(
                     value = excludedMerchants,
@@ -663,7 +664,12 @@ private fun BudgetEditorSheet(
                     onClick = {
                         val parsedAmount = amount.toDoubleOrNull()
                         val parsedWarning = warningPercent.toIntOrNull()?.coerceIn(1, 100) ?: 90
-                        val includeCategories = parseRules(categories)
+                        val includeCategories = categories
+                            .map { canonicalCategoryName(data, it) }
+                            .distinctBy(::normalizeCategoryKey)
+                        val excludeCategoryRules = excludedCategories
+                            .map { canonicalCategoryName(data, it) }
+                            .distinctBy(::normalizeCategoryKey)
                         val candidate = Budget(
                             id = existing?.id ?: java.util.UUID.randomUUID().toString(),
                             name = name.trim(),
@@ -674,7 +680,7 @@ private fun BudgetEditorSheet(
                             startDateIso = customStart.trim().takeIf { period == BudgetPeriod.CUSTOM && it.isNotBlank() },
                             endDateIso = customEnd.trim().takeIf { period == BudgetPeriod.CUSTOM && it.isNotBlank() },
                             includedCategories = includeCategories,
-                            excludedCategories = parseRules(excludedCategories),
+                            excludedCategories = excludeCategoryRules,
                             includedMerchants = parseRules(merchants),
                             excludedMerchants = parseRules(excludedMerchants),
                             includedAccountIds = selectedAccounts.toList(),

@@ -23,6 +23,21 @@ import kotlin.math.abs
 private val insightsMoney = NumberFormat.getCurrencyInstance()
 private fun iMoney(value: Double): String = insightsMoney.format(value)
 
+private enum class InsightTransactionAction { EDIT, SUBSCRIPTION, RULE, DELETE }
+
+private fun insightTransactionActionRows(includeSubscription: Boolean): List<List<InsightTransactionAction>> =
+    if (includeSubscription) {
+        listOf(
+            listOf(InsightTransactionAction.EDIT, InsightTransactionAction.SUBSCRIPTION),
+            listOf(InsightTransactionAction.RULE, InsightTransactionAction.DELETE)
+        )
+    } else {
+        listOf(
+            listOf(InsightTransactionAction.EDIT, InsightTransactionAction.RULE),
+            listOf(InsightTransactionAction.DELETE)
+        )
+    }
+
 @Composable
 private fun InsightsCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
@@ -343,35 +358,54 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                         }
-                                        Row(
-                                            Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End
-                                        ) {
-                                            val merchantKey = subscriptionKey(tx.name)
-                                            val trackedSubscription = data.subscriptionPreferences.any {
-                                                it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED
-                                            }
-                                            TextButton(onClick = {
-                                                reopenCategory = category
-                                                editingTransaction = tx
-                                                selectedCategory = null
-                                            }) { Text("Edit") }
-                                            if (!tx.income && !tx.transfer) {
-                                                TextButton(onClick = {
-                                                    if (trackedSubscription) {
-                                                        vm.deleteSubscriptionPreference(merchantKey)
-                                                    } else {
-                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))
+                                        val merchantKey = subscriptionKey(tx.name)
+                                        val trackedSubscription = data.subscriptionPreferences.any {
+                                            it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED
+                                        }
+                                        insightTransactionActionRows(!tx.income && !tx.transfer).forEach { actionRow ->
+                                            Row(
+                                                Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                actionRow.forEach { action ->
+                                                    TextButton(
+                                                        modifier = Modifier.weight(1f),
+                                                        onClick = {
+                                                            when (action) {
+                                                                InsightTransactionAction.EDIT -> {
+                                                                    reopenCategory = category
+                                                                    editingTransaction = tx
+                                                                    selectedCategory = null
+                                                                }
+                                                                InsightTransactionAction.SUBSCRIPTION -> {
+                                                                    if (trackedSubscription) {
+                                                                        vm.deleteSubscriptionPreference(merchantKey)
+                                                                    } else {
+                                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))
+                                                                    }
+                                                                }
+                                                                InsightTransactionAction.RULE -> {
+                                                                    reopenCategory = category
+                                                                    ruleFor = tx
+                                                                    selectedCategory = null
+                                                                }
+                                                                InsightTransactionAction.DELETE -> vm.deleteTransaction(tx.id)
+                                                            }
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            when (action) {
+                                                                InsightTransactionAction.EDIT -> "Edit"
+                                                                InsightTransactionAction.SUBSCRIPTION -> if (trackedSubscription) "Untrack sub" else "Track sub"
+                                                                InsightTransactionAction.RULE -> "Make rule"
+                                                                InsightTransactionAction.DELETE -> "Delete"
+                                                            },
+                                                            color = if (action == InsightTransactionAction.DELETE) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
                                                     }
-                                                }) { Text(if (trackedSubscription) "Untrack sub" else "Track sub") }
-                                            }
-                                            TextButton(onClick = {
-                                                reopenCategory = category
-                                                ruleFor = tx
-                                                selectedCategory = null
-                                            }) { Text("Make rule") }
-                                            TextButton(onClick = { vm.deleteTransaction(tx.id) }) {
-                                                Text("Delete", color = MaterialTheme.colorScheme.error)
+                                                }
                                             }
                                         }
                                     }
@@ -407,6 +441,7 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
 
     ruleFor?.let { transaction ->
         TransactionRuleDialog(
+            data = data,
             source = transaction,
             onDismiss = {
                 ruleFor = null

@@ -30,10 +30,7 @@ fun BillEditorDialogV2(
     var accountId by remember(original?.id) { mutableStateOf(original?.accountId) }
     var notes by remember(original?.id) { mutableStateOf(original?.notes.orEmpty()) }
     var freqExpanded by remember { mutableStateOf(false) }
-    var catExpanded by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
-    val categoryScroll = rememberScrollState()
-    val categories = remember(data.bills, data.transactions) { billCategoryOptions(data) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -59,39 +56,12 @@ fun BillEditorDialogV2(
                 )
                 DatePickerButton(label = "Due date", dateIso = date, onDateSelected = { date = it })
 
-                Text("Category", style = MaterialTheme.typography.labelLarge)
-                OutlinedTextField(
+                CategoryPickerField(
+                    data = data,
                     value = category,
                     onValueChange = { category = it },
-                    label = { Text("Category name") },
-                    supportingText = { Text("Choose one you already use or type your own.") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    label = "Category"
                 )
-                Box(Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { catExpanded = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Choose existing category")
-                    }
-                    DropdownMenu(
-                        expanded = catExpanded,
-                        onDismissRequest = { catExpanded = false },
-                        modifier = Modifier.heightIn(max = 320.dp),
-                        scrollState = categoryScroll
-                    ) {
-                        categories.forEach { value ->
-                            DropdownMenuItem(
-                                text = { Text(value) },
-                                onClick = {
-                                    category = value
-                                    catExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
 
                 Box(Modifier.fillMaxWidth()) {
                     OutlinedButton(
@@ -175,7 +145,7 @@ fun BillEditorDialogV2(
                             dueDateIso = parsedDate.toString(),
                             frequency = frequency,
                             autopay = autopay,
-                            category = category.trim().ifBlank { "Other" },
+                            category = canonicalCategoryName(data, category),
                             notes = notes,
                             variableAmount = variable,
                             accountId = accountId

@@ -331,7 +331,7 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
         }
     }
     if (newRule || ruleFor != null) {
-        TransactionRuleDialog(ruleFor, { newRule = false; ruleFor = null }) {
+        TransactionRuleDialog(data, ruleFor, { newRule = false; ruleFor = null }) {
             vm.saveTransactionRule(it)
             newRule = false
             ruleFor = null
@@ -340,7 +340,7 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
 }
 
 @Composable
-fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {
+fun TransactionRuleDialog(data: AppData, source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {
     var merchant by remember(source?.id) { mutableStateOf(source?.name.orEmpty()) }
     var rename by remember(source?.id) { mutableStateOf("") }
     var category by remember(source?.id) { mutableStateOf(source?.category?.takeUnless { it.equals("Other", true) }.orEmpty()) }
@@ -353,7 +353,14 @@ fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, on
                 Text("Future bank transactions matching this merchant text will use this rule. Existing transactions are recalculated too.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(merchant, { merchant = it }, label = { Text("Merchant contains") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(rename, { rename = it }, label = { Text("Rename merchant to (optional)") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(category, { category = it }, label = { Text("Category (optional)") }, modifier = Modifier.fillMaxWidth())
+                CategoryPickerField(
+                    data = data,
+                    value = category,
+                    onValueChange = { category = it },
+                    label = "Category (optional)",
+                    allowEmpty = true,
+                    emptyLabel = "No category change"
+                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Exclude from spending")
@@ -368,7 +375,7 @@ fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, on
                 if (merchant.isNotBlank()) onSave(TransactionRule(
                     merchantContains = merchant.trim(),
                     renameTo = rename.trim().ifBlank { null },
-                    category = category.trim().ifBlank { null },
+                    category = category.trim().takeIf { it.isNotBlank() }?.let { canonicalCategoryName(data, it) },
                     excludeFromSpending = exclude
                 ))
             }) { Text("Save rule") }
