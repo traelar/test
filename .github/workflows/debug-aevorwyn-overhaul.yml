@@ -33,7 +33,7 @@ jobs:
           unzip -q aevorwyn-source.zip -d aevorwyn
           rm -f aevorwyn/.git
 
-      - name: Apply v0.2.6 production layers
+      - name: Apply v0.2.6 production layers exactly
         run: |
           cat \
             .aevorwyn/mobile-point-tap.patch.part00 \
@@ -43,6 +43,7 @@ jobs:
           patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+          (cd aevorwyn && python3 tools/static_verify.py)
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
           cat \
             .aevorwyn/mobile-context-animation-green.patch.part00 \
