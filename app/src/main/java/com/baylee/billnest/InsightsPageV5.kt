@@ -1,6 +1,7 @@
 package com.baylee.billnest
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -55,6 +56,7 @@ private fun InsightsProgressCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
     var month by remember { mutableStateOf(YearMonth.now()) }
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
     val recap = remember(data, month) { monthlyRecap(data, month) }
     val currentRecap = remember(data) { monthlyRecap(data, YearMonth.now()) }
     val alerts = remember(data) { runCatching { budgetAlerts(data) }.getOrDefault(emptyList()) }
@@ -142,9 +144,25 @@ fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
         if (recap.categoryTotals.isNotEmpty()) {
             item { Text("Spending by category", style = MaterialTheme.typography.titleLarge) }
             items(recap.categoryTotals.toList(), key = { it.first }) { (category, amount) ->
-                InsightsCard {
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(category, style = MaterialTheme.typography.titleMedium)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedCategory = category },
+                    colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+                    border = BorderStroke(1.dp, BillNestColors.border)
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(category, style = MaterialTheme.typography.titleMedium)
+                            Text("View", color = BillNestColors.info, style = MaterialTheme.typography.labelLarge)
+                        }
                         Text(
                             iMoney(amount),
                             modifier = Modifier.fillMaxWidth(),
@@ -246,6 +264,92 @@ fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+
+    selectedCategory?.let { category ->
+        val rows = remember(data, month, category) { categorySpendingBreakdown(data, month, category) }
+        val total = rows.sumOf { it.amount }
+        AlertDialog(
+            onDismissRequest = { selectedCategory = null },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(category)
+                    Text(
+                        month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Category spending", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(iMoney(total), style = MaterialTheme.typography.titleMedium)
+                    }
+                    HorizontalDivider(color = BillNestColors.border)
+                    if (rows.isEmpty()) {
+                        Text("No matching transactions found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 460.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(rows, key = { item -> item.transaction.id + "-" + category }) { item ->
+                                val tx = item.transaction
+                                val account = tx.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = BillNestColors.cardRaised),
+                                    border = BorderStroke(1.dp, BillNestColors.border.copy(alpha = .7f))
+                                ) {
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                                Text(tx.name, style = MaterialTheme.typography.titleSmall)
+                                                Text(
+                                                    buildString {
+                                                        append(tx.dateIso)
+                                                        account?.let {
+                                                            append(" • ")
+                                                            append(it.name)
+                                                        }
+                                                    },
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                            Text(
+                                                iMoney(item.amount),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                        if (item.fromSplit) {
+                                            Text(
+                                                "Split portion of " + iMoney(kotlin.math.abs(tx.amount)),
+                                                color = BillNestColors.info,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedCategory = null }) { Text("Close") }
+            }
+        )
     }
 }
 
