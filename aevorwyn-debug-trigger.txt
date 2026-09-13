@@ -1,1 +1,1 @@
-strict-godot-green-1
+strict-runtime-red-1
