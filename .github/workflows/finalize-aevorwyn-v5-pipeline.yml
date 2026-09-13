@@ -1,0 +1,116 @@
+name: Finalize Aevorwyn Android Pipeline
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-finalize-trigger.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: aevorwyn-mobile-build
+          fetch-depth: 0
+
+      - name: Harden production APK workflow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/build-aevorwyn-apk-v5.yml')
+          s = p.read_text()
+
+          old = '''          patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
+          rm -f aevorwyn/src/game/main_world.gd.orig aevorwyn/src/input/mobile_gesture_interpreter.gd.orig
+'''
+          new = '''          patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-compile-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-runtime-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-test-runner-fix.patch
+          rm -f aevorwyn/src/game/main_world.gd.orig aevorwyn/src/input/mobile_gesture_interpreter.gd.orig
+'''
+          if old not in s:
+              raise SystemExit('overhaul insertion point not found')
+          s = s.replace(old, new, 1)
+
+          old = '''      - name: Import project and vendor assets
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Run complete game tests
+        working-directory: aevorwyn
+        run: timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
+
+      - name: Boot main scene smoke test
+        working-directory: aevorwyn
+        run: timeout 8s Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 || test $? -eq 124
+'''
+          new = '''      - name: Import project and vendor assets
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee godot-import.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\\.|Condition "!is_inside_tree\\(\\)" is true' godot-import.log; then
+            echo 'Godot import/compile emitted fatal errors.' >&2
+            exit 1
+          fi
+
+      - name: Run complete game tests
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd 2>&1 | tee godot-tests.log
+          grep -q 'ALL TESTS PASSED' godot-tests.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\\.|TEST FAILURES|Condition "!is_inside_tree\\(\\)" is true' godot-tests.log; then
+            echo 'Godot tests emitted fatal errors.' >&2
+            exit 1
+          fi
+
+      - name: Boot main scene smoke test
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 2>&1 | tee godot-smoke.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\\.|Condition "!is_inside_tree\\(\\)" is true' godot-smoke.log; then
+            echo 'Godot smoke test emitted fatal errors.' >&2
+            exit 1
+          fi
+'''
+          if old not in s:
+              raise SystemExit('validation block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''          mkdir -p builds/android
+          Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --export-release Android builds/android/Aevorwyn-S25-Ultra.apk
+'''
+          new = '''          mkdir -p builds/android
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --export-release Android builds/android/Aevorwyn-S25-Ultra.apk 2>&1 | tee godot-export.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\\.|Condition "!is_inside_tree\\(\\)" is true' godot-export.log; then
+            echo 'Godot export emitted fatal game errors.' >&2
+            exit 1
+          fi
+'''
+          if old not in s:
+              raise SystemExit('export block not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+
+          git diff --check
+          git diff -- .github/workflows/build-aevorwyn-apk-v5.yml
+
+      - name: Commit hardened pipeline
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/build-aevorwyn-apk-v5.yml
+          git commit -m 'build: enforce real Godot validation for Aevorwyn APK'
+          git push origin HEAD:aevorwyn-mobile-build
