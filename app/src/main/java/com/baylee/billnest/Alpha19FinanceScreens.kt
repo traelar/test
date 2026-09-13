@@ -206,9 +206,10 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
         val inferredIncome = row.income || row.category.equals("Income", true) ||
             (row.source == TransactionSource.PLAID && row.amount < 0.0 && !row.userClassificationOverride)
         (query.isBlank() || row.name.contains(query, true) || row.category.contains(query, true)) && when (typeFilter) {
-            "Income" -> inferredIncome && !row.transfer
-            "Transfers" -> row.transfer
-            "Spending" -> !inferredIncome && !row.transfer
+            "Income" -> !row.pending && inferredIncome && !row.transfer
+            "Transfers" -> !row.pending && row.transfer
+            "Spending" -> !row.pending && !inferredIncome && !row.transfer
+            "Pending" -> row.pending
             "Excluded" -> row.excludedFromSpending
             else -> true
         }
@@ -262,7 +263,7 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
             Box {
                 OutlinedButton({ expanded = true }) { Text("Show: $typeFilter") }
                 DropdownMenu(expanded, { expanded = false }) {
-                    listOf("All", "Spending", "Income", "Transfers", "Excluded").forEach { choice ->
+                    listOf("All", "Spending", "Income", "Transfers", "Pending", "Excluded").forEach { choice ->
                         DropdownMenuItem({ Text(choice) }, { typeFilter = choice; expanded = false })
                     }
                 }
