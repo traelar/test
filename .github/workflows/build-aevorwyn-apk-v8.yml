@@ -1,0 +1,171 @@
+name: Build Aevorwyn Android APK v8 Original Character
+
+concurrency:
+  group: aevorwyn-android-v8-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-build-trigger-v8.txt'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Reconstruct verified original Aevorwyn character and armor source
+        run: |
+          set -euo pipefail
+          bash .github/scripts/aevorwyn-reconstruct-v6.sh
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-green.patch
+
+          cat .aevorwyn/original-character-green.patch.gz.b64.part00 \
+              .aevorwyn/original-character-green.patch.gz.b64.part01 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a0 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a1 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02b \
+              .aevorwyn/original-character-green.patch.gz.b64.part02c \
+              .aevorwyn/original-character-green.patch.gz.b64.part03 \
+              .aevorwyn/original-character-green.patch.gz.b64.part04 > /tmp/original-character-green.b64
+          test "$(wc -c < /tmp/original-character-green.b64)" = "24116"
+          test "$(sha256sum /tmp/original-character-green.b64 | awk '{print $1}')" = "29d2aa986cad81a42100bb6654b57a7c431f17f1aa3e8e6cecb657ca6b27b01c"
+          base64 -d /tmp/original-character-green.b64 | gzip -d > /tmp/original-character-green.patch
+          test "$(sha256sum /tmp/original-character-green.patch | awk '{print $1}')" = "b823936b82c3cb614147046a5acb190e00d7e6a5cbcf5c019171a0afda6802f6"
+          patch --batch --forward -p1 -d aevorwyn < /tmp/original-character-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-compile-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-test-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-refcount-test-fix.patch
+
+          test "$(wc -c < .aevorwyn/armor-slots-green.patch)" = "15851"
+          test "$(sha256sum .aevorwyn/armor-slots-green.patch | awk '{print $1}')" = "95678283cfddd051306d51cd151e3ad501242c5d77f501d2f9a7dfbf7e9b4e6c"
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/armor-slots-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/armor-slots-green.patch
+
+      - name: Enforce original-content production rule
+        working-directory: aevorwyn
+        run: |
+          set -euo pipefail
+          python3 tools/static_verify.py
+          if grep -R -n -E 'assets/vendor/|quaternius|UAL2_Standard|Male_Ranger|Male_Peasant|Axe_Bronze' src scenes; then
+            echo 'Production source still references vendor assets.' >&2
+            exit 1
+          fi
+          test ! -d assets/vendor
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" \
+            -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Install Godot export templates
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" \
+            -o templates.tpz
+          rm -rf templates
+          unzip -q templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -R templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Configure Godot Android SDK paths
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF2
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF2
+
+      - name: Strict Godot import
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee godot-import.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.|Condition "!is_inside_tree\(\)" is true' godot-import.log; then
+            exit 1
+          fi
+
+      - name: Full regression suite
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd 2>&1 | tee godot-tests.log
+          grep -q 'ALL TESTS PASSED' godot-tests.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.|TEST FAILURES|Condition "!is_inside_tree\(\)" is true' godot-tests.log; then
+            exit 1
+          fi
+
+      - name: Strict main scene boot
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 2>&1 | tee godot-smoke.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.|Condition "!is_inside_tree\(\)" is true' godot-smoke.log; then
+            exit 1
+          fi
+
+      - name: Set Android update version
+        working-directory: aevorwyn
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=$((900 + GITHUB_RUN_NUMBER))/" export_presets.cfg
+          sed -i "s/^version\/name=.*/version\/name=\"0.4.0-${GITHUB_RUN_NUMBER}\"/" export_presets.cfg
+          grep -q '^package/unique_name="com.aevorwyn.game"' export_presets.cfg
+          grep '^version/code=' export_presets.cfg
+          grep '^version/name=' export_presets.cfg
+
+      - name: Export signed ARM64 APK with preserved signing identity
+        working-directory: aevorwyn
+        run: |
+          set -euo pipefail
+          legacy_workflow="../.github/workflows/build-aevorwyn-apk.yml"
+          ks_user=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_USER:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          ks_pass=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          test -n "$ks_user"
+          test -n "$ks_pass"
+          echo "::add-mask::$ks_user"
+          echo "::add-mask::$ks_pass"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="${GITHUB_WORKSPACE}/app/billnest-debug.jks"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$ks_user"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$ks_pass"
+          mkdir -p builds/android
+          Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --export-release Android builds/android/Aevorwyn-S25-Ultra.apk
+
+      - name: Verify update identity and APK integrity
+        run: |
+          set -euo pipefail
+          test -s aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          digest=$($ANDROID_HOME/build-tools/36.1.0/apksigner verify --print-certs aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk | sed -n 's/Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          test "$digest" = "0aa471987e2d6b34add2ce811df537fe8dae203a7bb474bb90cb9606e303654c"
+          $ANDROID_HOME/build-tools/36.1.0/apksigner verify --verbose aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          sha256sum aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevorwyn-S25-Ultra-APK-v8-original
+          path: aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          if-no-files-found: error
