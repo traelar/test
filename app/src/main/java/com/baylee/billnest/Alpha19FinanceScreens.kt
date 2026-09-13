@@ -289,6 +289,8 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
                         Text(row.name, style = MaterialTheme.typography.titleMedium)
                         Text("$kind • ${aDate(row.dateIso)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (row.pending) AlphaTag("Pending", BillNestColors.warning)
+                            if (row.splits.orEmpty().isNotEmpty()) AlphaTag("Split", BillNestColors.info)
                             if (row.excludedFromSpending) AlphaTag("Excluded", BillNestColors.warning)
                             if (row.userClassificationOverride) AlphaTag("Manual", BillNestColors.info)
                             if (row.source == TransactionSource.PLAID) AlphaTag("Bank", BillNestColors.accent)
@@ -419,6 +421,24 @@ fun DebtPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
                     }
                     val savings = snowball.totalInterest - avalanche.totalInterest
                     if (savings > .01) Text("Avalanche saves about ${aMoney(savings)} in projected interest.", color = BillNestColors.positive)
+                }
+            }
+        }
+        if (data.debts.isNotEmpty()) {
+            item {
+                AlphaCard {
+                    Text("Payoff milestones", style = MaterialTheme.typography.titleMedium)
+                    Text("See what a little extra each month does to payoff time and projected interest.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    debtMilestones(data).forEach { scenario ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("+${aMoney(scenario.extraMonthly)} / mo")
+                            Text(
+                                if (scenario.months > 0) "${scenario.months} mo • save ${aMoney(scenario.interestSaved)} interest" else "Paid off",
+                                color = BillNestColors.positive,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                 }
             }
         }
