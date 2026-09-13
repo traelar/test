@@ -1,0 +1,68 @@
+name: Materialize Aevorwyn Current Source
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-materialize-trigger.txt'
+      - '.github/workflows/materialize-aevorwyn-source.yml'
+  workflow_dispatch:
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Aevorwyn source
+        run: |
+          cat \
+            .aevorwyn/source.b64.part00 \
+            .aevorwyn/source.b64.part01 \
+            .aevorwyn/source.b64.part02 \
+            .aevorwyn/source.b64.part030 \
+            .aevorwyn/source.b64.part031 \
+            .aevorwyn/source.b64.part032 \
+            .aevorwyn/source.b64.part04 \
+            .aevorwyn/source.b64.part05 \
+            .aevorwyn/source.b64.part06 \
+            | base64 --decode > aevorwyn-source.zip
+          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
+          rm -rf aevorwyn
+          mkdir -p aevorwyn
+          unzip -q aevorwyn-source.zip -d aevorwyn
+          rm -f aevorwyn/.git
+
+      - name: Apply current production patches
+        run: |
+          cat \
+            .aevorwyn/mobile-point-tap.patch.part00 \
+            .aevorwyn/mobile-point-tap.patch.part01 \
+            .aevorwyn/mobile-point-tap.patch.part02 \
+            > mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+          (cd aevorwyn && python3 tools/static_verify.py)
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+          cat \
+            .aevorwyn/mobile-context-animation-green.patch.part00 \
+            .aevorwyn/mobile-context-animation-green.patch.part01 \
+            .aevorwyn/mobile-context-animation-green.patch.part02 \
+            > mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+
+      - name: Pack exact current source
+        run: |
+          rm -f aevorwyn/.git
+          (cd aevorwyn && zip -qr ../Aevorwyn-v0.2.6-current-source.zip .)
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevorwyn-v0.2.6-current-source
+          path: Aevorwyn-v0.2.6-current-source.zip
+          if-no-files-found: error
