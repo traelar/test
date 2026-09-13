@@ -81,7 +81,7 @@ fun detectPaydayPatterns(
     referenceDate: LocalDate = LocalDate.now()
 ): List<PaydayPattern> {
     val incomeRows = transactions.filter { row ->
-        !row.transfer && (row.income || row.category.equals("Income", true) ||
+        !row.pending && !row.transfer && (row.income || row.category.equals("Income", true) ||
             (row.source == TransactionSource.PLAID && row.amount < 0.0))
     }
     return incomeRows.groupBy { normalizePayer(it.name) }.mapNotNull { (_, rows) ->
@@ -126,7 +126,7 @@ private fun normalizePayer(name: String): String = name.lowercase()
     .ifBlank { name.lowercase().trim() }
 
 fun detectSubscriptions(transactions: List<FinanceTransaction>): List<SubscriptionSuggestion> =
-    transactions.filter { !it.transfer && !it.income }.groupBy { normalizeMerchant(it.name) }.mapNotNull { (_, rows) ->
+    transactions.filter { !it.pending && !it.transfer && !it.income }.groupBy { normalizeMerchant(it.name) }.mapNotNull { (_, rows) ->
         val dated = rows.mapNotNull { row -> runCatching { LocalDate.parse(row.dateIso) to row }.getOrNull() }
             .distinctBy { it.first }.sortedBy { it.first }
         if (dated.size < 3) return@mapNotNull null
@@ -144,7 +144,7 @@ fun detectSubscriptions(transactions: List<FinanceTransaction>): List<Subscripti
     }.sortedByDescending { it.typicalAmount }
 
 fun findBillMatches(bills: List<Bill>, transactions: List<FinanceTransaction>): List<BillMatchSuggestion> {
-    val expenses = transactions.filter { !it.transfer && !it.income && !it.excludedFromSpending }
+    val expenses = transactions.filter { !it.pending && !it.transfer && !it.income && !it.excludedFromSpending }
     return bills.filterNot { it.isPaidFor() }.mapNotNull { bill ->
         val due = runCatching { bill.dueDate() }.getOrNull() ?: return@mapNotNull null
         val billCategory = bill.category.trim().takeUnless {
