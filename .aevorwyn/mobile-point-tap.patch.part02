@@ -1,0 +1,6 @@
+,
+     "src/game/game_session.gd",
++    "src/input/mobile_gesture_interpreter.gd",
+     "src/domain/inventory_service.gd",
+     "src/domain/skill_service.gd",
+     "src/domain/combat_service.gd",
