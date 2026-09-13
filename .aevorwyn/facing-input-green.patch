@@ -1,0 +1,52 @@
+--- a/src/input/mobile_gesture_interpreter.gd
++++ b/src/input/mobile_gesture_interpreter.gd
+@@ -1,7 +1,7 @@
+ class_name MobileGestureInterpreter
+ extends RefCounted
+ 
+-const DEFAULT_DRAG_THRESHOLD := 18.0
++const DEFAULT_DRAG_THRESHOLD := 8.0
+ const PINCH_ZOOM_SENSITIVITY := 0.018
+ const LONG_PRESS_SECONDS := 0.45
+ 
+--- a/src/player/rigged_character_visual.gd
++++ b/src/player/rigged_character_visual.gd
+@@ -3,7 +3,7 @@
+ 
+ signal chop_impact
+ 
+-const CHARACTER_PATH := "res://assets/vendor/quaternius/character/Male_Peasant.gltf"
++const CHARACTER_PATH := "res://assets/vendor/quaternius/character/Male_Ranger.gltf"
+ const ANIMATION_PATH := "res://assets/vendor/quaternius/animations/UAL2_Standard.glb"
+ const AXE_PATH := "res://assets/vendor/quaternius/props/Axe_Bronze.gltf"
+ 
+@@ -46,8 +46,12 @@
+         "handle_axis": &"positive_y",
+         "head_forward": true,
+         "two_handed_animation": CHOP_ANIMATION,
++        "yaw_degrees": 0.0,
+     }
+ 
++func model_yaw_correction() -> float:
++    return PI
++
+ func is_loaded() -> bool:
+     return _loaded
+ 
+@@ -99,6 +103,7 @@
+     if _character_root == null:
+         return
+     _character_root.name = "HighQualityCharacter"
++    _character_root.rotation.y = model_yaw_correction()
+     add_child(_character_root)
+ 
+     _skeleton = _find_skeleton(_character_root)
+@@ -138,7 +143,7 @@
+         # Shift the prop down from the hand so the palm sits on the upper handle,
+         # with the blade extending forward instead of behind the character.
+         _axe_root.position = Vector3(0.0, -0.34, 0.015)
+-        _axe_root.rotation = Vector3(0.0, PI, 0.0)
++        _axe_root.rotation = Vector3.ZERO
+         _axe_root.scale = Vector3.ONE * 0.92
+         _axe_root.visible = false
+         _axe_attachment.add_child(_axe_root)
