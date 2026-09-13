@@ -28,7 +28,8 @@ fun reclassifyTransaction(
         income = true,
         transferFromAccountId = null,
         transferToAccountId = null,
-        userClassificationOverride = true
+        userClassificationOverride = true,
+        splits = null
     )
     TransactionClassification.TRANSFER -> transaction.copy(
         category = "Transfer",
@@ -36,7 +37,8 @@ fun reclassifyTransaction(
         income = false,
         transferFromAccountId = fromAccountId,
         transferToAccountId = toAccountId,
-        userClassificationOverride = true
+        userClassificationOverride = true,
+        splits = null
     )
 }
 
@@ -95,5 +97,6 @@ fun mergePlaidTransactions(
     }
     val incomingIds = allowedIncoming.map { it.id }.toSet()
     val retained = allowedExisting.filterNot { it.id in incomingIds }
+        .filterNot { it.source == TransactionSource.PLAID && it.pending }
     return (retained + refreshed).sortedByDescending { it.dateIso }
 }
