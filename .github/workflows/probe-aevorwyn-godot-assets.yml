@@ -1,0 +1,102 @@
+name: Probe Aevorwyn Godot Assets
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-godot-asset-probe-trigger.txt'
+      - '.github/workflows/probe-aevorwyn-godot-assets.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact current source
+        run: |
+          cat .aevorwyn/source.b64.part00 .aevorwyn/source.b64.part01 .aevorwyn/source.b64.part02 .aevorwyn/source.b64.part030 .aevorwyn/source.b64.part031 .aevorwyn/source.b64.part032 .aevorwyn/source.b64.part04 .aevorwyn/source.b64.part05 .aevorwyn/source.b64.part06 | base64 --decode > source.zip
+          mkdir -p aevorwyn && unzip -q source.zip -d aevorwyn && rm -f aevorwyn/.git
+          cat .aevorwyn/mobile-point-tap.patch.part00 .aevorwyn/mobile-point-tap.patch.part01 .aevorwyn/mobile-point-tap.patch.part02 > p.patch
+          patch --batch --forward -p1 -d aevorwyn < p.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+          (cd aevorwyn && python3 tools/static_verify.py)
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+          cat .aevorwyn/mobile-context-animation-green.patch.part00 .aevorwyn/mobile-context-animation-green.patch.part01 .aevorwyn/mobile-context-animation-green.patch.part02 > p2.patch
+          patch --batch --forward -p1 -d aevorwyn < p2.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+
+      - name: Download verified CC0 assets
+        run: |
+          char='aevorwyn/assets/vendor/quaternius/character'
+          anim='aevorwyn/assets/vendor/quaternius/animations'
+          nature='aevorwyn/assets/vendor/quaternius/nature'
+          mkdir -p "$char" "$anim" "$nature"
+          base='https://raw.githubusercontent.com/agentkaerf/FreeModels/main'
+          curl -L --fail "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/Male_Peasant.gltf" -o "$char/Male_Peasant.gltf"
+          curl -L --fail "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/Male_Peasant.bin" -o "$char/Male_Peasant.bin"
+          for f in T_Peasant_BaseColor.png T_Peasant_Normal.png T_Peasant_ORM.png T_Regular_Male_Dark_BaseColor.png T_Regular_Male_Normal.png T_Regular_Male_Roughness.png; do
+            curl -L --fail "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/$f" -o "$char/$f"
+          done
+          curl -L --fail "$base/Universal%20Animation%20Library%202%5BStandard%5D/Unreal-Godot/UAL2_Standard.glb" -o "$anim/UAL2_Standard.glb"
+          curl -L --fail "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/CommonTree_1.gltf" -o "$nature/CommonTree_1.gltf"
+          curl -L --fail "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/CommonTree_1.bin" -o "$nature/CommonTree_1.bin"
+          for f in Bark_NormalTree_Normal.png Bark_NormalTree.png Leaves_NormalTree_C.png; do
+            curl -L --fail "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/$f" -o "$nature/$f"
+          done
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip' -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Import assets in Godot
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Write import probe
+        working-directory: aevorwyn
+        run: |
+          cat > tools/probe_assets.gd <<'GDSCRIPT'
+          extends SceneTree
+          func _initialize() -> void:
+              for path in [
+                  "res://assets/vendor/quaternius/character/Male_Peasant.gltf",
+                  "res://assets/vendor/quaternius/animations/UAL2_Standard.glb",
+                  "res://assets/vendor/quaternius/nature/CommonTree_1.gltf",
+              ]:
+                  print("=== ASSET ", path, " ===")
+                  var packed := load(path) as PackedScene
+                  if packed == null:
+                      print("LOAD_FAILED")
+                      continue
+                  var root := packed.instantiate()
+                  _walk(root, "")
+                  root.free()
+              quit(0)
+          func _walk(node: Node, prefix: String) -> void:
+              var line := prefix + node.name + " <" + node.get_class() + ">"
+              if node is Skeleton3D:
+                  var sk := node as Skeleton3D
+                  var bones: Array[String] = []
+                  for i in range(sk.get_bone_count()): bones.append(sk.get_bone_name(i))
+                  line += " BONES=" + ",".join(bones)
+              if node is AnimationPlayer:
+                  var ap := node as AnimationPlayer
+                  var names: Array[String] = []
+                  for lib_name in ap.get_animation_library_list():
+                      var lib := ap.get_animation_library(lib_name)
+                      for anim_name in lib.get_animation_list(): names.append(String(anim_name))
+                  line += " ANIMS=" + ",".join(names)
+              print(line)
+              for child in node.get_children(): _walk(child, prefix + "  ")
+          GDSCRIPT
+
+      - name: Probe imported node hierarchy
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tools/probe_assets.gd
