@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.ui.household.HouseholdSettings
 import com.baylee.billnest.ui.theme.BillNestTheme
@@ -27,6 +29,7 @@ class HouseholdActivity : FragmentActivity() {
     @Composable
     private fun HouseholdRoot(app: BillNestApp) {
         val session = app.sessionStore.load()
+        val appData by app.repo.data.collectAsStateWithLifecycle()
         if (session == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Sign in to BillNest first")
@@ -38,6 +41,7 @@ class HouseholdActivity : FragmentActivity() {
             session = session,
             backendUrl = app.repo.data.value.backendUrl,
             syncRepository = app.householdSync,
+            appData = appData,
             onBankConnectionsChanged = {
                 val data = app.repo.data.value
                 val refresh = BankApi.fetchAccounts(data.backendUrl, data.backendApiKey)
