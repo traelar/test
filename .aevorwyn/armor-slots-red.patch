@@ -1,0 +1,59 @@
+diff -ruN /mnt/data/aevorwyn-original-character-prearmor/tests/test_equipment_visual_slots.gd /mnt/data/aevorwyn-armor-red/tests/test_equipment_visual_slots.gd
+--- a/tests/test_equipment_visual_slots.gd	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_equipment_visual_slots.gd	2026-09-13 21:48:35.074320233 +0000
+@@ -0,0 +1,44 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var assembler := CharacterAssembler.new()
++    assembler.apply_appearance(CharacterAppearance.default())
++
++    var expected_slots: Array = [&"head", &"chest", &"hands", &"legs", &"feet", &"cape", &"main_hand", &"off_hand"]
++    if not assembler.has_method("equipment_visual_slots"):
++        failures.append("character assembler must expose equipment_visual_slots()")
++        assembler.free()
++        return failures
++    if assembler.equipment_visual_slots() != expected_slots:
++        failures.append("equipment visual slots must support head/chest/hands/legs/feet/cape/main_hand/off_hand")
++
++    assembler.set_equipped_visual(&"head", &"greenwake_guard_helm")
++    if assembler.find_child("EquipmentHead", true, false) == null:
++        failures.append("equipping head armor must build EquipmentHead")
++    var hair := assembler.find_child("Hair", true, false) as Node3D
++    if hair != null and hair.visible:
++        failures.append("full helmet must hide base hair")
++
++    assembler.set_equipped_visual(&"chest", &"greenwake_guard_chest")
++    if assembler.find_child("EquipmentChest", true, false) == null:
++        failures.append("equipping chest armor must build EquipmentChest")
++    var torso := assembler.find_child("TorsoClothing", true, false) as Node3D
++    if torso != null and torso.visible:
++        failures.append("chest armor must hide starter torso clothing")
++
++    assembler.set_equipped_visual(&"cape", &"greenwake_scout_cape")
++    if assembler.find_child("EquipmentCape", true, false) == null:
++        failures.append("cape slot must build a back visual")
++
++    assembler.set_equipped_visual(&"off_hand", &"greenwake_round_shield")
++    if assembler.find_child("EquipmentOffHand", true, false) == null:
++        failures.append("off-hand slot must attach a shield/weapon visual")
++
++    assembler.clear_equipped_visual(&"head")
++    hair = assembler.find_child("Hair", true, false) as Node3D
++    if hair != null and not hair.visible:
++        failures.append("clearing helmet must restore hair")
++
++    assembler.free()
++    return failures
++diff -ruN /mnt/data/aevorwyn-original-character-prearmor/tests/test_runner.gd /mnt/data/aevorwyn-armor-red/tests/test_runner.gd
+--- a/tests/test_runner.gd	2026-09-13 20:49:34.212658882 +0000
++++ b/tests/test_runner.gd	2026-09-13 21:48:35.562962305 +0000
+@@ -21,6 +21,7 @@
+     "res://tests/test_character_assembler.gd",
+     "res://tests/test_character_creator.gd",
+     "res://tests/test_aevorwyn_character_animator.gd",
++    "res://tests/test_equipment_visual_slots.gd",
+ ]
+ 
+ var _ran := false
