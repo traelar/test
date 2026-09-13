@@ -110,4 +110,28 @@ class BillObligationRegressionTest {
 
         assertTrue(match.highConfidence)
     }
+
+    @Test
+    fun reconcilingAlreadyClearedRecurringBillRecordsPaidOccurrenceAndAdvancesNextDueDate() {
+        val mortgage = Bill(
+            name = "Mortgage",
+            amount = 700.0,
+            dueDateIso = "2026-09-01",
+            frequency = Frequency.MONTHLY,
+            category = "Mortgage"
+        )
+        val cleared = FinanceTransaction(
+            id = "mortgage-payment",
+            name = "Mortgage Payment",
+            amount = 700.0,
+            dateIso = "2026-09-01",
+            category = "Mortgage",
+            source = TransactionSource.PLAID
+        )
+
+        val reconciled = reconcileBillPaymentState(mortgage, listOf(cleared))
+
+        assertTrue("2026-09-01" in reconciled.paidDates)
+        assertEquals("2026-10-01", reconciled.dueDateIso)
+    }
 }
