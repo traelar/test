@@ -49,6 +49,17 @@ jobs:
           mkdir -p aevorwyn
           unzip -q aevorwyn-source.zip -d aevorwyn
 
+      - name: Apply point-and-tap mobile implementation
+        run: |
+          cat \
+            .aevorwyn/mobile-point-tap.patch.part00 \
+            .aevorwyn/mobile-point-tap.patch.part01 \
+            .aevorwyn/mobile-point-tap.patch.part02 \
+            > mobile-point-tap.patch
+          test "$(sha256sum mobile-point-tap.patch | awk '{print $1}')" = "a27f5a1a728a52ee86201b9bb49172e579efd68c6f8d6e642bdbf0513f12133f"
+          cd aevorwyn
+          git apply ../mobile-point-tap.patch
+
       - name: Download Godot 4.7.2
         run: |
           curl -L --fail --retry 3 \
