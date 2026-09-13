@@ -250,6 +250,14 @@ fun calculateDebtStrategy(debts: List<Debt>, extraPayment: Double, strategy: Deb
 
 fun subscriptionKey(name: String): String = name.lowercase().replace(Regex("[^a-z0-9]+"), "").trim()
 
+/** Promote one exact transaction to a user-confirmed subscription without creating a merchant-wide transaction rule. */
+fun subscriptionPreferenceForTransaction(transaction: FinanceTransaction): SubscriptionPreference =
+    SubscriptionPreference(
+        merchantKey = subscriptionKey(transaction.name),
+        name = transaction.name,
+        status = SubscriptionStatus.CONFIRMED
+    )
+
 fun visibleSubscriptionSuggestions(
     suggestions: List<SubscriptionSuggestion>,
     preferences: List<SubscriptionPreference>
