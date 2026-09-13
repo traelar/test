@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.baylee.billnest.model.*
+import com.baylee.billnest.ui.MainViewModel
 import com.baylee.billnest.ui.insightsBudgetEmptyState
 import com.baylee.billnest.ui.theme.BillNestColors
 import java.text.NumberFormat
@@ -54,9 +55,12 @@ private fun InsightsProgressCard(content: @Composable ColumnScope.() -> Unit) {
 
 /** Single-scroll Insights page. Avoids the old nested LazyColumn clipping and protects money values from narrow wrapping. */
 @Composable
-fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
+fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
     var month by remember { mutableStateOf(YearMonth.now()) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var editingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
+    var ruleFor by remember { mutableStateOf<FinanceTransaction?>(null) }
+    var reopenCategory by remember { mutableStateOf<String?>(null) }
     val recap = remember(data, month) { monthlyRecap(data, month) }
     val currentRecap = remember(data) { monthlyRecap(data, YearMonth.now()) }
     val alerts = remember(data) { runCatching { budgetAlerts(data) }.getOrDefault(emptyList()) }
@@ -339,6 +343,37 @@ fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                         }
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            val merchantKey = subscriptionKey(tx.name)
+                                            val trackedSubscription = data.subscriptionPreferences.any {
+                                                it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED
+                                            }
+                                            TextButton(onClick = {
+                                                reopenCategory = category
+                                                editingTransaction = tx
+                                                selectedCategory = null
+                                            }) { Text("Edit") }
+                                            if (!tx.income && !tx.transfer) {
+                                                TextButton(onClick = {
+                                                    if (trackedSubscription) {
+                                                        vm.deleteSubscriptionPreference(merchantKey)
+                                                    } else {
+                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))
+                                                    }
+                                                }) { Text(if (trackedSubscription) "Untrack sub" else "Track sub") }
+                                            }
+                                            TextButton(onClick = {
+                                                reopenCategory = category
+                                                ruleFor = tx
+                                                selectedCategory = null
+                                            }) { Text("Make rule") }
+                                            TextButton(onClick = { vm.deleteTransaction(tx.id) }) {
+                                                Text("Delete", color = MaterialTheme.colorScheme.error)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -348,6 +383,41 @@ fun InsightsPageV5(data: AppData, modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 TextButton(onClick = { selectedCategory = null }) { Text("Close") }
+            }
+        )
+    }
+
+    editingTransaction?.let { transaction ->
+        TransactionEditorDialog(
+            data = data,
+            existing = transaction,
+            onDismiss = {
+                editingTransaction = null
+                selectedCategory = reopenCategory
+                reopenCategory = null
+            },
+            onSave = {
+                vm.saveTransaction(it)
+                editingTransaction = null
+                selectedCategory = reopenCategory
+                reopenCategory = null
+            }
+        )
+    }
+
+    ruleFor?.let { transaction ->
+        TransactionRuleDialog(
+            source = transaction,
+            onDismiss = {
+                ruleFor = null
+                selectedCategory = reopenCategory
+                reopenCategory = null
+            },
+            onSave = {
+                vm.saveTransactionRule(it)
+                ruleFor = null
+                selectedCategory = reopenCategory
+                reopenCategory = null
             }
         )
     }
