@@ -246,7 +246,9 @@ fun BillNestHomeV2(
                             label = { Text(name) },
                             selected = destination == name,
                             onClick = {
-                                if (name != destination) {
+                                if (name == "Household") {
+                                    context.startActivity(Intent(context, HouseholdActivity::class.java))
+                                } else if (name != destination) {
                                     destinationHistory.add(destination)
                                     destination = name
                                 }
@@ -301,7 +303,7 @@ fun BillNestHomeV2(
                 "Subscriptions" -> SubscriptionsPage(data, vm, Modifier.padding(pad))
                 "Calendar" -> CalendarPage(data, Modifier.padding(pad))
                 "Income" -> IncomePageV2(data, vm, Modifier.padding(pad), onEditPayday = { editingPayday = it })
-                "Household" -> LaunchedEffect(Unit) { context.startActivity(Intent(context, HouseholdActivity::class.java)) }
+                "Household" -> DashboardV4(data, Modifier.padding(pad))
                 "Settings" -> SettingsPageV3(data, vm, Modifier.padding(pad))
                 else -> V2ComingSoonPage(destination, Modifier.padding(pad))
             }
