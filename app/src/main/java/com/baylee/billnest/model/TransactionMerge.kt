@@ -68,8 +68,8 @@ fun deleteFinanceTransaction(data: AppData, transactionId: String): AppData {
 }
 
 /**
- * Refresh Plaid-owned transaction details without overwriting a classification the
- * user explicitly set inside BillNest. Transactions the user deleted stay hidden.
+ * Refresh Plaid-owned transaction details while retaining BillNest-owned metadata.
+ * Explicit user classifications remain authoritative, and deleted transactions stay hidden.
  */
 fun mergePlaidTransactions(
     existing: List<FinanceTransaction>,
@@ -81,8 +81,13 @@ fun mergePlaidTransactions(
     val existingById = allowedExisting.associateBy { it.id }
     val refreshed = allowedIncoming.map { fresh ->
         val saved = existingById[fresh.id]
+        val withBillNestMetadata = fresh.copy(
+            displayNameOverride = saved?.displayNameOverride,
+            merchantProfileId = saved?.merchantProfileId,
+            appliedSmartRuleId = saved?.appliedSmartRuleId
+        )
         if (saved?.userClassificationOverride == true) {
-            fresh.copy(
+            withBillNestMetadata.copy(
                 category = saved.category,
                 transfer = saved.transfer,
                 income = saved.income,
@@ -92,7 +97,7 @@ fun mergePlaidTransactions(
                 splits = saved.splits
             )
         } else {
-            fresh
+            withBillNestMetadata
         }
     }
     val incomingIds = allowedIncoming.map { it.id }.toSet()
