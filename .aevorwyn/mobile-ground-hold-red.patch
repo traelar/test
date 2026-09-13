@@ -1,0 +1,67 @@
+diff --git a/tests/test_runner.gd b/tests/test_runner.gd
+--- a/tests/test_runner.gd
++++ b/tests/test_runner.gd
+@@ -9,6 +9,7 @@ const TEST_PATHS := [
+     "res://tests/test_mobile_gesture_interpreter.gd",
+     "res://tests/test_player_action_animator.gd",
+     "res://tests/test_player_presentation.gd",
++    "res://tests/test_mobile_ground_hold_behavior.gd",
+ ]
+ 
+ var _ran := false
+diff --git a/tests/test_mobile_ground_hold_behavior.gd b/tests/test_mobile_ground_hold_behavior.gd
+new file mode 100644
+--- /dev/null
++++ b/tests/test_mobile_ground_hold_behavior.gd
+@@ -0,0 +1,55 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var gestures := MobileGestureInterpreter.new()
++
++    # A stationary long hold must remain distinguishable at release so the world
++    # can walk on empty ground without also treating camera gestures as taps.
++    gestures.touch_pressed(0, Vector2(180, 160))
++    var hold_events: Array[Dictionary] = gestures.advance(0.50)
++    if hold_events.is_empty() or String(hold_events[0].get("type", "")) != "long_press":
++        failures.append("stationary hold should still emit long_press")
++    var hold_release: Dictionary = gestures.touch_released(0, Vector2(181, 160))
++    if String(hold_release.get("type", "")) != "long_press_release":
++        failures.append("stationary long hold release must be distinguishable from a consumed camera gesture")
++
++    # If the player holds briefly and then drags to rotate, release must remain
++    # fully consumed: no tap and no long-hold walk event.
++    gestures.reset()
++    gestures.touch_pressed(0, Vector2(260, 180))
++    gestures.advance(0.50)
++    var orbit_events: Array[Dictionary] = gestures.touch_dragged(0, Vector2(315, 180), Vector2(55, 0))
++    if orbit_events.is_empty() or String(orbit_events[0].get("type", "")) != "orbit":
++        failures.append("drag after holding should still rotate the camera")
++    var orbit_release: Dictionary = gestures.touch_released(0, Vector2(315, 180))
++    if String(orbit_release.get("type", "")) in ["tap", "long_press_release"]:
++        failures.append("camera rotation must never trigger walking when the finger releases")
++
++    # World intent: holding empty ground walks; holding an interactable opens
++    # the action menu instead.
++    var world := MainWorld.new()
++    if not world.has_method("long_press_target_mode"):
++        failures.append("world must classify long-press targets as walk or menu")
++    else:
++        var ground := StaticBody3D.new()
++        if String(world.long_press_target_mode(ground)) != "walk":
++            failures.append("long-holding empty ground should resolve to walking")
++        ground.free()
++
++        var tree := ResourceNode.new()
++        if String(world.long_press_target_mode(tree)) != "menu":
++            failures.append("long-holding a resource should open its context menu")
++        tree.free()
++
++        var enemy := Enemy.new()
++        if String(world.long_press_target_mode(enemy)) != "menu":
++            failures.append("long-holding an enemy should open its context menu")
++        enemy.free()
++    world.free()
++
++    return failures
