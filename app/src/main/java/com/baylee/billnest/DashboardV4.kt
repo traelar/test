@@ -98,6 +98,9 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
             ?: (money.totalMoney - data.debts.sumOf { it.balance.coerceAtLeast(0.0) })
     }
     val assetCount = remember(data.accounts) { visibleAssetAccounts(data.accounts).size }
+    val netWorthHistory = remember(data) { netWorthHistory(data) }
+    val priorNetWorth = netWorthHistory.dropLast(1).lastOrNull()?.netWorth
+    val totalDebt = data.debts.sumOf { it.balance.coerceAtLeast(0.0) }
     val reconciledBills = remember(data.bills, data.transactions) {
         data.bills.map { reconcileBillPaymentState(it, data.transactions) }
     }
@@ -196,6 +199,39 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall
             )
+        }
+
+        item {
+            DashboardCard {
+                Text("Net worth progress", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    dashboardMoney(netWorth),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (netWorth >= 0) BillNestColors.positive else BillNestColors.danger
+                )
+                Text(
+                    "Assets " + dashboardMoney(money.totalMoney) + " • Debt " + dashboardMoney(totalDebt),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                priorNetWorth?.let { prior ->
+                    val change = netWorth - prior
+                    Text(
+                        (if (change >= 0) "+" else "-") + dashboardMoney(kotlin.math.abs(change)) + " vs previous snapshot",
+                        color = if (change >= 0) BillNestColors.positive else BillNestColors.warning
+                    )
+                }
+                if (netWorthHistory.size > 1) {
+                    val recent = netWorthHistory.takeLast(4)
+                    recent.forEach { point ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(point.month.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            Text(dashboardMoney(point.netWorth), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                } else {
+                    Text("History builds as BillNest captures account and debt snapshots.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
 
         variable?.let { summary ->
