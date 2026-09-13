@@ -1,0 +1,54 @@
+name: Aevorwyn armor slots RED
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - '.aevorwyn/armor-slots-red-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified original-character base
+        run: |
+          bash .github/scripts/aevorwyn-reconstruct-v6.sh
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-green.patch
+          cat .aevorwyn/original-character-green.patch.gz.b64.part00 \
+              .aevorwyn/original-character-green.patch.gz.b64.part01 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a0 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a1 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02b \
+              .aevorwyn/original-character-green.patch.gz.b64.part02c \
+              .aevorwyn/original-character-green.patch.gz.b64.part03 \
+              .aevorwyn/original-character-green.patch.gz.b64.part04 > /tmp/original-character-green.b64
+          test "$(wc -c < /tmp/original-character-green.b64)" = "24116"
+          test "$(sha256sum /tmp/original-character-green.b64 | awk '{print $1}')" = "29d2aa986cad81a42100bb6654b57a7c431f17f1aa3e8e6cecb657ca6b27b01c"
+          base64 -d /tmp/original-character-green.b64 | gzip -d > /tmp/original-character-green.patch
+          test "$(sha256sum /tmp/original-character-green.patch | awk '{print $1}')" = "b823936b82c3cb614147046a5acb190e00d7e6a5cbcf5c019171a0afda6802f6"
+          patch --batch --forward -p1 -d aevorwyn < /tmp/original-character-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-compile-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-test-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-refcount-test-fix.patch
+
+      - name: Apply armor visual-slot RED regressions
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/armor-slots-red.patch
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Import RED candidate
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Run armor RED regressions
+        working-directory: aevorwyn
+        run: timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
