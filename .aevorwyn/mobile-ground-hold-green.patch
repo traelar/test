@@ -1,0 +1,109 @@
+diff --git a/src/input/mobile_gesture_interpreter.gd b/src/input/mobile_gesture_interpreter.gd
+--- a/src/input/mobile_gesture_interpreter.gd
++++ b/src/input/mobile_gesture_interpreter.gd
+@@ -89,6 +89,7 @@ func consume_active_touches() -> void:
+ func consume_active_touches() -> void:
+     for key in _touches.keys():
+         _consumed[key] = true
++        _long_press_fired[key] = false
+ 
+ func touch_released(index: int, position: Vector2) -> Dictionary:
+     if not _touches.has(index):
+@@ -96,6 +97,7 @@ func touch_released(index: int, position: Vector2) -> Dictionary:
+ 
+     var was_dragged := bool(_dragged.get(index, false))
+     var was_consumed := bool(_consumed.get(index, false))
++    var was_long_press := bool(_long_press_fired.get(index, false))
+     var start: Vector2 = _starts.get(index, position)
+ 
+     _touches.erase(index)
+@@ -110,9 +112,16 @@ func touch_released(index: int, position: Vector2) -> Dictionary:
+     if _touches.size() < 2:
+         _pinch_distance = 0.0
+ 
+-    if was_dragged or was_consumed or position.distance_to(start) >= drag_threshold:
++    if was_dragged or position.distance_to(start) >= drag_threshold:
+         return {"type": "none"}
+ 
++    if was_long_press:
++        return {
++            "type": "long_press_release",
++            "position": start,
++        }
++
++    if was_consumed:
++        return {"type": "none"}
++
+     return {
+         "type": "tap",
+         "position": position,
+diff --git a/src/game/main_world.gd b/src/game/main_world.gd
+--- a/src/game/main_world.gd
++++ b/src/game/main_world.gd
+@@ -21,6 +21,8 @@ var _right_mouse_start := Vector2.ZERO
+ var _context_screen_position := Vector2.ZERO
+ var _context_hit_position := Vector3.ZERO
+ var _context_target: Object
++var _pending_ground_hold := false
++var _pending_ground_hold_position := Vector3.ZERO
+ var _spawn_point := Vector3(0, 0, 0)
+ 
+ func _ready() -> void:
+@@ -116,6 +118,7 @@ func _unhandled_input(event: InputEvent) -> void:
+     if event is InputEventScreenTouch:
+         var touch := event as InputEventScreenTouch
+         if touch.pressed:
++            _pending_ground_hold = false
+             _mobile_gestures.touch_pressed(touch.index, touch.position)
+         else:
+             _apply_mobile_gesture(_mobile_gestures.touch_released(touch.index, touch.position))
+@@ -137,18 +140,39 @@ func _apply_mobile_gesture(gesture: Dictionary) -> void:
+         "tap":
+             var tap_position: Vector2 = gesture.get("position", Vector2.ZERO)
++            _pending_ground_hold = false
+             if _hud.is_context_menu_open():
+                 _hud.hide_context_menu()
+                 return
+             _handle_pointer_click(tap_position)
+         "long_press":
+             var hold_position: Vector2 = gesture.get("position", Vector2.ZERO)
+-            _open_context_menu_at(hold_position)
++            var hold_hit := _raycast_pointer(hold_position)
++            if hold_hit.is_empty():
++                _pending_ground_hold = false
++                return
++            var hold_target := hold_hit.get("collider") as Object
++            if long_press_target_mode(hold_target) == "menu":
++                _pending_ground_hold = false
++                _open_context_menu_at(hold_position)
++            else:
++                _hud.hide_context_menu()
++                _pending_ground_hold = true
++                _pending_ground_hold_position = hold_hit.get("position", _player.global_position)
++        "long_press_release":
++            if _pending_ground_hold:
++                _pending_ground_hold = false
++                _cancel_gathering()
++                _current_enemy = null
++                _player.request_move(_pending_ground_hold_position)
+         "orbit":
++            _pending_ground_hold = false
+             _hud.hide_context_menu()
+             var drag_delta: Vector2 = gesture.get("delta", Vector2.ZERO)
+             _camera_rig.orbit(drag_delta)
+         "zoom":
++            _pending_ground_hold = false
+             _hud.hide_context_menu()
+             _camera_rig.adjust_zoom(float(gesture.get("amount", 0.0)))
+@@ -184,6 +208,11 @@ func _raycast_pointer(screen_position: Vector2) -> Dictionary:
+     query.exclude = [_player.get_rid()]
+     return get_world_3d().direct_space_state.intersect_ray(query)
+ 
++func long_press_target_mode(target: Object) -> String:
++    if target is ResourceNode or target is Enemy:
++        return "menu"
++    return "walk"
++
+ func _open_context_menu_at(screen_position: Vector2) -> void:
+     var hit := _raycast_pointer(screen_position)
+     if hit.is_empty():
