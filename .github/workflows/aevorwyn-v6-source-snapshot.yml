@@ -1,0 +1,25 @@
+name: Aevorwyn v6 source snapshot
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-source-snapshot-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v6 source
+        run: bash .github/scripts/aevorwyn-reconstruct-v6.sh
+      - name: Package source
+        run: |
+          tar -czf Aevorwyn-v6-source.tgz -C aevorwyn \
+            project.godot export_presets.cfg scenes src tests tools docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aevorwyn-v6-source
+          path: Aevorwyn-v6-source.tgz
+          if-no-files-found: error
