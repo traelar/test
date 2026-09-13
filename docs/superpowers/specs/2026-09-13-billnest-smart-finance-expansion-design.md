@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 Branch: `billnest-apk-build`
-Status: Approved architecture, pending implementation-plan approval
+Status: Architecture approved; pending user review of this written spec
 
 ## Goal
 
