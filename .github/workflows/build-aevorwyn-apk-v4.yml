@@ -61,14 +61,10 @@ jobs:
           patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
 
       - name: Apply chopping animation test patch
-        run: |
-          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
 
-      - name: Apply chopping animation implementation if present
-        run: |
-          if [ -f .aevorwyn/visual-green.patch ]; then
-            patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
-          fi
+      - name: Apply chopping animation implementation
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
 
       - name: Download Godot 4.7.2
         run: |
@@ -115,6 +111,12 @@ jobs:
             .aevorwyn/mobile-context-animation-green.patch.part02 \
             > mobile-context-animation-green.patch
           patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+
+      - name: Apply ground hold and camera regression tests
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+
+      - name: Apply ground hold and camera implementation
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
 
       - name: Import project
         working-directory: aevorwyn
