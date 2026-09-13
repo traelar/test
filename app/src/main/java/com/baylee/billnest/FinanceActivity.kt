@@ -309,13 +309,13 @@ fun BillNestHomeV2(
     }
 
     if (showAddBill) {
-        BillEditorDialog(null, data.accounts, { showAddBill = false }) {
+        BillEditorDialogV2(data, null, { showAddBill = false }) {
             vm.add(it)
             showAddBill = false
         }
     }
     editingBill?.let { bill ->
-        BillEditorDialog(bill, data.accounts, { editingBill = null }) {
+        BillEditorDialogV2(data, bill, { editingBill = null }) {
             vm.updateBill(it)
             editingBill = null
         }
