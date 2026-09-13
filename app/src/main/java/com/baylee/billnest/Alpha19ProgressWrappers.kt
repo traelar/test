@@ -39,6 +39,12 @@ fun DebtPageV4(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
         }
     }
     Column(modifier.fillMaxSize()) {
+        // Keep the full DebtPageV3 header (including its manual + Debt action)
+        // visible at the top. The optional estimate follows it rather than
+        // pushing the primary debt controls below the fold.
+        Box(Modifier.weight(1f)) {
+            DebtPageV3(data, vm, Modifier.fillMaxSize())
+        }
         if (splits.isNotEmpty()) {
             val totalPayments = splits.sumOf { it.second.paymentAmount }
             val totalPrincipal = splits.sumOf { it.second.estimatedPrincipal }
@@ -49,13 +55,8 @@ fun DebtPageV4(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
                     color = BillNestColors.positive)
                 Text("Estimated from current balance and APR; your lender statement is authoritative.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                splits.take(3).forEach { (debt, split) ->
-                    Text("${debt.name}: ~${progressMoney(split.estimatedPrincipal)} principal / ~${progressMoney(split.estimatedInterest)} interest",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
-        DebtPageV3(data, vm, Modifier.weight(1f))
     }
 }
 
