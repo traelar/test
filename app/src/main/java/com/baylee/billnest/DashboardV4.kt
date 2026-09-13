@@ -86,7 +86,8 @@ private fun DashboardMetric(label: String, value: String, accent: Color, modifie
 /** Dashboard revision that keeps unset budgets neutral and protects currency values from narrow wrapping. */
 @Composable
 fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
-    val money = remember(data) { calculateMoneySummary(data) }
+    val today = LocalDate.now()
+    val money = remember(data, today) { calculateMoneySummary(data, today) }
     val variable = remember(data) { runCatching { calculateVariableSpendingSummary(data) }.getOrNull() }
     val alerts = remember(data) { runCatching { budgetAlerts(data) }.getOrDefault(emptyList()) }
     val plan = remember(data) { runCatching { calculateNextPaycheckPlan(data) }.getOrNull() }
@@ -96,6 +97,9 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
             ?: (money.totalMoney - data.debts.sumOf { it.balance.coerceAtLeast(0.0) })
     }
     val assetCount = remember(data.accounts) { visibleAssetAccounts(data.accounts).size }
+    val reconciledBills = remember(data.bills, data.transactions) {
+        data.bills.map { reconcileBillPaymentState(it, data.transactions) }
+    }
 
     LazyColumn(
         modifier.fillMaxSize().padding(16.dp),
@@ -114,7 +118,7 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
         item {
             DashboardCard {
                 Text(
-                    "Available after obligations",
+                    "Available after remaining bills this month",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge
                 )
@@ -124,7 +128,7 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
                     color = if (money.availableAfterUpcomingBills >= 0) BillNestColors.positive else BillNestColors.danger
                 )
                 Text(
-                    "Spending ${dashboardMoney(money.spendingMoney)} • Reserved ${dashboardMoney(money.reservedFromSpending)} • Upcoming bills ${dashboardMoney(money.upcomingBills)}",
+                    "Spending ${dashboardMoney(money.spendingMoney)} • Reserved ${dashboardMoney(money.reservedFromSpending)} • Remaining bills ${dashboardMoney(money.upcomingBills)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -288,7 +292,7 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
             }
         }
 
-        val upcoming = data.bills.filterNot { it.isPaidFor() }.sortedBy { it.dueDate() }.take(4)
+        val upcoming = reconciledBills.filterNot { it.isPaidFor() }.sortedBy { it.dueDate() }.take(4)
         if (upcoming.isNotEmpty()) {
             item { Text("Upcoming bills", style = MaterialTheme.typography.titleLarge) }
             items(upcoming, key = { it.id }) { bill ->
