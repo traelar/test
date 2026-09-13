@@ -149,7 +149,7 @@ fun eligibleVariableSpendingTransactions(
         .mapTo(mutableSetOf()) { it.transactionId }
 
     return data.transactions.filter { row ->
-        if (row.transfer || row.income || row.excludedFromSpending || row.id in inferredIncomeIds || row.id in fixedBillIds) return@filter false
+        if (row.pending || row.transfer || row.income || row.excludedFromSpending || row.id in inferredIncomeIds || row.id in fixedBillIds) return@filter false
         if (row.amount <= 0.0) return@filter false
         if (isNonVariableSpendingCategory(row.category)) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
@@ -304,7 +304,24 @@ private fun calculateBudgetSummaryInternal(
     val window = budgetPeriodWindow(budget, data.paydays, referenceDate)
     val assignments = resolveBudgetAssignments(data, referenceDate).filter { it.budgetId == budget.id }
     val byId = data.transactions.associateBy { it.id }
-    val spent = assignments.sumOf { byId[it.transactionId]?.amount?.coerceAtLeast(0.0) ?: 0.0 }
+    val assignedWhole = assignments.sumOf { match ->
+        val row = byId[match.transactionId]
+        if (row == null || row.splits.orEmpty().isNotEmpty()) 0.0 else row.amount.coerceAtLeast(0.0)
+    }
+    val splitCategories = (budget.includedCategories + budget.category)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+    val splitSpent = data.transactions.filter { row ->
+        if (row.pending || row.transfer || row.income || row.excludedFromSpending || row.splits.orEmpty().isEmpty()) return@filter false
+        val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
+        date.inWindow(window)
+    }.sumOf { row ->
+        row.splits.orEmpty()
+            .filter { split -> splitCategories.any { it.equals(split.category, true) } }
+            .sumOf { it.amount.coerceAtLeast(0.0) }
+    }
+    val spent = assignedWhole + splitSpent
     val adjustments = adjustmentFor(data, budget.id, window.start)
     val rollover = if (includeRollover) calculateRollover(data, budget, window, referenceDate) else 0.0
     val effective = (budget.amount + adjustments + rollover).coerceAtLeast(0.0)
@@ -366,7 +383,24 @@ private fun calculateRollover(
     val previousWindow = budgetPeriodWindow(budget, data.paydays, previousReference)
     val previousAssignments = resolveBudgetAssignments(data, previousReference).filter { it.budgetId == budget.id }
     val byId = data.transactions.associateBy { it.id }
-    val previousSpent = previousAssignments.sumOf { byId[it.transactionId]?.amount?.coerceAtLeast(0.0) ?: 0.0 }
+    val previousWhole = previousAssignments.sumOf { match ->
+        val row = byId[match.transactionId]
+        if (row == null || row.splits.orEmpty().isNotEmpty()) 0.0 else row.amount.coerceAtLeast(0.0)
+    }
+    val splitCategories = (budget.includedCategories + budget.category)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+    val previousSplit = data.transactions.filter { row ->
+        if (row.pending || row.transfer || row.income || row.excludedFromSpending || row.splits.orEmpty().isEmpty()) return@filter false
+        val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
+        date.inWindow(previousWindow)
+    }.sumOf { row ->
+        row.splits.orEmpty()
+            .filter { split -> splitCategories.any { it.equals(split.category, true) } }
+            .sumOf { it.amount.coerceAtLeast(0.0) }
+    }
+    val previousSpent = previousWhole + previousSplit
     val previousAllocation = (budget.amount + adjustmentFor(data, budget.id, previousWindow.start)).coerceAtLeast(0.0)
     val balance = previousAllocation - previousSpent
     return when (mode) {
