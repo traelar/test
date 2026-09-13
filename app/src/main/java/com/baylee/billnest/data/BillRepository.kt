@@ -76,6 +76,34 @@ class BillRepository(
             ?.let { queue(SyncMapper.financialSnapshotMutation(it)) }
     }
 
+    private fun reapplyStageA(
+        data: AppData,
+        profiles: List<MerchantProfile> = data.merchantProfiles,
+        rules: List<SmartTransactionRule> = data.smartTransactionRules
+    ): AppData {
+        val base = data.copy(merchantProfiles = profiles, smartTransactionRules = rules)
+        val batch = applySmartRuleSet(
+            transactions = base.transactions,
+            rules = rules,
+            profiles = profiles,
+            subscriptions = base.subscriptionPreferences,
+            data = base
+        )
+        return base.copy(
+            transactions = batch.transactions,
+            subscriptionPreferences = batch.subscriptionPreferences
+        )
+    }
+
+    private fun queueChangedSubscriptionPreferences(
+        before: List<SubscriptionPreference>,
+        after: List<SubscriptionPreference>
+    ) {
+        val beforeByKey = before.associateBy { it.merchantKey }
+        after.filter { beforeByKey[it.merchantKey] != it }
+            .forEach { queue(SyncMapper.subscriptionPreferenceMutation(it)) }
+    }
+
     fun addBill(bill: Bill) {
         update { it.copy(bills = it.bills + bill) }
         queue(SyncMapper.billMutation(bill))
@@ -179,6 +207,64 @@ class BillRepository(
     fun deleteTransactionRule(id: String) {
         update { data -> data.copy(transactionRules = data.transactionRules.filterNot { it.id == id }) }
         queueDelete("transaction_rule", id)
+    }
+
+    fun saveMerchantProfile(value: MerchantProfile) {
+        val beforeSubscriptions = _data.value.subscriptionPreferences
+        update { data ->
+            val profiles = upsert(data.merchantProfiles, value.id, value) { it.id }
+            reapplyStageA(data, profiles = profiles)
+        }
+        queue(SyncMapper.merchantProfileMutation(value))
+        queueChangedSubscriptionPreferences(beforeSubscriptions, _data.value.subscriptionPreferences)
+    }
+
+    fun deleteMerchantProfile(id: String) {
+        update { data ->
+            val profiles = data.merchantProfiles.filterNot { it.id == id }
+            val cleared = data.copy(
+                transactions = data.transactions.map { transaction ->
+                    if (transaction.merchantProfileId == id) transaction.copy(merchantProfileId = null) else transaction
+                }
+            )
+            reapplyStageA(cleared, profiles = profiles)
+        }
+        queueDelete("merchant_profile", id)
+    }
+
+    fun saveSmartTransactionRule(value: SmartTransactionRule) {
+        val beforeSubscriptions = _data.value.subscriptionPreferences
+        update { data ->
+            val rules = upsert(data.smartTransactionRules, value.id, value) { it.id }
+            reapplyStageA(data, rules = rules)
+        }
+        queue(SyncMapper.smartTransactionRuleMutation(value))
+        queueChangedSubscriptionPreferences(beforeSubscriptions, _data.value.subscriptionPreferences)
+    }
+
+    fun deleteSmartTransactionRule(id: String) {
+        update { data ->
+            val rules = data.smartTransactionRules.filterNot { it.id == id }
+            val cleared = data.copy(
+                transactions = data.transactions.map { transaction ->
+                    if (transaction.appliedSmartRuleId == id) transaction.copy(appliedSmartRuleId = null) else transaction
+                }
+            )
+            reapplyStageA(cleared, rules = rules)
+        }
+        queueDelete("smart_transaction_rule", id)
+    }
+
+    fun saveReviewResolution(value: ReviewResolution) {
+        update { data ->
+            data.copy(reviewResolutions = upsert(data.reviewResolutions, value.fingerprint, value) { it.fingerprint })
+        }
+        queue(SyncMapper.reviewResolutionMutation(value))
+    }
+
+    fun deleteReviewResolution(fingerprint: String) {
+        update { data -> data.copy(reviewResolutions = data.reviewResolutions.filterNot { it.fingerprint == fingerprint }) }
+        queueDelete("review_resolution", fingerprint)
     }
 
     fun syncPlaidTransactions(incoming: List<FinanceTransaction>) = update { data ->
@@ -404,6 +490,31 @@ class BillRepository(
                 "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
                 "reserved_fund" -> data.copy(reservedFunds = remoteList(data.reservedFunds, payload?.let(SyncMapper::decodeReservedFund), deletedId) { it.id })
                 "subscription_preference" -> data.copy(subscriptionPreferences = remoteList(data.subscriptionPreferences, payload?.let(SyncMapper::decodeSubscriptionPreference), deletedId) { it.merchantKey })
+                "merchant_profile" -> {
+                    val profiles = remoteList(data.merchantProfiles, payload?.let(SyncMapper::decodeMerchantProfile), deletedId) { it.id }
+                    val cleared = if (!deletedId.isNullOrBlank()) {
+                        data.copy(transactions = data.transactions.map { transaction ->
+                            if (transaction.merchantProfileId == deletedId) transaction.copy(merchantProfileId = null) else transaction
+                        })
+                    } else data
+                    reapplyStageA(cleared, profiles = profiles)
+                }
+                "smart_transaction_rule" -> {
+                    val rules = remoteList(data.smartTransactionRules, payload?.let(SyncMapper::decodeSmartTransactionRule), deletedId) { it.id }
+                    val cleared = if (!deletedId.isNullOrBlank()) {
+                        data.copy(transactions = data.transactions.map { transaction ->
+                            if (transaction.appliedSmartRuleId == deletedId) transaction.copy(appliedSmartRuleId = null) else transaction
+                        })
+                    } else data
+                    reapplyStageA(cleared, rules = rules)
+                }
+                "review_resolution" -> data.copy(
+                    reviewResolutions = remoteList(
+                        data.reviewResolutions,
+                        payload?.let(SyncMapper::decodeReviewResolution),
+                        deletedId
+                    ) { it.fingerprint }
+                )
                 else -> data
             }
         }
