@@ -1,1 +1,1 @@
-inspect-overhaul-compile-errors-3
+strict-godot-red-1
