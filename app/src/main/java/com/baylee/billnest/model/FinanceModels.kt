@@ -35,8 +35,14 @@ data class FinanceTransaction(
     val userClassificationOverride: Boolean = false,
     val excludedFromSpending: Boolean = false,
     val pending: Boolean = false,
-    val splits: List<TransactionSplit>? = null
+    val splits: List<TransactionSplit>? = null,
+    val displayNameOverride: String? = null,
+    val merchantProfileId: String? = null,
+    val appliedSmartRuleId: String? = null
 )
+
+fun FinanceTransaction.effectiveDisplayName(): String =
+    displayNameOverride?.trim()?.takeIf { it.isNotBlank() } ?: name
 
 data class PaydayPattern(
     val label: String,
