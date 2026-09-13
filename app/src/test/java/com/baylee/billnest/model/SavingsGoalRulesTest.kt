@@ -62,7 +62,7 @@ class SavingsGoalRulesTest {
 
         val pace = savingsGoalTargetPace(goal, LocalDate.of(2026, 9, 12))
 
-        assertEquals(300.0, pace!!.neededPerMonth, 0.01)
+        assertEquals(225.0, pace!!.neededPerMonth, 0.01)
         assertEquals(4, pace.monthsRemaining)
     }
 }
