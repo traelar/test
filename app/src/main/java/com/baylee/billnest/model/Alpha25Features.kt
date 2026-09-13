@@ -26,18 +26,46 @@ fun cashFlowProjection(
     start: LocalDate = LocalDate.now(),
     end: LocalDate = YearMonth.from(start).atEndOfMonth()
 ): CashFlowProjection {
-    val starting = calculateMoneySummary(data).spendingMoney
+    val starting = calculateMonthlyCashProjection(data, start).currentSpendable
     var running = starting
     var lowest = starting
     var lowestDate = start
     val result = mutableListOf<CashFlowDay>()
 
+    fun paydayOccurrences(payday: Payday): Set<LocalDate> {
+        var occurrence = runCatching { payday.nextDate() }.getOrNull() ?: return emptySet()
+        val rows = linkedSetOf<LocalDate>()
+        var guard = 0
+        while (occurrence.isBefore(start) && payday.frequency != Frequency.ONE_TIME && guard < 128) {
+            occurrence = when (payday.frequency) {
+                Frequency.WEEKLY -> occurrence.plusWeeks(1)
+                Frequency.BIWEEKLY -> occurrence.plusWeeks(2)
+                Frequency.MONTHLY -> occurrence.plusMonths(1)
+                Frequency.YEARLY -> occurrence.plusYears(1)
+                Frequency.ONE_TIME -> occurrence
+            }
+            guard++
+        }
+        while (!occurrence.isAfter(end) && guard < 256) {
+            if (!occurrence.isBefore(start) && occurrence.toString() !in payday.receivedDates) rows += occurrence
+            if (payday.frequency == Frequency.ONE_TIME) break
+            occurrence = when (payday.frequency) {
+                Frequency.WEEKLY -> occurrence.plusWeeks(1)
+                Frequency.BIWEEKLY -> occurrence.plusWeeks(2)
+                Frequency.MONTHLY -> occurrence.plusMonths(1)
+                Frequency.YEARLY -> occurrence.plusYears(1)
+                Frequency.ONE_TIME -> occurrence
+            }
+            guard++
+        }
+        return rows
+    }
+    val paydayDates = data.paydays.associateWith(::paydayOccurrences)
+
     generateSequence(start) { day -> day.plusDays(1).takeIf { !it.isAfter(end) } }.forEach { day ->
-        val income = data.paydays.filter { payday ->
-            !payday.nextDate().isBefore(start) &&
-                payday.nextDate() == day &&
-                day.toString() !in payday.receivedDates
-        }.sumOf { it.amount.coerceAtLeast(0.0) }
+        val income = data.paydays
+            .filter { payday -> day in paydayDates.getValue(payday) }
+            .sumOf { it.amount.coerceAtLeast(0.0) }
         val bills = data.bills.filter { bill ->
             !bill.isPaidFor() && runCatching { bill.dueDate() == day }.getOrDefault(false)
         }.sumOf { it.amount.coerceAtLeast(0.0) }
