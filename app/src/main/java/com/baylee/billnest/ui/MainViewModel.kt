@@ -6,6 +6,19 @@ import com.baylee.billnest.model.*
 
 class MainViewModel(val repo: BillRepository) : ViewModel() {
     val data = repo.data
+
+    init {
+        reconcileKnownBills()
+    }
+
+    private fun reconcileKnownBills() {
+        val current = data.value
+        current.bills.forEach { bill ->
+            val reconciled = reconcileBillPaymentState(bill, current.transactions)
+            if (reconciled != bill) repo.updateBill(reconciled)
+        }
+    }
+
     fun add(b: Bill) = repo.addBill(reconcileBillPaymentState(b, data.value.transactions))
     fun updateBill(b: Bill) = repo.updateBill(reconcileBillPaymentState(b, data.value.transactions))
     fun paid(id: String) = repo.markPaid(id)
@@ -27,7 +40,10 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun deleteTransaction(id: String) = repo.deleteTransaction(id)
     fun saveTransactionRule(v: TransactionRule) = repo.saveTransactionRule(v)
     fun deleteTransactionRule(id: String) = repo.deleteTransactionRule(id)
-    fun syncPlaidTransactions(v: List<FinanceTransaction>) = repo.syncPlaidTransactions(v)
+    fun syncPlaidTransactions(v: List<FinanceTransaction>) {
+        repo.syncPlaidTransactions(v)
+        reconcileKnownBills()
+    }
     fun saveBudget(v: Budget) = repo.saveBudget(v)
     fun deleteBudget(id: String) = repo.deleteBudget(id)
     fun setTransactionBudget(transactionId: String, budgetId: String?) = repo.setTransactionBudget(transactionId, budgetId)
