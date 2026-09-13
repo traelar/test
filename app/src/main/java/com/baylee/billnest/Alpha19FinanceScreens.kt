@@ -222,7 +222,7 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text("Transactions", style = MaterialTheme.typography.headlineSmall)
-                    Text("Classify once, then let rules keep future syncs clean.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Edit a single purchase without changing the whole merchant, or make a rule when you want future matches automated.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button({ adding = true }) { Text("+ Add") }
             }
@@ -298,7 +298,20 @@ fun TransactionsPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
                         color = if (inferredIncome && !row.transfer) BillNestColors.positive else if (row.transfer) BillNestColors.info else MaterialTheme.colorScheme.onSurface)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    val subscriptionKey = subscriptionKey(row.name)
+                    val trackedSubscription = data.subscriptionPreferences.any {
+                        it.merchantKey == subscriptionKey && it.status == SubscriptionStatus.CONFIRMED
+                    }
                     TextButton({ editing = row }) { Text("Edit") }
+                    if (!row.income && !row.transfer) {
+                        TextButton({
+                            if (trackedSubscription) {
+                                vm.deleteSubscriptionPreference(subscriptionKey)
+                            } else {
+                                vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(row))
+                            }
+                        }) { Text(if (trackedSubscription) "Untrack sub" else "Track sub") }
+                    }
                     TextButton({ ruleFor = row }) { Text("Make rule") }
                     TextButton({ vm.deleteTransaction(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
