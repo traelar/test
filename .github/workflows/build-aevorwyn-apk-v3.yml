@@ -1,0 +1,141 @@
+name: Build Aevorwyn Android APK v3
+
+concurrency:
+  group: aevorwyn-android-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-build-trigger-v3.txt'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Reconstruct Aevorwyn source
+        run: |
+          cat \
+            .aevorwyn/source.b64.part00 \
+            .aevorwyn/source.b64.part01 \
+            .aevorwyn/source.b64.part02 \
+            .aevorwyn/source.b64.part030 \
+            .aevorwyn/source.b64.part031 \
+            .aevorwyn/source.b64.part032 \
+            .aevorwyn/source.b64.part04 \
+            .aevorwyn/source.b64.part05 \
+            .aevorwyn/source.b64.part06 \
+            | base64 --decode > aevorwyn-source.zip
+          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
+          rm -rf aevorwyn
+          mkdir -p aevorwyn
+          unzip -q aevorwyn-source.zip -d aevorwyn
+          test -f aevorwyn/.git
+          rm -f aevorwyn/.git
+          test ! -e aevorwyn/.git
+
+      - name: Apply point-and-tap mobile implementation
+        run: |
+          cat \
+            .aevorwyn/mobile-point-tap.patch.part00 \
+            .aevorwyn/mobile-point-tap.patch.part01 \
+            .aevorwyn/mobile-point-tap.patch.part02 \
+            > mobile-point-tap.patch
+          test "$(sha256sum mobile-point-tap.patch | awk '{print $1}')" = "a27f5a1a728a52ee86201b9bb49172e579efd68c6f8d6e642bdbf0513f12133f"
+          patch --batch --forward --dry-run -p1 -d aevorwyn < mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" \
+            -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Install Godot export templates
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" \
+            -o templates.tpz
+          rm -rf templates
+          unzip -q templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -R templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Configure Godot Android SDK paths
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF2
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF2
+
+      - name: Static verification
+        working-directory: aevorwyn
+        run: python3 tools/static_verify.py
+
+      - name: Import project
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Run game tests
+        working-directory: aevorwyn
+        run: timeout 30s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
+
+      - name: Set Android build version
+        working-directory: aevorwyn
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
+          sed -i "s/^version\/name=.*/version\/name=\"0.1.${GITHUB_RUN_NUMBER}\"/" export_presets.cfg
+
+      - name: Export signed ARM64 APK
+        working-directory: aevorwyn
+        run: |
+          legacy_workflow="../.github/workflows/build-aevorwyn-apk.yml"
+          ks_user=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_USER:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          ks_pass=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          test -n "$ks_user"
+          test -n "$ks_pass"
+          echo "::add-mask::$ks_user"
+          echo "::add-mask::$ks_pass"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="${GITHUB_WORKSPACE}/app/billnest-debug.jks"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$ks_user"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$ks_pass"
+          mkdir -p builds/android
+          Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --export-release Android builds/android/Aevorwyn-S25-Ultra.apk
+
+      - name: Verify stable signing certificate
+        run: |
+          test -s aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          digest=$($ANDROID_HOME/build-tools/36.1.0/apksigner verify --print-certs aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk | sed -n 's/Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          test "$digest" = "0aa471987e2d6b34add2ce811df537fe8dae203a7bb474bb90cb9606e303654c"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevorwyn-S25-Ultra-APK-v3
+          path: aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          if-no-files-found: error
