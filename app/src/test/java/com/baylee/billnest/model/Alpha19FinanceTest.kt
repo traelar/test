@@ -140,6 +140,34 @@ class Alpha19FinanceTest {
     }
 
     @Test
+    fun insightsMergeEquivalentCategoryNamesIntoOneBucket() {
+        val data = AppData(transactions = listOf(
+            FinanceTransaction(id = "one", name = "Aldi", amount = 40.0, dateIso = "2026-09-10", category = "Groceries"),
+            FinanceTransaction(id = "two", name = "Walmart", amount = 60.0, dateIso = "2026-09-11", category = " groceries  "),
+            FinanceTransaction(
+                id = "three",
+                name = "Target",
+                amount = 100.0,
+                dateIso = "2026-09-12",
+                category = "Shopping",
+                splits = listOf(
+                    TransactionSplit(category = "GROCERIES", amount = 25.0),
+                    TransactionSplit(category = "Household", amount = 75.0)
+                )
+            )
+        ))
+
+        val recap = monthlyRecap(data, YearMonth.of(2026, 9))
+        val groceryEntries = recap.categoryTotals.filterKeys { it.trim().equals("Groceries", true) }
+        val breakdown = categorySpendingBreakdown(data, YearMonth.of(2026, 9), "Groceries")
+
+        assertEquals(1, groceryEntries.size)
+        assertEquals(125.0, groceryEntries.values.single(), 0.001)
+        assertEquals(125.0, breakdown.sumOf { it.amount }, 0.001)
+        assertEquals(setOf("one", "two", "three"), breakdown.map { it.transaction.id }.toSet())
+    }
+
+    @Test
     fun monthlyRecapReportsLargestCategoryIncreaseAndSnapshotProgress() {
         val data = AppData(
             transactions = listOf(
