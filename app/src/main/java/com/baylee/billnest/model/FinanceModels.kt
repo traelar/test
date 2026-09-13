@@ -213,10 +213,17 @@ fun calculateBudgetSpent(budget: Budget, transactions: List<FinanceTransaction>,
         BudgetPeriod.CUSTOM -> referenceDate
     }
     return transactions.filter { row ->
-        if (row.transfer || row.income || row.excludedFromSpending || !row.category.equals(budget.category, true)) return@filter false
+        if (row.pending || row.transfer || row.income || row.excludedFromSpending) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
         !date.isBefore(start) && !date.isAfter(end)
-    }.sumOf { it.amount.coerceAtLeast(0.0) }
+    }.sumOf { row ->
+        val splits = row.splits.orEmpty()
+        if (splits.isEmpty()) {
+            if (row.category.equals(budget.category, true)) row.amount.coerceAtLeast(0.0) else 0.0
+        } else {
+            splits.filter { it.category.equals(budget.category, true) }.sumOf { it.amount.coerceAtLeast(0.0) }
+        }
+    }
 }
 
 fun calculateDebtStrategy(debts: List<Debt>, extraPayment: Double, strategy: DebtStrategy): DebtStrategyProjection {
