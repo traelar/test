@@ -5,7 +5,8 @@ const ALLOWED_KINDS = new Set([
   'bill', 'payday', 'manual_account', 'settings', 'transaction',
   'budget', 'budget_override', 'budget_adjustment', 'debt',
   'savings_goal', 'reserved_fund', 'subscription_preference',
-  'transaction_rule', 'transaction_tombstone', 'financial_snapshot'
+  'transaction_rule', 'transaction_tombstone', 'financial_snapshot',
+  'merchant_profile', 'smart_transaction_rule', 'review_resolution'
 ]);
 const MAX_MUTATIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
