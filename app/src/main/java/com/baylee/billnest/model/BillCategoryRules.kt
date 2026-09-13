@@ -18,7 +18,7 @@ private fun isSystemCategory(value: String): Boolean {
 
 /**
  * Build the reusable category catalog from BillNest defaults plus every category the household is
- * already using in bills, transactions, splits, budgets, and transaction rules.
+ * already using in bills, transactions, splits, budgets, merchant profiles, and transaction rules.
  */
 fun categoryOptions(data: AppData): List<String> {
     val result = mutableListOf<String>()
@@ -44,6 +44,8 @@ fun categoryOptions(data: AppData): List<String> {
         budget.excludedCategories.forEach(::add)
     }
     data.transactionRules.forEach { add(it.category) }
+    data.merchantProfiles.forEach { add(it.preferredCategory) }
+    data.smartTransactionRules.forEach { add(it.action.category) }
 
     return result
 }
