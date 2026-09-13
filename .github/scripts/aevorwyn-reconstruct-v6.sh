@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cat \
+  .aevorwyn/source.b64.part00 \
+  .aevorwyn/source.b64.part01 \
+  .aevorwyn/source.b64.part02 \
+  .aevorwyn/source.b64.part030 \
+  .aevorwyn/source.b64.part031 \
+  .aevorwyn/source.b64.part032 \
+  .aevorwyn/source.b64.part04 \
+  .aevorwyn/source.b64.part05 \
+  .aevorwyn/source.b64.part06 \
+  | base64 --decode > aevorwyn-source.zip
+
+test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
+rm -rf aevorwyn
+mkdir -p aevorwyn
+unzip -q aevorwyn-source.zip -d aevorwyn
+rm -f aevorwyn/.git
+
+cat \
+  .aevorwyn/mobile-point-tap.patch.part00 \
+  .aevorwyn/mobile-point-tap.patch.part01 \
+  .aevorwyn/mobile-point-tap.patch.part02 \
+  > mobile-point-tap.patch
+patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+(cd aevorwyn && python3 tools/static_verify.py)
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+cat \
+  .aevorwyn/mobile-context-animation-green.patch.part00 \
+  .aevorwyn/mobile-context-animation-green.patch.part01 \
+  .aevorwyn/mobile-context-animation-green.patch.part02 \
+  > mobile-context-animation-green.patch
+patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+
+cat \
+  .aevorwyn/overhaul-green.patch.gz.b64.part00 \
+  .aevorwyn/overhaul-green.patch.gz.b64.part01 \
+  .aevorwyn/overhaul-green.patch.gz.b64.part02 \
+  .aevorwyn/overhaul-green.patch.gz.b64.part03 \
+  .aevorwyn/overhaul-green.patch.gz.b64.part04 \
+  > overhaul-green.patch.gz.b64
+
+test "$(wc -c < overhaul-green.patch.gz.b64)" = "22108"
+test "$(sha256sum overhaul-green.patch.gz.b64 | awk '{print $1}')" = "65d7bbe69071dd3cfd79ca3046ef9a90b5acafcc9e7a44f15acf5594c66e9524"
+base64 --decode overhaul-green.patch.gz.b64 > overhaul-green.patch.gz
+test "$(sha256sum overhaul-green.patch.gz | awk '{print $1}')" = "ea452eb0ac20e55f112b8900d88be5002a97ff36aa33f108545ab9cff6867fb9"
+gzip -dc overhaul-green.patch.gz > overhaul-green.patch
+test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
+patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-compile-fix.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-runtime-fix.patch
+patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-test-runner-fix.patch
+
+rm -f aevorwyn/src/game/main_world.gd.orig aevorwyn/src/input/mobile_gesture_interpreter.gd.orig
