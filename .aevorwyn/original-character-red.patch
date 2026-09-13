@@ -1,0 +1,150 @@
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_aevorwyn_character_animator.gd aevorwyn-original-character/srcpkg/tests/test_aevorwyn_character_animator.gd
+--- aevorwyn-v7-baseline/tests/test_aevorwyn_character_animator.gd	1970-01-01 00:00:00.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_aevorwyn_character_animator.gd	2026-09-13 20:49:33.515346471 +0000
+@@ -0,0 +1,18 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    if not ClassDB.class_exists("AevorwynCharacterAnimator"):
++        failures.append("AevorwynCharacterAnimator class must exist")
++        return failures
++    var animator := AevorwynCharacterAnimator.new()
++    if animator.forward_axis() != Vector3(0, 0, -1):
++        failures.append("character forward axis must be -Z")
++    var yaw := animator.facing_yaw(Vector3.ZERO, Vector3(1, 0, 0))
++    if absf(yaw + PI * 0.5) > 0.01:
++        failures.append("facing helper must rotate toward target")
++    var phases: Array = animator.chop_phases()
++    if phases != [&"ready", &"backswing", &"strike", &"impact", &"recover"]:
++        failures.append("woodcutting phases must be ready/backswing/strike/impact/recover")
++    animator.free()
++    return failures
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_character_appearance.gd aevorwyn-original-character/srcpkg/tests/test_character_appearance.gd
+--- aevorwyn-v7-baseline/tests/test_character_appearance.gd	1970-01-01 00:00:00.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_character_appearance.gd	2026-09-13 20:49:33.512495576 +0000
+@@ -0,0 +1,19 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    if not ClassDB.class_exists("CharacterAppearance"):
++        failures.append("CharacterAppearance class must exist")
++        return failures
++    var appearance = CharacterAppearance.default()
++    appearance.face_id = &"face_2"
++    appearance.hair_style_id = &"hair_swept"
++    appearance.top_color_id = &"teal"
++    var restored = CharacterAppearance.from_dict(appearance.to_dict())
++    if restored.face_id != &"face_2":
++        failures.append("face id must round-trip")
++    if restored.hair_style_id != &"hair_swept":
++        failures.append("hair style must round-trip")
++    if restored.top_color_id != &"teal":
++        failures.append("clothing color must round-trip")
++    return failures
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_character_assembler.gd aevorwyn-original-character/srcpkg/tests/test_character_assembler.gd
+--- aevorwyn-v7-baseline/tests/test_character_assembler.gd	1970-01-01 00:00:00.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_character_assembler.gd	2026-09-13 20:49:33.513384972 +0000
+@@ -0,0 +1,16 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    if not ClassDB.class_exists("CharacterAssembler"):
++        failures.append("CharacterAssembler class must exist")
++        return failures
++    var assembler := CharacterAssembler.new()
++    assembler.apply_appearance(CharacterAppearance.default())
++    for node_name in ["BodyRoot", "Head", "EyeL", "EyeR", "Nose", "Mouth", "EarL", "EarR", "Hair", "TorsoClothing", "LegClothing", "Feet", "ToolSocketR"]:
++        if assembler.find_child(node_name, true, false) == null:
++            failures.append("assembled character missing %s" % node_name)
++    if assembler.vendor_asset_paths().size() != 0:
++        failures.append("original character must not load vendor assets")
++    assembler.free()
++    return failures
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_character_creator.gd aevorwyn-original-character/srcpkg/tests/test_character_creator.gd
+--- aevorwyn-v7-baseline/tests/test_character_creator.gd	1970-01-01 00:00:00.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_character_creator.gd	2026-09-13 20:49:33.514403173 +0000
+@@ -0,0 +1,13 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    if not ClassDB.class_exists("CharacterCreator"):
++        failures.append("CharacterCreator class must exist")
++        return failures
++    var creator := CharacterCreator.new()
++    for category in ["body_type", "skin_tone_id", "face_id", "hair_style_id", "hair_color_id", "facial_hair_style_id", "top_style_id", "top_color_id", "bottoms_style_id", "bottoms_color_id", "footwear_style_id", "footwear_color_id"]:
++        if not creator.customization_categories().has(category):
++            failures.append("creator missing category %s" % category)
++    creator.free()
++    return failures
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_rigged_character_visual.gd aevorwyn-original-character/srcpkg/tests/test_rigged_character_visual.gd
+--- aevorwyn-v7-baseline/tests/test_rigged_character_visual.gd	2026-09-13 19:55:20.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_rigged_character_visual.gd	2026-09-13 20:49:33.538463930 +0000
+@@ -1,24 +1,10 @@
+ extends RefCounted
+ 
+ func run() -> Array[String]:
+     var failures: Array[String] = []
+-    var script = load("res://src/player/rigged_character_visual.gd")
+-    if script == null:
+-        failures.append("rigged character visual controller should exist")
+-        return failures
+-
+-    var visual = script.new()
+-    if not visual.has_method("animation_name_for_action"):
+-        failures.append("rigged character visual must expose animation_name_for_action()")
+-        return failures
+-    if StringName(visual.animation_name_for_action(&"chopping")) != &"TreeChopping":
+-        failures.append("chopping must use the real TreeChopping_Loop animation")
+-    if not visual.has_method("uses_high_quality_assets"):
+-        failures.append("rigged character visual must report whether high-quality assets are active")
+-    if not visual.has_method("required_asset_paths"):
+-        failures.append("rigged character visual must expose deterministic required asset paths")
+-    else:
+-        var paths: Array = visual.required_asset_paths()
+-        if not paths.has("res://assets/vendor/quaternius/character/Male_Peasant.gltf"):
+-            failures.append("player visual should target the CC0 Male Peasant character")
+-        if not paths.has("res://assets/vendor/quaternius/animations/UAL2_Standard.glb"):
+-            failures.append("player visual should target the CC0 animation library")
++    var visual := PlayerVisual.new()
++    if not visual.has_method("uses_original_character"): failures.append("player visual must report original character usage")
++    elif not visual.uses_original_character(): failures.append("player visual must use the original Aevorwyn character")
++    if visual.has_method("vendor_asset_paths") and visual.vendor_asset_paths().size() != 0: failures.append("player visual must not depend on vendor character assets")
+     visual.free()
+     return failures
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_runner.gd aevorwyn-original-character/srcpkg/tests/test_runner.gd
+--- aevorwyn-v7-baseline/tests/test_runner.gd	2026-09-13 19:55:20.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_runner.gd	2026-09-13 20:49:33.532265150 +0000
+@@ -17,6 +17,10 @@
+     "res://tests/test_inventory_tab.gd",
+     "res://tests/test_skills_tab.gd",
+     "res://tests/test_visual_quality_world.gd",
++    "res://tests/test_character_appearance.gd",
++    "res://tests/test_character_assembler.gd",
++    "res://tests/test_character_creator.gd",
++    "res://tests/test_aevorwyn_character_animator.gd",
+ ]
+ 
+ var _ran := false
+diff -ruN '--exclude=Aevorwyn-v6-source.tgz' aevorwyn-v7-baseline/tests/test_visual_quality_world.gd aevorwyn-original-character/srcpkg/tests/test_visual_quality_world.gd
+--- aevorwyn-v7-baseline/tests/test_visual_quality_world.gd	2026-09-13 19:55:20.000000000 +0000
++++ aevorwyn-original-character/srcpkg/tests/test_visual_quality_world.gd	2026-09-13 20:49:33.539168324 +0000
+@@ -3,11 +3,10 @@
+ func run() -> Array[String]:
+     var failures: Array[String] = []
+     var resource := ResourceNode.new()
+-    if not resource.has_method("quality_asset_path"):
+-        failures.append("resource nodes should expose the high-quality tree asset path")
+-    else:
+-        if String(resource.quality_asset_path()) != "res://assets/vendor/quaternius/nature/CommonTree_1.gltf":
+-            failures.append("young oak should target the CC0 CommonTree_1 asset")
++    if not resource.has_method("uses_original_visual"):
++        failures.append("resource nodes should expose original visual status")
++    elif not resource.uses_original_visual():
++        failures.append("young oak should use an original Aevorwyn visual")
+     resource.free()
+ 
+     var world := MainWorld.new()
