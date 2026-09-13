@@ -40,6 +40,7 @@ jobs:
           patch --batch --forward -p1 -d aevorwyn < /tmp/original-character-green.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-compile-fix.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-test-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-refcount-test-fix.patch
 
       - name: Reject production vendor asset references
         working-directory: aevorwyn
