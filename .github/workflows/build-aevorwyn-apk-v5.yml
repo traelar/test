@@ -73,7 +73,16 @@ jobs:
 
       - name: Apply visual, animation, inventory and skills overhaul
         run: |
-          base64 --decode .aevorwyn/overhaul-green.patch.gz.b64 > overhaul-green.patch.gz
+          cat \
+            .aevorwyn/overhaul-green.patch.gz.b64.part00 \
+            .aevorwyn/overhaul-green.patch.gz.b64.part01 \
+            .aevorwyn/overhaul-green.patch.gz.b64.part02 \
+            .aevorwyn/overhaul-green.patch.gz.b64.part03 \
+            .aevorwyn/overhaul-green.patch.gz.b64.part04 \
+            > overhaul-green.patch.gz.b64
+          test "$(wc -c < overhaul-green.patch.gz.b64)" = "22108"
+          test "$(sha256sum overhaul-green.patch.gz.b64 | awk '{print $1}')" = "65d7bbe69071dd3cfd79ca3046ef9a90b5acafcc9e7a44f15acf5594c66e9524"
+          base64 --decode overhaul-green.patch.gz.b64 > overhaul-green.patch.gz
           test "$(sha256sum overhaul-green.patch.gz | awk '{print $1}')" = "ea452eb0ac20e55f112b8900d88be5002a97ff36aa33f108545ab9cff6867fb9"
           gzip -dc overhaul-green.patch.gz > overhaul-green.patch
           test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
