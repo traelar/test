@@ -17,7 +17,7 @@ diff --git a/src/input/mobile_gesture_interpreter.gd b/src/input/mobile_gesture_
      var start: Vector2 = _starts.get(index, position)
  
      _touches.erase(index)
-@@ -110,9 +112,16 @@ func touch_released(index: int, position: Vector2) -> Dictionary:
+@@ -110,9 +112,18 @@ func touch_released(index: int, position: Vector2) -> Dictionary:
      if _touches.size() < 2:
          _pinch_distance = 0.0
  
