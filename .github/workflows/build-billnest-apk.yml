@@ -1,5 +1,9 @@
 name: Build BillNest APK
 
+concurrency:
+  group: billnest-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ billnest-apk-build, billnest-v2-foundation ]
