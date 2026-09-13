@@ -1,1 +1,1 @@
-strict-godot-red-1
+strict-godot-green-1
