@@ -1,0 +1,10 @@
+--- a/src/player/player_visual.gd
++++ b/src/player/player_visual.gd
+@@ -4,7 +4,6 @@
+ signal chop_impact
+ 
+ var _animator := AevorwynCharacterAnimator.new()
+-var _body_root: Node3D
+ var _torso: Node3D
+ var _left_arm: Node3D
+ var _right_arm: Node3D
