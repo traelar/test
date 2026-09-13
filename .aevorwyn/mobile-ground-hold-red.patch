@@ -1,7 +1,7 @@
 diff --git a/tests/test_runner.gd b/tests/test_runner.gd
 --- a/tests/test_runner.gd
 +++ b/tests/test_runner.gd
-@@ -9,6 +9,7 @@ const TEST_PATHS := [
+@@ -11,6 +11,7 @@
      "res://tests/test_mobile_gesture_interpreter.gd",
      "res://tests/test_player_action_animator.gd",
      "res://tests/test_player_presentation.gd",
@@ -10,18 +10,15 @@ diff --git a/tests/test_runner.gd b/tests/test_runner.gd
  
  var _ran := false
 diff --git a/tests/test_mobile_ground_hold_behavior.gd b/tests/test_mobile_ground_hold_behavior.gd
-new file mode 100644
 --- /dev/null
 +++ b/tests/test_mobile_ground_hold_behavior.gd
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,45 @@
 +extends RefCounted
 +
 +func run() -> Array[String]:
 +    var failures: Array[String] = []
 +    var gestures := MobileGestureInterpreter.new()
 +
-+    # A stationary long hold must remain distinguishable at release so the world
-+    # can walk on empty ground without also treating camera gestures as taps.
 +    gestures.touch_pressed(0, Vector2(180, 160))
 +    var hold_events: Array[Dictionary] = gestures.advance(0.50)
 +    if hold_events.is_empty() or String(hold_events[0].get("type", "")) != "long_press":
@@ -30,8 +27,6 @@ new file mode 100644
 +    if String(hold_release.get("type", "")) != "long_press_release":
 +        failures.append("stationary long hold release must be distinguishable from a consumed camera gesture")
 +
-+    # If the player holds briefly and then drags to rotate, release must remain
-+    # fully consumed: no tap and no long-hold walk event.
 +    gestures.reset()
 +    gestures.touch_pressed(0, Vector2(260, 180))
 +    gestures.advance(0.50)
@@ -42,8 +37,6 @@ new file mode 100644
 +    if String(orbit_release.get("type", "")) in ["tap", "long_press_release"]:
 +        failures.append("camera rotation must never trigger walking when the finger releases")
 +
-+    # World intent: holding empty ground walks; holding an interactable opens
-+    # the action menu instead.
 +    var world := MainWorld.new()
 +    if not world.has_method("long_press_target_mode"):
 +        failures.append("world must classify long-press targets as walk or menu")
