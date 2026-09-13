@@ -54,12 +54,33 @@ jobs:
           chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
           echo "$PWD/godot-bin" >> "$GITHUB_PATH"
 
-      - name: GREEN - reject Godot parse and compile errors
+      - name: Strict compile validation
         working-directory: aevorwyn
         run: |
           set -o pipefail
           Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee godot-import.log
           if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.' godot-import.log; then
-            echo 'Strict Godot validation found script/runtime errors.' >&2
+            echo 'Strict Godot compile validation found errors.' >&2
+            exit 1
+          fi
+
+      - name: Strict test validation
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd 2>&1 | tee godot-tests.log
+          grep -q 'ALL TESTS PASSED' godot-tests.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.|TEST FAILURES' godot-tests.log; then
+            echo 'Strict Godot test validation found errors.' >&2
+            exit 1
+          fi
+
+      - name: RED - strict main scene smoke validation
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 2>&1 | tee godot-smoke.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.|Condition "!is_inside_tree\(\)" is true' godot-smoke.log; then
+            echo 'Strict Godot smoke validation found runtime errors.' >&2
             exit 1
           fi
