@@ -23,7 +23,8 @@ jobs:
         run: |
           cat .aevorwyn/original-character-green.patch.gz.b64.part00 \
               .aevorwyn/original-character-green.patch.gz.b64.part01 \
-              .aevorwyn/original-character-green.patch.gz.b64.part02a \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a0 \
+              .aevorwyn/original-character-green.patch.gz.b64.part02a1 \
               .aevorwyn/original-character-green.patch.gz.b64.part02b \
               .aevorwyn/original-character-green.patch.gz.b64.part02c \
               .aevorwyn/original-character-green.patch.gz.b64.part03 \
