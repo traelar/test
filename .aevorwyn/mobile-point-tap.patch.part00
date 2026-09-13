@@ -1,0 +1,114 @@
+diff --git a/export_presets.cfg b/export_presets.cfg
+index dc5bcea..e096afb 100644
+--- a/export_presets.cfg
++++ b/export_presets.cfg
+@@ -23,7 +23,7 @@ custom_template/release=""
+ debug/export_console_wrapper=1
+ binary_format/embed_pck=false
+ texture_format/s3tc_bptc=true
+-texture_format/etc2_astc=false
++texture_format/etc2_astc=true
+ application/icon=""
+ 
+ [preset.1]
+diff --git a/project.godot b/project.godot
+index 40debd5..0fa43fa 100644
+--- a/project.godot
++++ b/project.godot
+@@ -13,11 +13,13 @@ window/size/viewport_height=720
+ window/size/window_width_override=1280
+ window/size/window_height_override=720
+ window/stretch/mode="canvas_items"
++window/handheld/orientation=4
+ 
+ [rendering]
+ renderer/rendering_method="gl_compatibility"
+ renderer/rendering_method.mobile="gl_compatibility"
+ textures/default_filters/use_nearest_mipmap_filter=false
++textures/vram_compression/import_etc2_astc=true
+ 
+ [input]
+ open_inventory={"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":73)]}
+diff --git a/src/game/main_world.gd b/src/game/main_world.gd
+index 4765366..042b85e 100644
+--- a/src/game/main_world.gd
++++ b/src/game/main_world.gd
+@@ -13,7 +13,7 @@ var _pending_resource: ResourceNode
+ var _current_enemy: Enemy
+ var _player_attack_cooldown := 0.0
+ var _enemy_attack_cooldown := 0.0
+-var _touch_dragged := false
++var _mobile_gestures := MobileGestureInterpreter.new()
+ var _spawn_point := Vector3(0, 0, 0)
+ 
+ func _ready() -> void:
+@@ -81,22 +81,32 @@ func _unhandled_input(event: InputEvent) -> void:
+     if event is InputEventScreenTouch:
+         var touch := event as InputEventScreenTouch
+         if touch.pressed:
+-            _touch_dragged = false
+-        elif not _touch_dragged:
+-            _handle_pointer_click(touch.position)
++            _mobile_gestures.touch_pressed(touch.index, touch.position)
++        else:
++            _apply_mobile_gesture(_mobile_gestures.touch_released(touch.index, touch.position))
+         return
+ 
+     if event is InputEventScreenDrag:
+         var drag := event as InputEventScreenDrag
+-        if drag.relative.length() > 1.0:
+-            _touch_dragged = true
+-            _camera_rig.orbit(drag.relative)
++        for mobile_event in _mobile_gestures.touch_dragged(drag.index, drag.position, drag.relative):
++            _apply_mobile_gesture(mobile_event)
+         return
+ 
+     if event is InputEventMagnifyGesture:
+         var magnify := event as InputEventMagnifyGesture
+         _camera_rig.adjust_zoom((1.0 - magnify.factor) * 4.0)
+ 
++func _apply_mobile_gesture(gesture: Dictionary) -> void:
++    match String(gesture.get("type", "none")):
++        "tap":
++            var tap_position: Vector2 = gesture.get("position", Vector2.ZERO)
++            _handle_pointer_click(tap_position)
++        "orbit":
++            var drag_delta: Vector2 = gesture.get("delta", Vector2.ZERO)
++            _camera_rig.orbit(drag_delta)
++        "zoom":
++            _camera_rig.adjust_zoom(float(gesture.get("amount", 0.0)))
++
+ func _handle_pointer_click(screen_position: Vector2) -> void:
+     var camera := _camera_rig.get_camera()
+     if camera == null:
+diff --git a/src/input/mobile_gesture_interpreter.gd b/src/input/mobile_gesture_interpreter.gd
+new file mode 100644
+index 0000000..2611e54
+--- /dev/null
++++ b/src/input/mobile_gesture_interpreter.gd
+@@ -0,0 +1,92 @@
++class_name MobileGestureInterpreter
++extends RefCounted
++
++const DEFAULT_DRAG_THRESHOLD := 18.0
++const PINCH_ZOOM_SENSITIVITY := 0.018
++
++var drag_threshold := DEFAULT_DRAG_THRESHOLD
++var _touches: Dictionary = {}
++var _starts: Dictionary = {}
++var _dragged: Dictionary = {}
++var _consumed: Dictionary = {}
++var _pinch_distance := 0.0
++
++func reset() -> void:
++    _touches.clear()
++    _starts.clear()
++    _dragged.clear()
++    _consumed.clear()
++    _pinch_distance = 0.0
++
++func touch_pressed(index: int, position: Vector2) -> void:
++    _touches[index] = position
++    _starts[index] = position
++    _dragged[index] = false
++    _consumed[index] = false
