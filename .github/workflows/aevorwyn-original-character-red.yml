@@ -17,8 +17,12 @@ jobs:
         run: |
           bash .github/scripts/aevorwyn-reconstruct-v6.sh
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-green.patch
-      - name: Apply RED regressions only
-        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-red.patch
+      - name: Decode and apply RED regressions only
+        run: |
+          test "$(sha256sum .aevorwyn/original-character-red.patch.gz.b64 | awk '{print $1}')" = "16fe681ab0f921b1a4294f9af09e7545fa513a1b28f8ed5c41fb3c5eabc94e85"
+          base64 -d .aevorwyn/original-character-red.patch.gz.b64 | gzip -d > /tmp/original-character-red.patch
+          test "$(sha256sum /tmp/original-character-red.patch | awk '{print $1}')" = "f76f487ec24827e25e07e98c47305af9afd20f817fcf319e0d0c3c92ac03d935"
+          patch --batch --forward -p1 -d aevorwyn < /tmp/original-character-red.patch
       - name: Download Godot 4.7.2
         run: |
           curl -L --fail --retry 3 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" -o godot.zip
