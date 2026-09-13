@@ -68,6 +68,9 @@ class EncryptedStore(private val context: Context) {
         if (!root.has("budgetAdjustments") || root.get("budgetAdjustments").isJsonNull) {
             root.add("budgetAdjustments", JsonArray())
         }
+        listOf("merchantProfiles", "smartTransactionRules", "reviewResolutions").forEach { field ->
+            if (!root.has(field) || root.get(field).isJsonNull) root.add(field, JsonArray())
+        }
         root.getAsJsonArray("budgets").forEach { element ->
             if (element.isJsonObject) SyncMapper.normalizeBudgetJson(element.asJsonObject)
         }
