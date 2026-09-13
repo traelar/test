@@ -37,14 +37,15 @@ fun CategoryPickerField(
     label: String = "Category",
     extraOptions: List<String> = emptyList(),
     allowEmpty: Boolean = false,
-    emptyLabel: String = "No category"
+    emptyLabel: String = "No category",
+    modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
     var addingCustom by remember { mutableStateOf(false) }
     var customValue by remember { mutableStateOf("") }
     val options = remember(data, extraOptions) { mergedCategoryOptions(data, extraOptions) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         Box(Modifier.fillMaxWidth()) {
             OutlinedButton(
