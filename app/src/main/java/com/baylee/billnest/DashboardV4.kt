@@ -83,11 +83,12 @@ private fun DashboardMetric(label: String, value: String, accent: Color, modifie
     }
 }
 
-/** Dashboard revision that keeps unset budgets neutral and protects currency values from narrow wrapping. */
+/** Dashboard revision that keeps current cash separate from future-paycheck planning. */
 @Composable
 fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
     val today = LocalDate.now()
     val money = remember(data, today) { calculateMoneySummary(data, today) }
+    val cashProjection = remember(data, today) { calculateMonthlyCashProjection(data, today) }
     val variable = remember(data) { runCatching { calculateVariableSpendingSummary(data) }.getOrNull() }
     val alerts = remember(data) { runCatching { budgetAlerts(data) }.getOrDefault(emptyList()) }
     val plan = remember(data) { runCatching { calculateNextPaycheckPlan(data) }.getOrNull() }
@@ -118,18 +119,52 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
         item {
             DashboardCard {
                 Text(
-                    "Available after remaining bills this month",
+                    "Spending money now",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge
                 )
                 Text(
-                    dashboardMoney(money.availableAfterUpcomingBills),
+                    dashboardMoney(cashProjection.currentSpendable),
                     style = MaterialTheme.typography.headlineMedium,
-                    color = if (money.availableAfterUpcomingBills >= 0) BillNestColors.positive else BillNestColors.danger
+                    color = if (cashProjection.currentSpendable >= 0) BillNestColors.positive else BillNestColors.danger,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                if (money.reservedFromSpending > 0.0) {
+                    Text(
+                        "${dashboardMoney(money.reservedFromSpending)} is protected in reserved funds.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                HorizontalDivider(color = BillNestColors.border.copy(alpha = .65f))
+                Text("Projected through month end", style = MaterialTheme.typography.titleMedium)
+                if (cashProjection.futurePaychecks > 0.0) {
+                    Text(
+                        "Expected paychecks still coming  +${dashboardMoney(cashProjection.futurePaychecks)}",
+                        color = BillNestColors.positive
+                    )
+                } else {
+                    Text(
+                        "No more scheduled paychecks this month",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    "Remaining unpaid bills  -${dashboardMoney(cashProjection.remainingBills)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "Spending ${dashboardMoney(money.spendingMoney)} • Reserved ${dashboardMoney(money.reservedFromSpending)} • Remaining bills ${dashboardMoney(money.upcomingBills)}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "Projected month-end available",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    dashboardMoney(cashProjection.projectedMonthEndAvailable),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (cashProjection.projectedMonthEndAvailable >= 0) BillNestColors.positive else BillNestColors.danger,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
