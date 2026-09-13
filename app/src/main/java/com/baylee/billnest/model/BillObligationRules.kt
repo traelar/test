@@ -147,3 +147,54 @@ fun calculateMoneySummary(data: AppData, referenceDate: LocalDate): MoneySummary
         availableAfterUpcomingBills = spendable - reservedFromSpending - upcoming
     )
 }
+
+data class MonthlyCashProjection(
+    val currentSpendable: Double,
+    val futurePaychecks: Double,
+    val remainingBills: Double,
+    val projectedMonthEndAvailable: Double
+)
+
+/**
+ * Separates today's spendable cash from the rest-of-month plan. Only payday occurrences strictly after
+ * the reference date and still inside the current month are treated as future income, preventing today's
+ * already-posted payroll from being counted twice in both the bank balance and the projection.
+ */
+fun calculateMonthlyCashProjection(
+    data: AppData,
+    referenceDate: LocalDate = LocalDate.now()
+): MonthlyCashProjection {
+    val money = calculateMoneySummary(data, referenceDate)
+    val monthEnd = YearMonth.from(referenceDate).atEndOfMonth()
+    val futurePaychecks = data.paydays.sumOf { payday ->
+        var occurrence = runCatching { payday.nextDate() }.getOrNull() ?: return@sumOf 0.0
+        if (payday.frequency == Frequency.ONE_TIME) {
+            if (occurrence.isAfter(referenceDate) && !occurrence.isAfter(monthEnd) && occurrence.toString() !in payday.receivedDates) {
+                payday.amount.coerceAtLeast(0.0)
+            } else {
+                0.0
+            }
+        } else {
+            while (!occurrence.isAfter(referenceDate)) {
+                occurrence = advanceBillOccurrence(occurrence, payday.frequency)
+            }
+            var total = 0.0
+            var guard = 0
+            while (!occurrence.isAfter(monthEnd) && guard < 64) {
+                if (occurrence.toString() !in payday.receivedDates) {
+                    total += payday.amount.coerceAtLeast(0.0)
+                }
+                occurrence = advanceBillOccurrence(occurrence, payday.frequency)
+                guard += 1
+            }
+            total
+        }
+    }
+    val currentSpendable = money.spendingMoney - money.reservedFromSpending
+    return MonthlyCashProjection(
+        currentSpendable = currentSpendable,
+        futurePaychecks = futurePaychecks,
+        remainingBills = money.upcomingBills,
+        projectedMonthEndAvailable = currentSpendable + futurePaychecks - money.upcomingBills
+    )
+}
