@@ -46,7 +46,7 @@ diff -ruN /mnt/data/aevorwyn-original-character-prearmor/tests/test_equipment_vi
 +
 +    assembler.free()
 +    return failures
-+diff -ruN /mnt/data/aevorwyn-original-character-prearmor/tests/test_runner.gd /mnt/data/aevorwyn-armor-red/tests/test_runner.gd
+diff -ruN /mnt/data/aevorwyn-original-character-prearmor/tests/test_runner.gd /mnt/data/aevorwyn-armor-red/tests/test_runner.gd
 --- a/tests/test_runner.gd	2026-09-13 20:49:34.212658882 +0000
 +++ b/tests/test_runner.gd	2026-09-13 21:48:35.562962305 +0000
 @@ -21,6 +21,7 @@
