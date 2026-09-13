@@ -71,6 +71,12 @@ private val fixedSpendingCategories = setOf(
     "debt payment", "credit card payment", "loan payment", "mortgage payment"
 )
 
+private fun cleanInsightsCategory(category: String): String =
+    category.trim().replace(Regex("\\s+"), " ").ifBlank { "Other" }
+
+private fun insightsCategoryKey(category: String): String =
+    cleanInsightsCategory(category).lowercase()
+
 fun isNonVariableSpendingCategory(category: String): Boolean {
     val normalized = category.trim()
         .replace('_', ' ')
@@ -97,8 +103,9 @@ fun categorySpendingBreakdown(
     data: AppData,
     month: YearMonth,
     category: String
-): List<CategorySpendingBreakdownItem> =
-    data.transactions.mapNotNull { row ->
+): List<CategorySpendingBreakdownItem> {
+    val requestedCategoryKey = insightsCategoryKey(category)
+    return data.transactions.mapNotNull { row ->
         if (!isVariableSpendingForInsights(row)) return@mapNotNull null
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@mapNotNull null
         if (YearMonth.from(date) != month) return@mapNotNull null
@@ -106,10 +113,10 @@ fun categorySpendingBreakdown(
         val splits = row.splits.orEmpty()
         if (splits.isNotEmpty()) {
             val amount = splits
-                .filter { it.category.equals(category, true) }
+                .filter { insightsCategoryKey(it.category) == requestedCategoryKey }
                 .sumOf { it.amount.coerceAtLeast(0.0) }
             if (amount > 0.005) CategorySpendingBreakdownItem(row, amount, true) else null
-        } else if (row.category.equals(category, true)) {
+        } else if (insightsCategoryKey(row.category) == requestedCategoryKey) {
             CategorySpendingBreakdownItem(row, row.amount.coerceAtLeast(0.0), false)
         } else {
             null
@@ -118,6 +125,7 @@ fun categorySpendingBreakdown(
         compareByDescending<CategorySpendingBreakdownItem> { it.transaction.dateIso }
             .thenByDescending { it.amount }
     )
+}
 
 fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
     fun rowsFor(target: YearMonth): List<FinanceTransaction> = data.transactions.filter { row ->
@@ -128,15 +136,21 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
 
     fun totalsFor(rows: List<FinanceTransaction>): Map<String, Double> {
         val totals = linkedMapOf<String, Double>()
+        fun addCategory(rawCategory: String, amount: Double) {
+            val cleanCategory = cleanInsightsCategory(rawCategory)
+            val normalizedKey = insightsCategoryKey(cleanCategory)
+            val existingDisplayKey = totals.keys.firstOrNull { insightsCategoryKey(it) == normalizedKey }
+            val displayKey = existingDisplayKey ?: cleanCategory
+            totals[displayKey] = (totals[displayKey] ?: 0.0) + amount.coerceAtLeast(0.0)
+        }
+
         rows.forEach { row ->
             val splits = row.splits.orEmpty()
             if (splits.isEmpty()) {
-                val key = row.category.ifBlank { "Other" }
-                totals[key] = (totals[key] ?: 0.0) + row.amount.coerceAtLeast(0.0)
+                addCategory(row.category, row.amount)
             } else {
                 splits.forEach { split ->
-                    val key = split.category.ifBlank { "Other" }
-                    totals[key] = (totals[key] ?: 0.0) + split.amount.coerceAtLeast(0.0)
+                    addCategory(split.category, split.amount)
                 }
             }
         }
@@ -158,7 +172,16 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
     val priorCategoryTotals = totalsFor(priorRows)
     val top = categoryTotals.maxByOrNull { it.value }
     val largestIncrease = (categoryTotals.keys + priorCategoryTotals.keys)
-        .map { category -> category to ((categoryTotals[category] ?: 0.0) - (priorCategoryTotals[category] ?: 0.0)) }
+        .distinctBy(::insightsCategoryKey)
+        .map { category ->
+            val key = insightsCategoryKey(category)
+            val currentAmount = categoryTotals.entries.firstOrNull { insightsCategoryKey(it.key) == key }?.value ?: 0.0
+            val priorAmount = priorCategoryTotals.entries.firstOrNull { insightsCategoryKey(it.key) == key }?.value ?: 0.0
+            val display = categoryTotals.keys.firstOrNull { insightsCategoryKey(it) == key }
+                ?: priorCategoryTotals.keys.firstOrNull { insightsCategoryKey(it) == key }
+                ?: cleanInsightsCategory(category)
+            display to (currentAmount - priorAmount)
+        }
         .filter { it.second > 0.005 }
         .maxByOrNull { it.second }
 
