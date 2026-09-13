@@ -9,10 +9,10 @@
 +    if not gestures.has_method("advance"):
 +        failures.append("mobile gestures must expose timed long-press detection")
 +    else:
-+        var before_hold := gestures.advance(0.30)
++        var before_hold: Array = gestures.call("advance", 0.30)
 +        if not before_hold.is_empty():
 +            failures.append("a normal short touch must not open the context menu early")
-+        var hold_events := gestures.advance(0.20)
++        var hold_events: Array = gestures.call("advance", 0.20)
 +        if hold_events.is_empty() or hold_events[0].get("type", "") != "long_press":
 +            failures.append("holding one finger should emit a long_press event")
 +        else:
@@ -27,7 +27,7 @@
 +    if not gestures.has_method("consume_active_touches"):
 +        failures.append("magnify gestures need a way to consume active touches so zoom never walks")
 +    else:
-+        gestures.consume_active_touches()
++        gestures.call("consume_active_touches")
 +        var magnify_release := gestures.touch_released(0, Vector2(221, 181))
 +        if magnify_release.get("type", "") == "tap":
 +            failures.append("a touch involved in magnify/zoom must never resolve as a world tap")
@@ -76,17 +76,17 @@
 +    if not hud.has_method("show_context_menu") or not hud.has_method("hide_context_menu") or not hud.has_method("is_context_menu_open"):
 +        failures.append("HUD must provide a RuneScape-style context action menu for long press/right click")
 +    else:
-+        hud.show_context_menu(Vector2(320, 220), [
++        hud.call("show_context_menu", Vector2(320, 220), [
 +            {"id": "chop", "label": "Chop Oak"},
 +            {"id": "walk", "label": "Walk here"},
 +            {"id": "cancel", "label": "Cancel"},
 +        ])
-+        if not hud.is_context_menu_open():
++        if not bool(hud.call("is_context_menu_open")):
 +            failures.append("context menu should be visible after show_context_menu")
-+        if hud.has_method("context_menu_entry_count") and int(hud.context_menu_entry_count()) != 3:
++        if hud.has_method("context_menu_entry_count") and int(hud.call("context_menu_entry_count")) != 3:
 +            failures.append("context menu should render every supplied action")
-+        hud.hide_context_menu()
-+        if hud.is_context_menu_open():
++        hud.call("hide_context_menu")
++        if bool(hud.call("is_context_menu_open")):
 +            failures.append("hide_context_menu should close the context action menu")
      hud.free()
      return failures
