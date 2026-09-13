@@ -9,9 +9,16 @@ enum class DebtType { CREDIT_CARD, LOAN, MORTGAGE, OTHER }
 enum class BudgetPeriod { WEEKLY, BIWEEKLY, PAYCHECK, MONTHLY, YEARLY, CUSTOM }
 enum class DebtStrategy { SNOWBALL, AVALANCHE }
 enum class SubscriptionStatus { CONFIRMED, IGNORED }
+enum class SavingsPriority { EMERGENCY, HIGH, NORMAL, LOW }
 enum class BudgetRolloverMode { RESET, CARRY_UNUSED, CARRY_BALANCE }
 enum class BudgetPace { UNDER, ON_TRACK, WARNING, OVER }
 enum class BudgetOverrideAction { ASSIGN, EXCLUDE }
+
+data class TransactionSplit(
+    val id: String = UUID.randomUUID().toString(),
+    val category: String,
+    val amount: Double
+)
 
 data class FinanceTransaction(
     val id: String = UUID.randomUUID().toString(),
@@ -26,7 +33,9 @@ data class FinanceTransaction(
     val transferFromAccountId: String? = null,
     val transferToAccountId: String? = null,
     val userClassificationOverride: Boolean = false,
-    val excludedFromSpending: Boolean = false
+    val excludedFromSpending: Boolean = false,
+    val pending: Boolean = false,
+    val splits: List<TransactionSplit>? = null
 )
 
 data class PaydayPattern(
@@ -356,7 +365,10 @@ data class SavingsGoal(
     val savedAmount: Double = 0.0,
     val targetDateIso: String? = null,
     val accountId: String? = null,
-    val paydayContribution: Double = 0.0
+    val paydayContribution: Double = 0.0,
+    val priority: SavingsPriority? = SavingsPriority.NORMAL,
+    val transferFromAccountId: String? = null,
+    val transferToAccountId: String? = null
 )
 
 data class ReservedFund(
