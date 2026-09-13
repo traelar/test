@@ -1,0 +1,349 @@
+diff -ruN aevorwyn-armor-base/src/game/game_session.gd aevorwyn-armor-green/src/game/game_session.gd
+--- a/src/game/game_session.gd	2026-09-13 20:56:21.360025734 +0000
++++ b/src/game/game_session.gd	2026-09-13 21:57:11.280947329 +0000
+@@ -152,7 +152,7 @@
+                 return {"ok": false, "reason": removed["reason"]}
+             _state["inventory"] = removed["state"]
+             message.emit("Dropped %s" % ContentDB.item_name(item_id))
+-        "wield":
++        "wield", "wear", "equip":
+             var equip_slot := String(definition.get("equip_slot", "main_hand"))
+             var removed := _inventory.remove_from_slot(inventory_state, slot_index, 1)
+             if not removed["ok"]:
+@@ -169,7 +169,7 @@
+             equipment[equip_slot] = String(item_id)
+             _state["inventory"] = next_inventory
+             _state["equipment"] = equipment
+-            message.emit("Wielding %s" % ContentDB.item_name(item_id))
++            message.emit("Equipped %s" % ContentDB.item_name(item_id))
+         "use":
+             message.emit("Selected %s for use." % ContentDB.item_name(item_id))
+         _:
+diff -ruN aevorwyn-armor-base/src/game/main_world.gd aevorwyn-armor-green/src/game/main_world.gd
+--- a/src/game/main_world.gd	2026-09-13 20:58:16.952367394 +0000
++++ b/src/game/main_world.gd	2026-09-13 21:57:10.690284954 +0000
+@@ -393,7 +393,7 @@
+     if equipment == _last_equipment:
+         return
+     _last_equipment = equipment.duplicate(true)
+-    _player_visual.set_equipped_visual(&"main_hand", StringName(equipment.get("main_hand", "")))
++    _player_visual.apply_equipment_visuals(equipment)
+ 
+ func _on_game_loaded(state: Dictionary) -> void:
+     _on_session_state_changed(state)
+diff -ruN aevorwyn-armor-base/src/player/aevorwyn_equipment_visuals.gd aevorwyn-armor-green/src/player/aevorwyn_equipment_visuals.gd
+--- a/src/player/aevorwyn_equipment_visuals.gd	1970-01-01 00:00:00.000000000 +0000
++++ b/src/player/aevorwyn_equipment_visuals.gd	2026-09-13 21:57:08.758520866 +0000
+@@ -0,0 +1,48 @@
++class_name AevorwynEquipmentVisuals
++extends RefCounted
++
++const SLOTS: Array[StringName] = [
++    &"head", &"chest", &"hands", &"legs", &"feet", &"cape", &"main_hand", &"off_hand",
++]
++
++const FULL_HAIR_HIDE_HEAD_ITEMS: Array[StringName] = [
++    &"greenwake_guard_helm",
++]
++
++static func slots() -> Array[StringName]:
++    return SLOTS.duplicate()
++
++static func supports_slot(slot: StringName) -> bool:
++    return SLOTS.has(slot)
++
++static func hides_hair(item_id: StringName) -> bool:
++    return FULL_HAIR_HIDE_HEAD_ITEMS.has(item_id)
++
++static func palette(item_id: StringName) -> Dictionary:
++    if String(item_id).begins_with("greenwake_guard_"):
++        return {
++            "primary": Color("526b61"),
++            "secondary": Color("34483f"),
++            "trim": Color("b5bcae"),
++            "leather": Color("60452f"),
++        }
++    if item_id == &"greenwake_scout_cape":
++        return {
++            "primary": Color("315b4c"),
++            "secondary": Color("1f3e35"),
++            "trim": Color("a99562"),
++            "leather": Color("60452f"),
++        }
++    if item_id == &"greenwake_round_shield":
++        return {
++            "primary": Color("5c4933"),
++            "secondary": Color("3a3028"),
++            "trim": Color("9ba9a4"),
++            "leather": Color("60452f"),
++        }
++    return {
++        "primary": Color("68736f"),
++        "secondary": Color("454e4b"),
++        "trim": Color("aeb9b5"),
++        "leather": Color("60452f"),
++    }
+diff -ruN aevorwyn-armor-base/src/player/character_assembler.gd aevorwyn-armor-green/src/player/character_assembler.gd
+--- a/src/player/character_assembler.gd	2026-09-13 20:58:05.403963980 +0000
++++ b/src/player/character_assembler.gd	2026-09-13 21:57:09.235483634 +0000
+@@ -21,8 +21,31 @@
+ func current_appearance() -> CharacterAppearance:
+     return _appearance.copy()
+ 
++func equipment_visual_slots() -> Array[StringName]:
++    return AevorwynEquipmentVisuals.slots()
++
+ func set_equipped_visual(slot: StringName, item_id: StringName) -> void:
+-    _equipment[slot] = item_id
++    if not AevorwynEquipmentVisuals.supports_slot(slot):
++        return
++    if String(item_id).is_empty():
++        _equipment.erase(slot)
++    else:
++        _equipment[slot] = item_id
++    _refresh_equipment_visual()
++
++func clear_equipped_visual(slot: StringName) -> void:
++    if not AevorwynEquipmentVisuals.supports_slot(slot):
++        return
++    _equipment.erase(slot)
++    _refresh_equipment_visual()
++
++func apply_equipment_visuals(equipment: Dictionary) -> void:
++    _equipment.clear()
++    for slot in AevorwynEquipmentVisuals.slots():
++        var raw_value = equipment.get(String(slot), equipment.get(slot, ""))
++        var item_id := StringName(raw_value)
++        if not String(item_id).is_empty():
++            _equipment[slot] = item_id
+     _refresh_equipment_visual()
+ 
+ func vendor_asset_paths() -> Array:
+@@ -120,30 +143,198 @@
+ func _refresh_equipment_visual() -> void:
+     if _body_root == null:
+         return
+-    var old := _body_root.find_child("EquippedMainHand", true, false) as Node3D
+-    if old != null:
+-        old.get_parent().remove_child(old)
+-        old.free()
+-    var item_id := StringName(_equipment.get(&"main_hand", ""))
+-    if String(item_id).is_empty():
++    _clear_equipment_nodes()
++    _restore_base_layers()
++    for slot in AevorwynEquipmentVisuals.slots():
++        var item_id := StringName(_equipment.get(slot, ""))
++        if String(item_id).is_empty():
++            continue
++        _build_equipment_slot(slot, item_id)
++
++func _clear_equipment_nodes() -> void:
++    var root_names := [
++        "EquipmentHead", "EquipmentChest", "EquipmentHands", "EquipmentLegs",
++        "EquipmentFeet", "EquipmentCape", "EquipmentMainHand", "EquipmentOffHand",
++    ]
++    for node_name in root_names:
++        var matches := _body_root.find_children(node_name, "", true, false)
++        for match_node in matches:
++            if not is_instance_valid(match_node):
++                continue
++            var parent := match_node.get_parent()
++            if parent != null:
++                parent.remove_child(match_node)
++            match_node.free()
++
++func _restore_base_layers() -> void:
++    _set_named_visible("Hair", true)
++    _set_named_visible("TorsoClothing", true)
++    _set_named_visible("LegClothing", true)
++    _set_named_visible("Feet", true)
++    _set_named_visible("Palm", true)
++    _set_named_visible("UpperLeg", true)
++    _set_named_visible("LowerLeg", true)
++    _set_named_visible("Footwear", true)
++
++func _set_named_visible(node_name: String, visible_value: bool) -> void:
++    for found in _body_root.find_children(node_name, "", true, false):
++        if found is Node3D:
++            (found as Node3D).visible = visible_value
++
++func _build_equipment_slot(slot: StringName, item_id: StringName) -> void:
++    match slot:
++        &"head":
++            _build_head_equipment(item_id)
++        &"chest":
++            _build_chest_equipment(item_id)
++        &"hands":
++            _build_hand_equipment(item_id)
++        &"legs":
++            _build_leg_equipment(item_id)
++        &"feet":
++            _build_foot_equipment(item_id)
++        &"cape":
++            _build_cape_equipment(item_id)
++        &"main_hand":
++            _build_main_hand_equipment(item_id)
++        &"off_hand":
++            _build_off_hand_equipment(item_id)
++
++func _equipment_materials(item_id: StringName) -> Dictionary:
++    var palette := AevorwynEquipmentVisuals.palette(item_id)
++    return {
++        "primary": _material(palette["primary"], 0.62),
++        "secondary": _material(palette["secondary"], 0.78),
++        "trim": _material(palette["trim"], 0.38),
++        "leather": _material(palette["leather"], 0.96),
++    }
++
++func _build_head_equipment(item_id: StringName) -> void:
++    var head := _body_root.find_child("Head", true, false) as Node3D
++    if head == null:
++        return
++    if AevorwynEquipmentVisuals.hides_hair(item_id):
++        _set_named_visible("Hair", false)
++    var mats := _equipment_materials(item_id)
++    var root := Node3D.new()
++    root.name = "EquipmentHead"
++    head.add_child(root)
++    _add_ellipsoid(root, Vector3(0, 0.205, 0.035), Vector3(0.345, 0.18, 0.325), mats["primary"], "HelmetCrown")
++    _add_box(root, Vector3(0, 0.105, -0.305), Vector3(0.48, 0.075, 0.055), mats["trim"], "HelmetBrow")
++    _add_box(root, Vector3(-0.285, -0.035, -0.13), Vector3(0.075, 0.28, 0.16), mats["secondary"], "CheekGuardL")
++    _add_box(root, Vector3(0.285, -0.035, -0.13), Vector3(0.075, 0.28, 0.16), mats["secondary"], "CheekGuardR")
++
++func _build_chest_equipment(item_id: StringName) -> void:
++    var chest := _body_root.find_child("Chest", true, false) as Node3D
++    if chest == null:
+         return
++    _set_named_visible("TorsoClothing", false)
++    var mats := _equipment_materials(item_id)
++    var root := Node3D.new()
++    root.name = "EquipmentChest"
++    chest.add_child(root)
++    _add_ellipsoid(root, Vector3(0, 0.015, -0.225), Vector3(0.385, 0.37, 0.095), mats["primary"], "Breastplate")
++    _add_box(root, Vector3(0, -0.265, -0.245), Vector3(0.67, 0.12, 0.065), mats["secondary"], "WaistPlate")
++    _add_box(root, Vector3(0, 0.17, -0.315), Vector3(0.42, 0.055, 0.045), mats["trim"], "ChestRidge")
++
++func _build_hand_equipment(item_id: StringName) -> void:
++    _set_named_visible("Palm", false)
++    var mats := _equipment_materials(item_id)
++    for hand_name in ["HandL", "HandR"]:
++        var hand := _body_root.find_child(hand_name, true, false) as Node3D
++        if hand == null:
++            continue
++        var root := Node3D.new()
++        root.name = "EquipmentHands"
++        hand.add_child(root)
++        _add_ellipsoid(root, Vector3.ZERO, Vector3(0.125, 0.145, 0.10), mats["primary"], "Gauntlet")
++        _add_box(root, Vector3(0, 0.13, 0.02), Vector3(0.22, 0.08, 0.17), mats["trim"], "WristGuard")
++
++func _build_leg_equipment(item_id: StringName) -> void:
++    _set_named_visible("LegClothing", false)
++    _set_named_visible("UpperLeg", false)
++    _set_named_visible("LowerLeg", false)
++    var mats := _equipment_materials(item_id)
++    for leg_name in ["LeftLeg", "RightLeg"]:
++        var hip := _body_root.find_child(leg_name, true, false) as Node3D
++        if hip == null:
++            continue
++        var upper := Node3D.new()
++        upper.name = "EquipmentLegs"
++        hip.add_child(upper)
++        _add_capsule(upper, Vector3(0, -0.29, 0), 0.157, 0.66, mats["primary"], "ArmoredUpperLeg", Vector3(1.0, 1.0, 0.98))
++        var knee := hip.get_node_or_null("Knee") as Node3D
++        if knee != null:
++            var lower := Node3D.new()
++            lower.name = "EquipmentLegs"
++            knee.add_child(lower)
++            _add_capsule(lower, Vector3(0, -0.24, 0), 0.142, 0.51, mats["secondary"], "ArmoredLowerLeg", Vector3(1.0, 1.0, 0.97))
++
++func _build_foot_equipment(item_id: StringName) -> void:
++    _set_named_visible("Feet", false)
++    _set_named_visible("Footwear", false)
++    var mats := _equipment_materials(item_id)
++    for foot_name in ["FootL", "FootR"]:
++        var foot := _body_root.find_child(foot_name, true, false) as Node3D
++        if foot == null:
++            continue
++        var root := Node3D.new()
++        root.name = "EquipmentFeet"
++        foot.add_child(root)
++        _add_ellipsoid(root, Vector3(0, 0, -0.075), Vector3(0.185, 0.16, 0.31), mats["primary"], "ArmoredBoot")
++        _add_box(root, Vector3(0, 0.105, -0.01), Vector3(0.27, 0.08, 0.23), mats["trim"], "BootCuff")
++
++func _build_cape_equipment(item_id: StringName) -> void:
++    var chest := _body_root.find_child("Chest", true, false) as Node3D
++    if chest == null:
++        return
++    var mats := _equipment_materials(item_id)
++    var root := Node3D.new()
++    root.name = "EquipmentCape"
++    chest.add_child(root)
++    _add_box(root, Vector3(0, -0.08, 0.34), Vector3(0.60, 0.78, 0.045), mats["primary"], "CapeCloth")
++    _add_box(root, Vector3(0, 0.31, 0.30), Vector3(0.68, 0.07, 0.075), mats["trim"], "CapeClasp")
++
++func _build_main_hand_equipment(item_id: StringName) -> void:
+     var hand := _body_root.find_child("HandR", true, false) as Node3D
+     if hand == null:
+         return
+-    var weapon := Node3D.new()
+-    weapon.name = "EquippedMainHand"
+-    weapon.position = Vector3(0.02, -0.08, -0.02)
+-    weapon.rotation = Vector3(0.0, 0.0, 0.08)
+-    hand.add_child(weapon)
+-    var grip := _material(Color("60432e"), 0.98)
+-    var metal := _material(Color("aeb9bc"), 0.42)
++    var mats := _equipment_materials(item_id)
++    var root := Node3D.new()
++    root.name = "EquipmentMainHand"
++    root.position = Vector3(0.02, -0.08, -0.02)
++    root.rotation = Vector3(0.0, 0.0, 0.08)
++    hand.add_child(root)
+     if item_id == &"training_blade":
+-        _add_cylinder(weapon, Vector3(0, -0.10, 0), 0.028, 0.25, grip, "Grip", 10)
+-        _add_box(weapon, Vector3(0, 0.055, 0), Vector3(0.28, 0.045, 0.05), metal, "Guard")
+-        var blade := _add_box(weapon, Vector3(0, 0.48, 0), Vector3(0.075, 0.80, 0.035), metal, "Blade")
+-        blade.rotation.z = 0.0
++        _add_cylinder(root, Vector3(0, -0.10, 0), 0.028, 0.25, mats["leather"], "Grip", 10)
++        _add_box(root, Vector3(0, 0.055, 0), Vector3(0.28, 0.045, 0.05), mats["trim"], "Guard")
++        _add_box(root, Vector3(0, 0.48, 0), Vector3(0.075, 0.80, 0.035), mats["primary"], "Blade")
++    elif item_id == &"roughwood_hatchet":
++        _add_cylinder(root, Vector3(0, 0.18, 0), 0.034, 0.66, mats["leather"], "HatchetHandle", 10)
++        _add_box(root, Vector3(-0.11, 0.48, 0), Vector3(0.31, 0.15, 0.08), mats["primary"], "HatchetHead")
++        _add_box(root, Vector3(-0.28, 0.48, 0), Vector3(0.045, 0.22, 0.10), mats["trim"], "HatchetEdge")
++    else:
++        _add_cylinder(root, Vector3(0, 0.16, 0), 0.032, 0.58, mats["leather"], "Handle", 10)
++        _add_box(root, Vector3(0, 0.47, 0), Vector3(0.22, 0.13, 0.075), mats["primary"], "ToolHead")
++
++func _build_off_hand_equipment(item_id: StringName) -> void:
++    var hand := _body_root.find_child("HandL", true, false) as Node3D
++    if hand == null:
++        return
++    var mats := _equipment_materials(item_id)
++    var root := Node3D.new()
++    root.name = "EquipmentOffHand"
++    root.position = Vector3(0, 0.0, -0.12)
++    hand.add_child(root)
++    if item_id == &"greenwake_round_shield":
++        var shield := _add_cylinder(root, Vector3.ZERO, 0.31, 0.065, mats["primary"], "ShieldFace", 18)
++        shield.rotation.x = PI * 0.5
++        var rim := _add_cylinder(root, Vector3(0, 0, -0.025), 0.33, 0.025, mats["trim"], "ShieldRim", 18)
++        rim.rotation.x = PI * 0.5
++        var boss := _add_ellipsoid(root, Vector3(0, 0, -0.08), Vector3(0.10, 0.10, 0.065), mats["trim"], "ShieldBoss")
++        boss.rotation.x = PI * 0.5
+     else:
+-        _add_cylinder(weapon, Vector3(0, -0.08, 0), 0.03, 0.30, grip, "Grip", 10)
++        _add_box(root, Vector3.ZERO, Vector3(0.32, 0.42, 0.055), mats["primary"], "OffHandItem")
+ 
+ func _build_face(head: Node3D, skin: Material, skin_shadow: Material, eye_white: Material, iris: Material, mouth_mat: Material) -> void:
+     var face_scale := Vector3(0.31, 0.37, 0.30)
+diff -ruN aevorwyn-armor-base/src/player/player_visual.gd aevorwyn-armor-green/src/player/player_visual.gd
+--- a/src/player/player_visual.gd	2026-09-13 21:49:13.415043607 +0000
++++ b/src/player/player_visual.gd	2026-09-13 21:57:10.020601002 +0000
+@@ -100,6 +100,6 @@
+     var tool_visible := bool(pose.get("tool_visible", false))
+     if _axe != null:
+         _axe.visible = tool_visible
+-    var equipped := find_child("EquippedMainHand", true, false) as Node3D
++    var equipped := find_child("EquipmentMainHand", true, false) as Node3D
+     if equipped != null:
+         equipped.visible = not tool_visible
