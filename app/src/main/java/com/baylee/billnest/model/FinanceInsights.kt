@@ -80,7 +80,8 @@ fun isNonVariableSpendingCategory(category: String): Boolean {
 }
 
 fun isVariableSpendingForInsights(row: FinanceTransaction): Boolean =
-    !row.transfer &&
+    !row.pending &&
+        !row.transfer &&
         !row.income &&
         !row.excludedFromSpending &&
         row.amount > 0.0 &&
@@ -93,12 +94,22 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
         YearMonth.from(date) == target
     }
 
-    fun totalsFor(rows: List<FinanceTransaction>): Map<String, Double> = rows
-        .groupBy { it.category.ifBlank { "Other" } }
-        .mapValues { (_, grouped) -> grouped.sumOf { it.amount.coerceAtLeast(0.0) } }
-        .toList()
-        .sortedByDescending { it.second }
-        .toMap()
+    fun totalsFor(rows: List<FinanceTransaction>): Map<String, Double> {
+        val totals = linkedMapOf<String, Double>()
+        rows.forEach { row ->
+            val splits = row.splits.orEmpty()
+            if (splits.isEmpty()) {
+                val key = row.category.ifBlank { "Other" }
+                totals[key] = (totals[key] ?: 0.0) + row.amount.coerceAtLeast(0.0)
+            } else {
+                splits.forEach { split ->
+                    val key = split.category.ifBlank { "Other" }
+                    totals[key] = (totals[key] ?: 0.0) + split.amount.coerceAtLeast(0.0)
+                }
+            }
+        }
+        return totals.toList().sortedByDescending { it.second }.toMap()
+    }
 
     fun latestSnapshot(target: YearMonth): FinancialSnapshot? = data.financialSnapshots
         .mapNotNull { snapshot ->
@@ -120,7 +131,7 @@ fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
         .maxByOrNull { it.second }
 
     val income = data.transactions.filter { row ->
-        if (row.transfer) return@filter false
+        if (row.pending || row.transfer) return@filter false
         val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@filter false
         YearMonth.from(date) == month &&
             (row.income || row.category.equals("Income", true) ||
