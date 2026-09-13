@@ -53,14 +53,21 @@ fun TransactionEditorDialog(
     var typeExpanded by remember { mutableStateOf(false) }
     var fromExpanded by remember { mutableStateOf(false) }
     var toExpanded by remember { mutableStateOf(false) }
+    var splitMode by remember(existing?.id) { mutableStateOf(existing?.splits.orEmpty().isNotEmpty()) }
+    var splits by remember(existing?.id) { mutableStateOf(existing?.splits.orEmpty()) }
 
     val parsedAmount = if (isPlaid) existing?.amount else amount.toDoubleOrNull()?.coerceAtLeast(0.0)
     val validDate = runCatching { LocalDate.parse(dateIso) }.isSuccess
     val transferValid = classification != TransactionClassification.TRANSFER ||
         (fromAccountId.isNotBlank() && toAccountId.isNotBlank() && fromAccountId != toAccountId)
-    val canSave = existing != null && isPlaid ||
-        (name.isNotBlank() && parsedAmount != null && validDate && transferValid)
-    val plaidCanSave = existing != null && isPlaid && transferValid
+    val expectedSplitTotal = parsedAmount?.let { abs(it) } ?: 0.0
+    val splitValid = !splitMode || (
+        splits.size >= 2 &&
+            splits.all { it.category.isNotBlank() && it.amount > 0.0 } &&
+            abs(splits.sumOf { it.amount } - expectedSplitTotal) <= 0.01
+        )
+    val canSave = (existing != null && isPlaid || (name.isNotBlank() && parsedAmount != null && validDate && transferValid)) && splitValid
+    val plaidCanSave = existing != null && isPlaid && transferValid && splitValid
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -154,6 +161,71 @@ fun TransactionEditorDialog(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Split this transaction")
+                                Text("Use different categories for parts of the same purchase.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = splitMode,
+                                onCheckedChange = { enabled ->
+                                    splitMode = enabled
+                                    if (enabled && splits.size < 2) {
+                                        val half = expectedSplitTotal / 2.0
+                                        splits = listOf(
+                                            TransactionSplit(category = category.ifBlank { "Other" }, amount = half),
+                                            TransactionSplit(category = "Other", amount = expectedSplitTotal - half)
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                        if (splitMode) {
+                            splits.forEachIndexed { index, split ->
+                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedTextField(
+                                            value = split.category,
+                                            onValueChange = { value ->
+                                                splits = splits.toMutableList().also { rows -> rows[index] = split.copy(category = value) }
+                                            },
+                                            label = { Text("Split category") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true
+                                        )
+                                        OutlinedTextField(
+                                            value = if (split.amount == 0.0) "" else split.amount.toString(),
+                                            onValueChange = { value ->
+                                                val filtered = value.filter { ch -> ch.isDigit() || ch == '.' }
+                                                splits = splits.toMutableList().also { rows -> rows[index] = split.copy(amount = filtered.toDoubleOrNull() ?: 0.0) }
+                                            },
+                                            label = { Text("Split amount") },
+                                            prefix = { Text("$") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true
+                                        )
+                                        if (splits.size > 2) {
+                                            TextButton(onClick = { splits = splits.filterIndexed { rowIndex, _ -> rowIndex != index } }) {
+                                                Text("Remove split", color = MaterialTheme.colorScheme.error)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { splits = splits + TransactionSplit(category = "Other", amount = 0.0) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("+ Add split") }
+                            Text(
+                                "Split total ${java.text.NumberFormat.getCurrencyInstance().format(splits.sumOf { it.amount })} of ${java.text.NumberFormat.getCurrencyInstance().format(expectedSplitTotal)}",
+                                color = if (splitValid) BillNestColors.positive else MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                     TransactionClassification.INCOME -> {
                         Text(
@@ -216,13 +288,16 @@ fun TransactionEditorDialog(
                             source = TransactionSource.MANUAL
                         )
                     }
+                    val classified = reclassifyTransaction(
+                        transaction = base,
+                        classification = classification,
+                        fromAccountId = fromAccountId.ifBlank { null },
+                        toAccountId = toAccountId.ifBlank { null },
+                        spendingCategory = category.ifBlank { "Other" }
+                    )
                     onSave(
-                        reclassifyTransaction(
-                            transaction = base,
-                            classification = classification,
-                            fromAccountId = fromAccountId.ifBlank { null },
-                            toAccountId = toAccountId.ifBlank { null },
-                            spendingCategory = category.ifBlank { "Other" }
+                        classified.copy(
+                            splits = if (classification == TransactionClassification.SPENDING && splitMode) splits else null
                         )
                     )
                 }
