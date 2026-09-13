@@ -57,7 +57,7 @@ diff --git a/src/game/main_world.gd b/src/game/main_world.gd
              _mobile_gestures.touch_pressed(touch.index, touch.position)
          else:
              _apply_mobile_gesture(_mobile_gestures.touch_released(touch.index, touch.position))
-@@ -137,18 +140,39 @@ func _apply_mobile_gesture(gesture: Dictionary) -> void:
+@@ -137,16 +140,36 @@ func _apply_mobile_gesture(gesture: Dictionary) -> void:
          "tap":
              var tap_position: Vector2 = gesture.get("position", Vector2.ZERO)
 +            _pending_ground_hold = false
