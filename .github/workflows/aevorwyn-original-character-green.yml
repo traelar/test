@@ -39,6 +39,7 @@ jobs:
           test "$(sha256sum /tmp/original-character-green.patch | awk '{print $1}')" = "b823936b82c3cb614147046a5acb190e00d7e6a5cbcf5c019171a0afda6802f6"
           patch --batch --forward -p1 -d aevorwyn < /tmp/original-character-green.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-compile-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-test-fix.patch
 
       - name: Reject production vendor asset references
         working-directory: aevorwyn
