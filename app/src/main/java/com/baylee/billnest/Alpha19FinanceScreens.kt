@@ -395,11 +395,11 @@ fun DebtPageV3(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
                     Text("Debt", style = MaterialTheme.typography.headlineSmall)
                     Text("Cards and loans live here, separate from your asset accounts.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button({ adding = true }) { Text("+ Debt") }
+                Button(onClick = { adding = true }) { Text("+ Add debt") }
             }
         }
         item {
