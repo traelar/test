@@ -340,7 +340,7 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
     FinanceList(modifier, "Subscriptions", "", {}) {
         item {
             Text(
-                "BillNest detects recurring charges from real transaction patterns. Nothing is confirmed without you.",
+                "BillNest detects recurring charges from real transaction patterns. You can also open Transactions and tap Track sub on any charge you know is a subscription.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -349,7 +349,7 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
             FinanceRow(row.name, "Confirmed", "Tracked subscription", BillNestColors.positive) { vm.deleteSubscriptionPreference(row.merchantKey) }
         }
         if (subscriptions.isNotEmpty()) item { Text("Needs review", style = MaterialTheme.typography.titleMedium) }
-        if (subscriptions.isEmpty() && confirmed.isEmpty()) item { EmptyFinanceState("No recurring subscriptions detected yet. Three matching charges are needed.") }
+        if (subscriptions.isEmpty() && confirmed.isEmpty()) item { EmptyFinanceState("No subscriptions tracked yet. Confirm a detected pattern here or use Track sub on any transaction.") }
         items(subscriptions, key = { "${it.name}-${it.frequency}" }) { row ->
             PremiumFinanceCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
