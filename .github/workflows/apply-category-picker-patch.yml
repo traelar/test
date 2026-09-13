@@ -1,0 +1,116 @@
+name: Apply BillNest Category Picker Integration
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [ billnest-apk-build ]
+    paths:
+      - .github/workflows/apply-category-picker-patch.yml
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: billnest-apk-build
+          fetch-depth: 0
+      - name: Apply category picker and Insights layout integration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              s = p.read_text()
+              actual = s.count(old)
+              if actual < count:
+                  raise SystemExit(f"Expected at least {count} occurrence(s) in {path}, found {actual}: {old[:120]!r}")
+              s = s.replace(old, new, count)
+              p.write_text(s)
+
+          # Bill editor: one shared category picker, with canonical save behavior.
+          bill = 'app/src/main/java/com/baylee/billnest/BillEditorDialogV2.kt'
+          replace(bill,
+          '''    var catExpanded by remember { mutableStateOf(false) }\n''', '')
+          replace(bill,
+          '''    val categoryScroll = rememberScrollState()\n    val categories = remember(data.bills, data.transactions) { billCategoryOptions(data) }\n''', '')
+          replace(bill,
+          '''                Text("Category", style = MaterialTheme.typography.labelLarge)\n                OutlinedTextField(\n                    value = category,\n                    onValueChange = { category = it },\n                    label = { Text("Category name") },\n                    supportingText = { Text("Choose one you already use or type your own.") },\n                    modifier = Modifier.fillMaxWidth(),\n                    singleLine = true\n                )\n                Box(Modifier.fillMaxWidth()) {\n                    OutlinedButton(\n                        onClick = { catExpanded = true },\n                        modifier = Modifier.fillMaxWidth()\n                    ) {\n                        Text("Choose existing category")\n                    }\n                    DropdownMenu(\n                        expanded = catExpanded,\n                        onDismissRequest = { catExpanded = false },\n                        modifier = Modifier.heightIn(max = 320.dp),\n                        scrollState = categoryScroll\n                    ) {\n                        categories.forEach { value ->\n                            DropdownMenuItem(\n                                text = { Text(value) },\n                                onClick = {\n                                    category = value\n                                    catExpanded = false\n                                }\n                            )\n                        }\n                    }\n                }\n''',
+          '''                CategoryPickerField(\n                    data = data,\n                    value = category,\n                    onValueChange = { category = it },\n                    label = "Category"\n                )\n''')
+          replace(bill,
+          '''                            category = category.trim().ifBlank { "Other" },\n''',
+          '''                            category = canonicalCategoryName(data, category),\n''')
+
+          # Transaction rules: use the same picker and canonical category values.
+          screens = 'app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt'
+          replace(screens,
+          '''        TransactionRuleDialog(ruleFor, { newRule = false; ruleFor = null }) {\n''',
+          '''        TransactionRuleDialog(data, ruleFor, { newRule = false; ruleFor = null }) {\n''')
+          replace(screens,
+          '''fun TransactionRuleDialog(source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {\n''',
+          '''fun TransactionRuleDialog(data: AppData, source: FinanceTransaction?, onDismiss: () -> Unit, onSave: (TransactionRule) -> Unit) {\n''')
+          replace(screens,
+          '''                OutlinedTextField(category, { category = it }, label = { Text("Category (optional)") }, modifier = Modifier.fillMaxWidth())\n''',
+          '''                CategoryPickerField(\n                    data = data,\n                    value = category,\n                    onValueChange = { category = it },\n                    label = "Category (optional)",\n                    allowEmpty = true,\n                    emptyLabel = "No category change"\n                )\n''')
+          replace(screens,
+          '''                    category = category.trim().ifBlank { null },\n''',
+          '''                    category = category.trim().takeIf { it.isNotBlank() }?.let { canonicalCategoryName(data, it) },\n''')
+
+          # Budget include/exclude categories: use reusable multi-select plus Add new category.
+          budget = 'app/src/main/java/com/baylee/billnest/BudgetPageV2.kt'
+          replace(budget,
+          '''    var categories by remember(existing?.id) {\n        mutableStateOf(\n            (existing?.includedCategories?.takeIf { it.isNotEmpty() }\n                ?: existing?.category?.takeIf { it != "Other" }?.let(::listOf)\n                ?: emptyList()).joinToString(", ")\n        )\n    }\n    var excludedCategories by remember(existing?.id) { mutableStateOf(existing?.excludedCategories?.joinToString(", ").orEmpty()) }\n''',
+          '''    var categories by remember(existing?.id) {\n        mutableStateOf(\n            existing?.includedCategories?.takeIf { it.isNotEmpty() }\n                ?: existing?.category?.takeIf { it != "Other" }?.let(::listOf)\n                ?: emptyList()\n        )\n    }\n    var excludedCategories by remember(existing?.id) { mutableStateOf(existing?.excludedCategories ?: emptyList()) }\n''')
+          replace(budget,
+          '''                            categories = suggestion.category\n''',
+          '''                            categories = listOf(suggestion.category)\n''')
+          replace(budget,
+          '''            OutlinedTextField(\n                value = categories,\n                onValueChange = { categories = it },\n                label = { Text("Categories included") },\n                supportingText = { Text("One or several, separated by commas. Example: Groceries, Household") },\n                modifier = Modifier.fillMaxWidth()\n            )\n''',
+          '''            CategoryMultiPickerField(\n                data = data,\n                selected = categories,\n                onSelectedChange = { categories = it },\n                label = "Categories included",\n                extraOptions = categories + excludedCategories\n            )\n''')
+          replace(budget,
+          '''                OutlinedTextField(\n                    value = excludedCategories,\n                    onValueChange = { excludedCategories = it },\n                    label = { Text("Exclude categories") },\n                    modifier = Modifier.fillMaxWidth()\n                )\n''',
+          '''                CategoryMultiPickerField(\n                    data = data,\n                    selected = excludedCategories,\n                    onSelectedChange = { excludedCategories = it },\n                    label = "Exclude categories",\n                    extraOptions = categories + excludedCategories\n                )\n''')
+          replace(budget,
+          '''                        val includeCategories = parseRules(categories)\n''',
+          '''                        val includeCategories = categories\n                            .map { canonicalCategoryName(data, it) }\n                            .distinctBy(::normalizeCategoryKey)\n                        val excludeCategoryRules = excludedCategories\n                            .map { canonicalCategoryName(data, it) }\n                            .distinctBy(::normalizeCategoryKey)\n''')
+          replace(budget,
+          '''                            excludedCategories = parseRules(excludedCategories),\n''',
+          '''                            excludedCategories = excludeCategoryRules,\n''')
+
+          # Insights: phone-safe 2-column action rows and category-aware transaction rule editor.
+          insights = 'app/src/main/java/com/baylee/billnest/InsightsPageV5.kt'
+          replace(insights,
+          '''private val insightsMoney = NumberFormat.getCurrencyInstance()\nprivate fun iMoney(value: Double): String = insightsMoney.format(value)\n''',
+          '''private val insightsMoney = NumberFormat.getCurrencyInstance()\nprivate fun iMoney(value: Double): String = insightsMoney.format(value)\n\nprivate enum class InsightTransactionAction { EDIT, SUBSCRIPTION, RULE, DELETE }\n\nprivate fun insightTransactionActionRows(includeSubscription: Boolean): List<List<InsightTransactionAction>> =\n    if (includeSubscription) {\n        listOf(\n            listOf(InsightTransactionAction.EDIT, InsightTransactionAction.SUBSCRIPTION),\n            listOf(InsightTransactionAction.RULE, InsightTransactionAction.DELETE)\n        )\n    } else {\n        listOf(\n            listOf(InsightTransactionAction.EDIT, InsightTransactionAction.RULE),\n            listOf(InsightTransactionAction.DELETE)\n        )\n    }\n''')
+          replace(insights,
+          '''                                        Row(\n                                            Modifier.fillMaxWidth(),\n                                            horizontalArrangement = Arrangement.End\n                                        ) {\n                                            val merchantKey = subscriptionKey(tx.name)\n                                            val trackedSubscription = data.subscriptionPreferences.any {\n                                                it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED\n                                            }\n                                            TextButton(onClick = {\n                                                reopenCategory = category\n                                                editingTransaction = tx\n                                                selectedCategory = null\n                                            }) { Text("Edit") }\n                                            if (!tx.income && !tx.transfer) {\n                                                TextButton(onClick = {\n                                                    if (trackedSubscription) {\n                                                        vm.deleteSubscriptionPreference(merchantKey)\n                                                    } else {\n                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))\n                                                    }\n                                                }) { Text(if (trackedSubscription) "Untrack sub" else "Track sub") }\n                                            }\n                                            TextButton(onClick = {\n                                                reopenCategory = category\n                                                ruleFor = tx\n                                                selectedCategory = null\n                                            }) { Text("Make rule") }\n                                            TextButton(onClick = { vm.deleteTransaction(tx.id) }) {\n                                                Text("Delete", color = MaterialTheme.colorScheme.error)\n                                            }\n                                        }\n''',
+          '''                                        val merchantKey = subscriptionKey(tx.name)\n                                        val trackedSubscription = data.subscriptionPreferences.any {\n                                            it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED\n                                        }\n                                        insightTransactionActionRows(!tx.income && !tx.transfer).forEach { actionRow ->\n                                            Row(\n                                                Modifier.fillMaxWidth(),\n                                                horizontalArrangement = Arrangement.spacedBy(6.dp)\n                                            ) {\n                                                actionRow.forEach { action ->\n                                                    TextButton(\n                                                        modifier = Modifier.weight(1f),\n                                                        onClick = {\n                                                            when (action) {\n                                                                InsightTransactionAction.EDIT -> {\n                                                                    reopenCategory = category\n                                                                    editingTransaction = tx\n                                                                    selectedCategory = null\n                                                                }\n                                                                InsightTransactionAction.SUBSCRIPTION -> {\n                                                                    if (trackedSubscription) {\n                                                                        vm.deleteSubscriptionPreference(merchantKey)\n                                                                    } else {\n                                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))\n                                                                    }\n                                                                }\n                                                                InsightTransactionAction.RULE -> {\n                                                                    reopenCategory = category\n                                                                    ruleFor = tx\n                                                                    selectedCategory = null\n                                                                }\n                                                                InsightTransactionAction.DELETE -> vm.deleteTransaction(tx.id)\n                                                            }\n                                                        }\n                                                    ) {\n                                                        Text(\n                                                            when (action) {\n                                                                InsightTransactionAction.EDIT -> "Edit"\n                                                                InsightTransactionAction.SUBSCRIPTION -> if (trackedSubscription) "Untrack sub" else "Track sub"\n                                                                InsightTransactionAction.RULE -> "Make rule"\n                                                                InsightTransactionAction.DELETE -> "Delete"\n                                                            },\n                                                            color = if (action == InsightTransactionAction.DELETE) MaterialTheme.colorScheme.error else LocalContentColor.current,\n                                                            maxLines = 1,\n                                                            softWrap = false\n                                                        )\n                                                    }\n                                                }\n                                            }\n                                        }\n''')
+          replace(insights,
+          '''        TransactionRuleDialog(\n            source = transaction,\n''',
+          '''        TransactionRuleDialog(\n            data = data,\n            source = transaction,\n''')
+
+          # Alpha29 release metadata.
+          gradle = 'app/build.gradle.kts'
+          replace(gradle, '        versionCode = 35\n', '        versionCode = 36\n')
+          replace(gradle, '        versionName = "2.0.0-alpha28"\n', '        versionName = "2.0.0-alpha29"\n')
+
+          build = '.github/workflows/build-billnest-apk.yml'
+          p = Path(build)
+          s = p.read_text().replace('BillNest-v2.0.0-alpha28-debug.apk', 'BillNest-v2.0.0-alpha29-debug.apk')\
+                           .replace('BillNest-v2.0.0-alpha28-debug-apk', 'BillNest-v2.0.0-alpha29-debug-apk')
+          p.write_text(s)
+          PY
+
+          git config user.name "BillNest CI"
+          git config user.email "actions@github.com"
+          git add app/src/main/java/com/baylee/billnest/BillEditorDialogV2.kt \
+                  app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt \
+                  app/src/main/java/com/baylee/billnest/BudgetPageV2.kt \
+                  app/src/main/java/com/baylee/billnest/InsightsPageV5.kt \
+                  app/build.gradle.kts .github/workflows/build-billnest-apk.yml
+          git diff --cached --check
+          git commit -m "feat: unify BillNest category pickers and fix Insights actions"
+          git push origin HEAD:billnest-apk-build
