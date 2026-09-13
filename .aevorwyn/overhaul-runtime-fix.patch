@@ -1,0 +1,29 @@
+--- a/src/game/main_world.gd
++++ b/src/game/main_world.gd
+@@ -37,8 +37,8 @@ func _ready() -> void:
+ 
+     _player = PLAYER_SCENE.instantiate() as PlayerController
+     _player.name = "Player"
+-    _player.global_position = _spawn_point
+     add_child(_player)
++    _player.global_position = _spawn_point
+     _player_visual = _player.get_node("Visual") as PlayerVisual
+     _player_visual.chop_impact.connect(_on_chop_impact)
+ 
+@@ -473,15 +473,15 @@ func _spawn_resources() -> void:
+     ]
+     for position in positions:
+         var resource := RESOURCE_SCENE.instantiate() as ResourceNode
+-        resource.global_position = position
+         add_child(resource)
++        resource.global_position = position
+ 
+ func _spawn_enemies() -> void:
+     for position in [Vector3(-1.8, 0, 6.5), Vector3(2.0, 0, 8.3)]:
+         var enemy := ENEMY_SCENE.instantiate() as Enemy
+-        enemy.global_position = position
+         add_child(enemy)
++        enemy.global_position = position
+ 
+ func _build_world_labels() -> void:
+     var camp := Label3D.new()
