@@ -134,4 +134,95 @@ class SmartTransactionRuleEngineTest {
         assertEquals("RAW BANK MERCHANT", result.name)
         assertEquals("Clean Merchant", result.displayNameOverride)
     }
+
+    @Test
+    fun incomingPipelineRunsLegacyThenMerchantThenSmartBeforeMergePreservesUserOverride() {
+        val account = Account(
+            id = "local-checking",
+            name = "Checking",
+            type = AccountType.CHECKING,
+            source = AccountSource.PLAID,
+            plaidAccountId = "plaid-checking",
+            role = AccountRole.SPENDING
+        )
+        val legacy = TransactionRule(
+            id = "legacy",
+            merchantContains = "WM SUPERCENTER",
+            renameTo = "Legacy Walmart",
+            category = "Shopping"
+        )
+        val merchant = MerchantProfile(
+            id = "walmart",
+            displayName = "Walmart",
+            aliases = listOf("WM SUPERCENTER"),
+            preferredCategory = "Groceries",
+            updatedAtEpochMs = 1L
+        )
+        val smart = SmartTransactionRule(
+            id = "walmart-household",
+            name = "Walmart household",
+            priority = 20,
+            match = SmartRuleMatch(
+                merchantProfileId = merchant.id,
+                accountId = account.id
+            ),
+            action = SmartRuleAction(
+                displayName = "Walmart Household",
+                category = "Household"
+            ),
+            updatedAtEpochMs = 2L
+        )
+        val saved = FinanceTransaction(
+            id = "tx-1",
+            name = "WM SUPERCENTER OLD",
+            amount = 40.0,
+            dateIso = "2026-09-12",
+            category = "Medical",
+            accountId = account.id,
+            source = TransactionSource.PLAID,
+            userClassificationOverride = true,
+            displayNameOverride = "Walmart",
+            merchantProfileId = merchant.id,
+            appliedSmartRuleId = smart.id
+        )
+        val data = AppData(
+            accounts = listOf(account),
+            transactions = listOf(saved),
+            transactionRules = listOf(legacy),
+            merchantProfiles = listOf(merchant),
+            smartTransactionRules = listOf(smart)
+        )
+        val incoming = FinanceTransaction(
+            id = saved.id,
+            name = "WM SUPERCENTER 1234",
+            amount = 55.0,
+            dateIso = "2026-09-13",
+            category = "Other",
+            accountId = account.plaidAccountId,
+            source = TransactionSource.PLAID
+        )
+
+        val accountIds = data.accounts
+            .filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
+            .associate { it.plaidAccountId!! to it.id }
+        val mapped = incoming.copy(accountId = accountIds[incoming.accountId] ?: incoming.accountId)
+        val processed = processIncomingTransactions(data, listOf(mapped)).transactions.single()
+
+        assertEquals(account.id, processed.accountId)
+        assertEquals("WM SUPERCENTER 1234", processed.name)
+        assertEquals(merchant.id, processed.merchantProfileId)
+        assertEquals(smart.id, processed.appliedSmartRuleId)
+        assertEquals("Walmart Household", processed.displayNameOverride)
+        assertEquals("Household", processed.category)
+
+        val merged = mergePlaidTransactions(data.transactions, listOf(processed)).single()
+        assertEquals("WM SUPERCENTER 1234", merged.name)
+        assertEquals(55.0, merged.amount, 0.001)
+        assertEquals(account.id, merged.accountId)
+        assertEquals("Medical", merged.category)
+        assertTrue(merged.userClassificationOverride)
+        assertEquals("Walmart", merged.displayNameOverride)
+        assertEquals(merchant.id, merged.merchantProfileId)
+        assertEquals(smart.id, merged.appliedSmartRuleId)
+    }
 }
