@@ -24,7 +24,7 @@ fun findBillPaymentMatch(bill: Bill, transactions: List<FinanceTransaction>): Bi
     val billWords = normalizeBillText(bill.name).split(' ').filter { it.length > 2 }.toSet()
 
     return transactions.asSequence()
-        .filterNot { it.transfer || it.income || it.excludedFromSpending }
+        .filterNot { it.pending || it.transfer || it.income || it.excludedFromSpending }
         .mapNotNull { transaction ->
             val date = runCatching { LocalDate.parse(transaction.dateIso) }.getOrNull() ?: return@mapNotNull null
             val dayGap = abs(ChronoUnit.DAYS.between(due, date))
