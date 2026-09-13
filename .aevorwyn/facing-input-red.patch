@@ -1,0 +1,40 @@
+--- a/tests/test_mobile_gesture_interpreter.gd
++++ b/tests/test_mobile_gesture_interpreter.gd
+@@ -59,4 +59,13 @@
+         if magnify_release.get("type", "") == "tap":
+             failures.append("a touch involved in magnify/zoom must never resolve as a world tap")
+ 
++    gestures.reset()
++    gestures.touch_pressed(0, Vector2(300, 220))
++    var camera_drag_events := gestures.touch_dragged(0, Vector2(311, 220), Vector2(11, 0))
++    if camera_drag_events.is_empty() or camera_drag_events[0].get("type", "") != "orbit":
++        failures.append("an intentional 11-pixel camera drag must rotate instead of becoming a walk tap")
++    var camera_drag_release := gestures.touch_released(0, Vector2(311, 220))
++    if camera_drag_release.get("type", "") != "none":
++        failures.append("releasing after a camera rotation drag must never request walking")
++
+     return failures
+--- a/tests/test_rigged_character_visual.gd
++++ b/tests/test_rigged_character_visual.gd
+@@ -19,9 +19,19 @@
+         failures.append("rigged character visual must expose deterministic required asset paths")
+     else:
+         var paths: Array = visual.required_asset_paths()
+-        if not paths.has("res://assets/vendor/quaternius/character/Male_Peasant.gltf"):
+-            failures.append("player visual should target the CC0 Male Peasant character")
++        if not paths.has("res://assets/vendor/quaternius/character/Male_Ranger.gltf"):
++            failures.append("player visual should use the complete CC0 Male Ranger character so the head is present")
+         if not paths.has("res://assets/vendor/quaternius/animations/UAL2_Standard.glb"):
+             failures.append("player visual should target the CC0 animation library")
++    if not visual.has_method("model_yaw_correction"):
++        failures.append("rigged character must expose its model-forward correction")
++    elif absf(float(visual.model_yaw_correction()) - PI) > 0.001:
++        failures.append("rigged character must rotate the imported model 180 degrees so walking/chopping face the logical target")
++
++    if visual.has_method("axe_mount_profile"):
++        var axe_profile: Dictionary = visual.axe_mount_profile()
++        if absf(float(axe_profile.get("yaw_degrees", 999.0))) > 0.01:
++            failures.append("axe should keep its imported forward orientation instead of being flipped behind the player")
++
+     visual.free()
+     return failures
