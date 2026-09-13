@@ -1,1 +1,1 @@
-strict-runtime-red-1
+strict-runtime-green-1
