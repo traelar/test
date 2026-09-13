@@ -89,7 +89,7 @@ jobs:
 
       - name: Run game tests
         working-directory: aevorwyn
-        run: Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
+        run: timeout 30s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
 
       - name: Set Android build version
         working-directory: aevorwyn
