@@ -1,0 +1,195 @@
+-            "right_arm": arm_angle,
+-            "torso_pitch": torso_pitch,
+-            "body_bob": -0.035 * sin(phase * PI),
+-            "axe_visible": true,
+-        }
++        return _chop_pose(clampf(_chop_phase, 0.0, 0.9999))
+ 
+     if _action == "walking":
+         var stride := sin(_walk_phase) * 0.58
+@@ -77,8 +59,13 @@
+             "right_leg": -stride,
+             "left_arm": -stride * 0.72,
+             "right_arm": stride * 0.72,
++            "left_elbow": 0.05,
++            "right_elbow": 0.05,
+             "torso_pitch": 0.04,
++            "torso_yaw": 0.0,
+             "body_bob": absf(sin(_walk_phase * 2.0)) * 0.035,
++            "axe_pitch": 0.0,
++            "grip_inward": 0.0,
+             "axe_visible": false,
+         }
+ 
+@@ -88,7 +75,82 @@
+         "right_leg": 0.0,
+         "left_arm": 0.04 * sin(_idle_time * 1.3),
+         "right_arm": -0.04 * sin(_idle_time * 1.3),
++        "left_elbow": 0.04,
++        "right_elbow": 0.04,
+         "torso_pitch": 0.0,
++        "torso_yaw": 0.0,
+         "body_bob": sin(_idle_time * 1.7) * 0.018,
++        "axe_pitch": 0.0,
++        "grip_inward": 0.0,
+         "axe_visible": false,
+     }
++
++func _chop_pose(phase: float) -> Dictionary:
++    var shoulder := -0.25
++    var elbow := 0.24
++    var torso_pitch := 0.0
++    var torso_yaw := 0.0
++    var axe_pitch := 0.08
++    var grip_inward := 0.08
++    var body_bob := 0.0
++
++    if phase < 0.24:
++        var t := _smooth01(phase / 0.24)
++        shoulder = lerpf(-0.25, -1.72, t)
++        elbow = lerpf(0.24, 1.08, t)
++        torso_pitch = lerpf(0.0, -0.09, t)
++        torso_yaw = lerpf(0.0, -0.20, t)
++        axe_pitch = lerpf(0.08, -0.30, t)
++        grip_inward = lerpf(0.08, 0.26, t)
++        body_bob = lerpf(0.0, 0.035, t)
++    elif phase < CHOP_IMPACT_PHASE:
++        var t := _ease_in_quad((phase - 0.24) / (CHOP_IMPACT_PHASE - 0.24))
++        shoulder = lerpf(-1.72, 0.54, t)
++        elbow = lerpf(1.08, 0.18, t)
++        torso_pitch = lerpf(-0.09, 0.24, t)
++        torso_yaw = lerpf(-0.20, 0.13, t)
++        axe_pitch = lerpf(-0.30, 0.16, t)
++        grip_inward = lerpf(0.26, 0.13, t)
++        body_bob = lerpf(0.035, -0.055, t)
++    elif phase < 0.70:
++        var t := _smooth01((phase - CHOP_IMPACT_PHASE) / (0.70 - CHOP_IMPACT_PHASE))
++        shoulder = lerpf(0.54, 0.76, t)
++        elbow = lerpf(0.18, 0.38, t)
++        torso_pitch = lerpf(0.24, 0.29, t)
++        torso_yaw = lerpf(0.13, 0.20, t)
++        axe_pitch = lerpf(0.16, 0.24, t)
++        grip_inward = lerpf(0.13, 0.10, t)
++        body_bob = lerpf(-0.055, -0.03, t)
++    else:
++        var t := _smooth01((phase - 0.70) / 0.30)
++        shoulder = lerpf(0.76, -0.25, t)
++        elbow = lerpf(0.38, 0.24, t)
++        torso_pitch = lerpf(0.29, 0.0, t)
++        torso_yaw = lerpf(0.20, 0.0, t)
++        axe_pitch = lerpf(0.24, 0.08, t)
++        grip_inward = lerpf(0.10, 0.08, t)
++        body_bob = lerpf(-0.03, 0.0, t)
++
++    return {
++        "action": "chopping",
++        "left_leg": -0.08 - maxf(0.0, torso_pitch) * 0.22,
++        "right_leg": 0.11 + maxf(0.0, torso_pitch) * 0.18,
++        "left_arm": shoulder * 0.96,
++        "right_arm": shoulder,
++        "left_elbow": elbow * 0.90,
++        "right_elbow": elbow,
++        "torso_pitch": torso_pitch,
++        "torso_yaw": torso_yaw,
++        "body_bob": body_bob,
++        "axe_pitch": axe_pitch,
++        "grip_inward": grip_inward,
++        "axe_visible": true,
++    }
++
++func _smooth01(value: float) -> float:
++    var t := clampf(value, 0.0, 1.0)
++    return t * t * (3.0 - 2.0 * t)
++
++func _ease_in_quad(value: float) -> float:
++    var t := clampf(value, 0.0, 1.0)
++    return t * t
+--- a/src/player/player_visual.gd
++++ b/src/player/player_visual.gd
+@@ -8,6 +8,8 @@
+ var _torso: Node3D
+ var _left_arm: Node3D
+ var _right_arm: Node3D
++var _left_forearm: Node3D
++var _right_forearm: Node3D
+ var _left_leg: Node3D
+ var _right_leg: Node3D
+ var _axe: Node3D
+@@ -66,28 +68,39 @@
+     _add_box(head, Vector3(-0.115, 0.015, -0.285), Vector3(0.055, 0.055, 0.03), hair)
+     _add_box(head, Vector3(0.115, 0.015, -0.285), Vector3(0.055, 0.055, 0.03), hair)
+ 
+-    _left_arm = _make_limb("LeftArm", Vector3(-0.48, 1.66, 0), Vector3(0.22, 0.76, 0.24), tunic, skin)
+-    _right_arm = _make_limb("RightArm", Vector3(0.48, 1.66, 0), Vector3(0.22, 0.76, 0.24), tunic, skin)
++    _left_arm = _make_articulated_arm("LeftArm", Vector3(-0.48, 1.66, 0), tunic, skin)
++    _right_arm = _make_articulated_arm("RightArm", Vector3(0.48, 1.66, 0), tunic, skin)
++    _left_forearm = _left_arm.get_node("Forearm") as Node3D
++    _right_forearm = _right_arm.get_node("Forearm") as Node3D
+     _left_leg = _make_leg("LeftLeg", Vector3(-0.20, 0.98, 0), trousers, leather)
+     _right_leg = _make_leg("RightLeg", Vector3(0.20, 0.98, 0), trousers, leather)
+ 
++    var axe_grip := Node3D.new()
++    axe_grip.name = "AxeGrip"
++    axe_grip.position = Vector3(0, -0.42, -0.015)
++    _right_forearm.add_child(axe_grip)
+     _axe = Node3D.new()
+     _axe.name = "Axe"
+-    _axe.position = Vector3(0.0, -0.77, -0.02)
+-    _right_arm.add_child(_axe)
+-    _add_cylinder(_axe, Vector3(0, -0.24, 0), 0.055, 0.58, leather)
+-    _add_box(_axe, Vector3(-0.12, -0.52, 0), Vector3(0.33, 0.17, 0.10), metal)
+-    _add_box(_axe, Vector3(-0.275, -0.52, 0), Vector3(0.045, 0.21, 0.13), metal_edge)
++    axe_grip.add_child(_axe)
++    _add_cylinder(_axe, Vector3(0, -0.24, 0), 0.05, 0.64, leather)
++    _add_box(_axe, Vector3(-0.13, -0.54, 0), Vector3(0.36, 0.18, 0.10), metal)
++    _add_box(_axe, Vector3(-0.30, -0.54, 0), Vector3(0.055, 0.23, 0.13), metal_edge)
+     _axe.visible = false
+ 
+-func _make_limb(name_text: String, position_value: Vector3, size: Vector3, sleeve: Material, skin: Material) -> Node3D:
+-    var pivot := Node3D.new()
+-    pivot.name = name_text
+-    pivot.position = position_value
+-    _body_root.add_child(pivot)
+-    _add_box(pivot, Vector3(0, -0.27, 0), Vector3(size.x, size.y * 0.66, size.z), sleeve)
+-    _add_box(pivot, Vector3(0, -0.59, 0), Vector3(size.x * 0.82, size.y * 0.34, size.z * 0.82), skin)
+-    return pivot
++func _make_articulated_arm(name_text: String, position_value: Vector3, sleeve: Material, skin: Material) -> Node3D:
++    var shoulder := Node3D.new()
++    shoulder.name = name_text
++    shoulder.position = position_value
++    _body_root.add_child(shoulder)
++    _add_box(shoulder, Vector3(0, -0.19, 0), Vector3(0.23, 0.40, 0.25), sleeve)
++
++    var forearm := Node3D.new()
++    forearm.name = "Forearm"
++    forearm.position = Vector3(0, -0.39, 0)
++    shoulder.add_child(forearm)
++    _add_box(forearm, Vector3(0, -0.18, 0), Vector3(0.20, 0.36, 0.21), skin)
++    _add_box(forearm, Vector3(0, -0.39, -0.005), Vector3(0.21, 0.15, 0.22), skin)
++    return shoulder
+ 
+ func _make_leg(name_text: String, position_value: Vector3, trousers: Material, leather: Material) -> Node3D:
+     var pivot := Node3D.new()
+@@ -102,11 +115,19 @@
+     if _body_root == null:
+         return
+     _body_root.position.y = float(pose.get("body_bob", 0.0))
+-    _torso.rotation.x = float(pose.get("torso_pitch", 0.0))
+-    _left_arm.rotation.x = float(pose.get("left_arm", 0.0))
+-    _right_arm.rotation.x = float(pose.get("right_arm", 0.0))
++    _torso.rotation = Vector3(
++        float(pose.get("torso_pitch", 0.0)),
++        float(pose.get("torso_yaw", 0.0)),
++        0.0
++    )
++    var grip_inward := float(pose.get("grip_inward", 0.0))
++    _left_arm.rotation = Vector3(float(pose.get("left_arm", 0.0)), 0.0, grip_inward)
++    _right_arm.rotation = Vector3(float(pose.get("right_arm", 0.0)), 0.0, -grip_inward)
++    _left_forearm.rotation.x = float(pose.get("left_elbow", 0.0))
++    _right_forearm.rotation.x = float(pose.get("right_elbow", 0.0))
+     _left_leg.rotation.x = float(pose.get("left_leg", 0.0))
+     _right_leg.rotation.x = float(pose.get("right_leg", 0.0))
++    _axe.rotation.x = float(pose.get("axe_pitch", 0.0))
+     _axe.visible = bool(pose.get("axe_visible", false))
+ 
+ func _add_box(parent: Node3D, position_value: Vector3, size: Vector3, material: Material) -> MeshInstance3D:
