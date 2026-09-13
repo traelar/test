@@ -147,7 +147,10 @@ fun TransactionEditorDialog(
                         OutlinedTextField(
                             value = category,
                             onValueChange = { category = it },
-                            label = { Text("Spending category") },
+                            label = { Text("Category for this transaction") },
+                            supportingText = {
+                                Text("This changes only this purchase. Use a transaction rule only when you want matching merchant charges changed automatically.")
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
