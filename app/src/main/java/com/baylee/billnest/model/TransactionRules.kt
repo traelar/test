@@ -16,6 +16,11 @@ data class TransactionTombstone(
     val createdAtEpochMs: Long = System.currentTimeMillis()
 )
 
+/**
+ * Legacy rule application retained for existing callers. The newer smart-rule engine stores a
+ * presentation rename in displayNameOverride so Plaid identity can stay authoritative, while this
+ * compatibility path continues to expose the renamed name exactly as older screens/tests expect.
+ */
 fun applyTransactionRules(
     transactions: List<FinanceTransaction>,
     rules: List<TransactionRule>
@@ -31,9 +36,10 @@ fun applyTransactionRules(
         )
         ?: return@map transaction
 
+    val rename = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() }
     transaction.copy(
-        displayNameOverride = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() }
-            ?: transaction.displayNameOverride,
+        name = rename ?: transaction.name,
+        displayNameOverride = rename ?: transaction.displayNameOverride,
         category = if (transaction.userClassificationOverride) {
             transaction.category
         } else {
