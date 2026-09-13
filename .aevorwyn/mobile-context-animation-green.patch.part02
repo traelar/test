@@ -56,7 +56,7 @@
 +    elif phase < CHOP_IMPACT_PHASE:
 +        var t := _ease_in_quad((phase - 0.24) / (CHOP_IMPACT_PHASE - 0.24))
 +        shoulder = lerpf(-1.72, 0.54, t)
-+        elbow = lerpf(1.08, 0.18, t)
++        elbow = lerpf(1.08, 0.12, _smooth01((phase - 0.24) / (CHOP_IMPACT_PHASE - 0.24)))
 +        torso_pitch = lerpf(-0.09, 0.24, t)
 +        torso_yaw = lerpf(-0.20, 0.13, t)
 +        axe_pitch = lerpf(-0.30, 0.16, t)
