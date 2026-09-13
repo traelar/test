@@ -17,10 +17,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -97,7 +99,8 @@ fun HouseholdSettings(
         }
     }
 
-    LazyColumn(
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -267,6 +270,7 @@ fun HouseholdSettings(
                 }
             }
         }
+        }
     }
 
     disconnectTarget?.let { target ->
@@ -307,7 +311,10 @@ fun HouseholdSettings(
 private fun HouseholdCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+        colors = CardDefaults.cardColors(
+            containerColor = BillNestColors.card,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
         border = BorderStroke(1.dp, BillNestColors.border),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -319,7 +326,10 @@ private fun HouseholdCard(content: @Composable ColumnScope.() -> Unit) {
 private fun EmptyHouseholdMessage(message: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = BillNestColors.card)
+        colors = CardDefaults.cardColors(
+            containerColor = BillNestColors.card,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
     ) {
         Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
