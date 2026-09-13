@@ -267,18 +267,26 @@ class BillRepository(
         queueDelete("review_resolution", fingerprint)
     }
 
-    fun syncPlaidTransactions(incoming: List<FinanceTransaction>) = update { data ->
-        val accountIds = data.accounts.filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
-            .associate { it.plaidAccountId!! to it.id }
-        val mapped = incoming.map { row -> row.copy(accountId = accountIds[row.accountId] ?: row.accountId) }
-        val ruled = applyTransactionRules(mapped, data.transactionRules)
-        data.copy(
-            transactions = mergePlaidTransactions(
-                existing = data.transactions,
-                incoming = ruled,
-                deletedPlaidTransactionIds = transactionTombstoneIds(data)
+    fun syncPlaidTransactions(incoming: List<FinanceTransaction>) {
+        val beforeSubscriptions = _data.value.subscriptionPreferences
+        update { data ->
+            val accountIds = data.accounts
+                .filter { it.source == AccountSource.PLAID && !it.plaidAccountId.isNullOrBlank() }
+                .associate { it.plaidAccountId!! to it.id }
+            val mapped = incoming.map { row ->
+                row.copy(accountId = accountIds[row.accountId] ?: row.accountId)
+            }
+            val processed = processIncomingTransactions(data, mapped)
+            data.copy(
+                transactions = mergePlaidTransactions(
+                    existing = data.transactions,
+                    incoming = processed.transactions,
+                    deletedPlaidTransactionIds = transactionTombstoneIds(data)
+                ),
+                subscriptionPreferences = processed.subscriptionPreferences
             )
-        )
+        }
+        queueChangedSubscriptionPreferences(beforeSubscriptions, _data.value.subscriptionPreferences)
     }
 
     fun saveBudget(value: Budget) {
