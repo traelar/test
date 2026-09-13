@@ -1,0 +1,200 @@
+--- a/src/input/mobile_gesture_interpreter.gd
++++ b/src/input/mobile_gesture_interpreter.gd
+@@ -3,12 +3,15 @@
+ 
+ const DEFAULT_DRAG_THRESHOLD := 18.0
+ const PINCH_ZOOM_SENSITIVITY := 0.018
++const LONG_PRESS_SECONDS := 0.45
+ 
+ var drag_threshold := DEFAULT_DRAG_THRESHOLD
+ var _touches: Dictionary = {}
+ var _starts: Dictionary = {}
+ var _dragged: Dictionary = {}
+ var _consumed: Dictionary = {}
++var _held_time: Dictionary = {}
++var _long_press_fired: Dictionary = {}
+ var _pinch_distance := 0.0
+ 
+ func reset() -> void:
+@@ -16,6 +19,8 @@
+     _starts.clear()
+     _dragged.clear()
+     _consumed.clear()
++    _held_time.clear()
++    _long_press_fired.clear()
+     _pinch_distance = 0.0
+ 
+ func touch_pressed(index: int, position: Vector2) -> void:
+@@ -23,9 +28,10 @@
+     _starts[index] = position
+     _dragged[index] = false
+     _consumed[index] = false
++    _held_time[index] = 0.0
++    _long_press_fired[index] = false
+     if _touches.size() >= 2:
+-        for key in _touches.keys():
+-            _consumed[key] = true
++        consume_active_touches()
+         _pinch_distance = _first_two_distance()
+ 
+ func touch_dragged(index: int, position: Vector2, relative: Vector2) -> Array[Dictionary]:
+@@ -36,8 +42,7 @@
+     _touches[index] = position
+ 
+     if _touches.size() >= 2:
+-        for key in _touches.keys():
+-            _consumed[key] = true
++        consume_active_touches()
+         var current_distance := _first_two_distance()
+         if _pinch_distance > 0.0:
+             var distance_delta := current_distance - _pinch_distance
+@@ -59,6 +64,31 @@
+         })
+     return events
+ 
++func advance(delta: float) -> Array[Dictionary]:
++    var events: Array[Dictionary] = []
++    if _touches.size() != 1:
++        return events
++    var keys := _touches.keys()
++    if keys.is_empty():
++        return events
++    var index: int = int(keys[0])
++    if bool(_consumed.get(index, false)) or bool(_dragged.get(index, false)) or bool(_long_press_fired.get(index, false)):
++        return events
++    var next_time := float(_held_time.get(index, 0.0)) + maxf(0.0, delta)
++    _held_time[index] = next_time
++    if next_time >= LONG_PRESS_SECONDS:
++        _long_press_fired[index] = true
++        _consumed[index] = true
++        events.append({
++            "type": "long_press",
++            "position": Vector2(_starts.get(index, _touches[index])),
++        })
++    return events
++
++func consume_active_touches() -> void:
++    for key in _touches.keys():
++        _consumed[key] = true
++
+ func touch_released(index: int, position: Vector2) -> Dictionary:
+     if not _touches.has(index):
+         return {"type": "none"}
+@@ -71,6 +101,8 @@
+     _starts.erase(index)
+     _dragged.erase(index)
+     _consumed.erase(index)
++    _held_time.erase(index)
++    _long_press_fired.erase(index)
+ 
+     if _touches.size() < 2:
+         _pinch_distance = 0.0
+--- a/src/game/main_world.gd
++++ b/src/game/main_world.gd
+@@ -16,6 +16,12 @@
+ var _player_attack_cooldown := 0.0
+ var _enemy_attack_cooldown := 0.0
+ var _mobile_gestures := MobileGestureInterpreter.new()
++var _right_mouse_down := false
++var _right_mouse_dragged := false
++var _right_mouse_start := Vector2.ZERO
++var _context_screen_position := Vector2.ZERO
++var _context_hit_position := Vector3.ZERO
++var _context_target: Object
+ var _spawn_point := Vector3(0, 0, 0)
+ 
+ func _ready() -> void:
+@@ -43,6 +49,7 @@
+     _hud.name = "HUD"
+     add_child(_hud)
+     _hud.bind_session(_session)
++    _hud.context_action_selected.connect(_on_context_action_selected)
+ 
+     _spawn_resources()
+     _spawn_enemies()
+@@ -51,6 +58,8 @@
+ func _process(delta: float) -> void:
+     if _player == null:
+         return
++    for mobile_event in _mobile_gestures.advance(delta):
++        _apply_mobile_gesture(mobile_event)
+     _session.update_checkpoint(_player.global_position)
+     _process_pending_resource()
+     _process_combat(delta)
+@@ -67,19 +76,38 @@
+     if event is InputEventMouseButton:
+         var mouse := event as InputEventMouseButton
+         if mouse.button_index == MOUSE_BUTTON_WHEEL_UP and mouse.pressed:
++            _hud.hide_context_menu()
+             _camera_rig.adjust_zoom(-0.8)
+             return
+         if mouse.button_index == MOUSE_BUTTON_WHEEL_DOWN and mouse.pressed:
++            _hud.hide_context_menu()
+             _camera_rig.adjust_zoom(0.8)
+             return
+         if mouse.button_index == MOUSE_BUTTON_LEFT and mouse.pressed:
++            if _hud.is_context_menu_open():
++                _hud.hide_context_menu()
++                return
+             _handle_pointer_click(mouse.position)
+             return
++        if mouse.button_index == MOUSE_BUTTON_RIGHT:
++            if mouse.pressed:
++                _right_mouse_down = true
++                _right_mouse_dragged = false
++                _right_mouse_start = mouse.position
++            else:
++                if _right_mouse_down and not _right_mouse_dragged:
++                    _open_context_menu_at(mouse.position)
++                _right_mouse_down = false
++            return
+ 
+     if event is InputEventMouseMotion:
+         var motion := event as InputEventMouseMotion
+         if motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+-            _camera_rig.orbit(motion.relative)
++            if _right_mouse_down and motion.position.distance_to(_right_mouse_start) >= 8.0:
++                _right_mouse_dragged = true
++            if _right_mouse_dragged:
++                _hud.hide_context_menu()
++                _camera_rig.orbit(motion.relative)
+             return
+ 
+     if event is InputEventScreenTouch:
+@@ -98,28 +126,31 @@
+ 
+     if event is InputEventMagnifyGesture:
+         var magnify := event as InputEventMagnifyGesture
++        _mobile_gestures.consume_active_touches()
++        _hud.hide_context_menu()
+         _camera_rig.adjust_zoom((1.0 - magnify.factor) * 4.0)
+ 
+ func _apply_mobile_gesture(gesture: Dictionary) -> void:
+     match String(gesture.get("type", "none")):
+         "tap":
+             var tap_position: Vector2 = gesture.get("position", Vector2.ZERO)
++            if _hud.is_context_menu_open():
++                _hud.hide_context_menu()
++                return
+             _handle_pointer_click(tap_position)
++        "long_press":
++            var hold_position: Vector2 = gesture.get("position", Vector2.ZERO)
++            _open_context_menu_at(hold_position)
+         "orbit":
++            _hud.hide_context_menu()
+             var drag_delta: Vector2 = gesture.get("delta", Vector2.ZERO)
+             _camera_rig.orbit(drag_delta)
+         "zoom":
++            _hud.hide_context_menu()
+             _camera_rig.adjust_zoom(float(gesture.get("amount", 0.0)))
+ 
+ func _handle_pointer_click(screen_position: Vector2) -> void:
+-    var camera := _camera_rig.get_camera()
+-    if camera == null:
+-        return
+-    var ray_from := camera.project_ray_origin(screen_position)
+-    var ray_to := ray_from + camera.project_ray_normal(screen_position) * 250.0
+-    var query := PhysicsRayQueryParameters3D.create(ray_from, ray_to)
+-    query.exclude = [_player.get_rid()]
+-    var hit := get_world_3d().direct_space_state.intersect_ray(query)
++    var hit := _raycast_pointer(screen_position)
