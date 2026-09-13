@@ -174,3 +174,24 @@ fun previewSmartRuleSet(
         )
     }
 }
+
+/**
+ * Apply the approved Stage A processing order to fresh bank transactions. Account IDs are mapped
+ * before this helper is called; legacy compatibility rules run first, then merchant profiles, then
+ * deterministic smart rules. The result remains non-mutating and is merged with saved user-owned
+ * overrides by mergePlaidTransactions afterwards.
+ */
+fun processIncomingTransactions(
+    data: AppData,
+    incoming: List<FinanceTransaction>
+): SmartRuleBatchResult {
+    val legacy = applyTransactionRules(incoming, data.transactionRules)
+    val profiled = applyMerchantProfiles(legacy, data.merchantProfiles, data)
+    return applySmartRuleSet(
+        transactions = profiled,
+        rules = data.smartTransactionRules,
+        profiles = data.merchantProfiles,
+        subscriptions = data.subscriptionPreferences,
+        data = data
+    )
+}
