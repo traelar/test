@@ -9,6 +9,8 @@ on:
       - '.aevorwyn/mobile-context-animation-green.patch.part00'
       - '.aevorwyn/mobile-context-animation-green.patch.part01'
       - '.aevorwyn/mobile-context-animation-green.patch.part02'
+      - '.aevorwyn/mobile-ground-hold-red.patch'
+      - '.aevorwyn/mobile-ground-hold-green.patch'
       - 'aevorwyn-mobile-test-trigger.txt'
   workflow_dispatch:
 
@@ -53,7 +55,7 @@ jobs:
         working-directory: aevorwyn
         run: python3 tools/static_verify.py
 
-      - name: Apply regression tests
+      - name: Apply context and animation regression tests
         run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
 
       - name: Apply mobile interaction and animation fix
@@ -64,6 +66,15 @@ jobs:
             .aevorwyn/mobile-context-animation-green.patch.part02 \
             > mobile-context-animation-green.patch
           patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+
+      - name: Apply ground hold and camera regression tests
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+
+      - name: Apply ground hold fix if present
+        run: |
+          if [ -f .aevorwyn/mobile-ground-hold-green.patch ]; then
+            patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+          fi
 
       - name: Download Godot 4.7.2
         run: |
