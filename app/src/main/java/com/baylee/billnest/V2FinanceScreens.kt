@@ -211,6 +211,7 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<SavingsGoal?>(null) }
     var funding by remember { mutableStateOf<SavingsGoal?>(null) }
+    var emergencyMonths by remember { mutableIntStateOf(3) }
 
     val savingsAccounts = data.accounts.filter {
         it.type != AccountType.CREDIT && it.role != AccountRole.CREDIT &&
@@ -221,6 +222,7 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
     val goalTargets = data.savingsGoals.sumOf { it.targetAmount.coerceAtLeast(0.0) }
     val autoPerPayday = data.savingsGoals.sumOf { it.paydayContribution.coerceAtLeast(0.0) }
     val overallProgress = if (goalTargets > 0.0) (goalSaved / goalTargets).coerceIn(0.0, 1.0).toFloat() else 0f
+    val emergencyEstimate = remember(data, emergencyMonths) { emergencyFundEstimate(data, emergencyMonths) }
 
     FinanceList(modifier, "Savings / Goals", "Add goal", { adding = true }) {
         item {
@@ -257,6 +259,36 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
             }
         }
 
+        item {
+            PremiumFinanceCard {
+                Text("Emergency fund calculator", style = MaterialTheme.typography.titleMedium)
+                Text("Uses essential bills and essential budgets to estimate a realistic cushion.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 3, 6).forEach { months ->
+                        FilterChip(
+                            selected = emergencyMonths == months,
+                            onClick = { emergencyMonths = months },
+                            label = { Text(months.toString() + " mo") }
+                        )
+                    }
+                }
+                Text("Essential monthly cost " + currencyV2(emergencyEstimate.monthlyEssentials))
+                Text("Suggested target " + currencyV2(emergencyEstimate.target), style = MaterialTheme.typography.titleLarge)
+                Button(
+                    enabled = emergencyEstimate.target > 0.0,
+                    onClick = {
+                        val existing = data.savingsGoals.firstOrNull { it.name.equals("Emergency Fund", true) }
+                        vm.saveGoal(
+                            (existing ?: SavingsGoal(name = "Emergency Fund", targetAmount = emergencyEstimate.target)).copy(
+                                targetAmount = emergencyEstimate.target,
+                                priority = SavingsPriority.EMERGENCY
+                            )
+                        )
+                    }
+                ) { Text("Use as Emergency Fund goal") }
+            }
+        }
+
         if (data.savingsGoals.isEmpty()) {
             item {
                 EmptyFinanceState(
@@ -265,7 +297,7 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
             }
         }
 
-        items(data.savingsGoals.sortedWith(compareBy<SavingsGoal> { it.targetDateIso == null }.thenBy { it.targetDateIso ?: "" }.thenBy { it.name }), key = { it.id }) { row ->
+        items(recommendedSavingsOrder(data.savingsGoals), key = { it.id }) { row ->
             val summary = savingsGoalProgress(row)
             val pace = savingsGoalTargetPace(row)
             val linked = row.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
@@ -278,6 +310,11 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(row.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            (row.priority ?: SavingsPriority.NORMAL).name.replace('_', ' ') + " priority",
+                            color = BillNestColors.info,
+                            style = MaterialTheme.typography.labelMedium
+                        )
                         Text(
                             if (summary.remaining <= 0.005) "Goal complete" else "${currencyV2(summary.remaining)} left to save",
                             color = if (summary.remaining <= 0.005) BillNestColors.positive else MaterialTheme.colorScheme.onSurfaceVariant
@@ -332,6 +369,15 @@ fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modi
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+                val plannedFrom = row.transferFromAccountId?.let { id -> data.accounts.firstOrNull { it.id == id }?.name }
+                val plannedTo = row.transferToAccountId?.let { id -> data.accounts.firstOrNull { it.id == id }?.name }
+                if (plannedFrom != null && plannedTo != null && row.paydayContribution > 0.0) {
+                    Text(
+                        "Planned each payday: " + plannedFrom + " → " + plannedTo,
+                        color = BillNestColors.info,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton({ funding = row }) { Text("Adjust saved") }
@@ -381,9 +427,17 @@ private fun SavingsGoalEditorDialog(
     var targetDate by remember(existing?.id) { mutableStateOf(existing?.targetDateIso.orEmpty()) }
     var contribution by remember(existing?.id) { mutableStateOf(existing?.paydayContribution?.takeIf { it > 0.0 }?.toString().orEmpty()) }
     var accountId by remember(existing?.id) { mutableStateOf(existing?.accountId.orEmpty()) }
+    var priority by remember(existing?.id) { mutableStateOf(existing?.priority ?: SavingsPriority.NORMAL) }
+    var transferFromId by remember(existing?.id) { mutableStateOf(existing?.transferFromAccountId.orEmpty()) }
+    var transferToId by remember(existing?.id) { mutableStateOf(existing?.transferToAccountId.orEmpty()) }
     var accountExpanded by remember { mutableStateOf(false) }
+    var priorityExpanded by remember { mutableStateOf(false) }
+    var transferFromExpanded by remember { mutableStateOf(false) }
+    var transferToExpanded by remember { mutableStateOf(false) }
 
     val assetAccounts = data.accounts.filter { it.type != AccountType.CREDIT && it.role != AccountRole.CREDIT }
+    val spendingAccounts = assetAccounts.filter { it.includeInSpendable && it.role != AccountRole.SAVINGS }
+    val transferSavingsAccounts = assetAccounts.filter { it.type == AccountType.SAVINGS || it.role == AccountRole.SAVINGS }
     val parsedTarget = target.toDoubleOrNull()
     val parsedSaved = saved.toDoubleOrNull()
     val canSave = name.isNotBlank() && parsedTarget != null && parsedTarget > 0.0 && parsedSaved != null && parsedSaved >= 0.0
@@ -423,6 +477,53 @@ private fun SavingsGoalEditorDialog(
                 )
 
                 Box {
+                    OutlinedButton({ priorityExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Priority: " + priority.name.replace('_', ' '))
+                    }
+                    DropdownMenu(priorityExpanded, { priorityExpanded = false }) {
+                        SavingsPriority.entries.forEach { value ->
+                            DropdownMenuItem(
+                                { Text(value.name.replace('_', ' ')) },
+                                { priority = value; priorityExpanded = false }
+                            )
+                        }
+                    }
+                }
+
+                if ((contribution.toDoubleOrNull() ?: 0.0) > 0.0 && spendingAccounts.isNotEmpty() && transferSavingsAccounts.isNotEmpty()) {
+                    Text("Optional planned transfer route", style = MaterialTheme.typography.labelLarge)
+                    Box {
+                        OutlinedButton({ transferFromExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("From: " + (spendingAccounts.firstOrNull { it.id == transferFromId }?.name ?: "Choose checking"))
+                        }
+                        DropdownMenu(transferFromExpanded, { transferFromExpanded = false }) {
+                            spendingAccounts.forEach { account ->
+                                DropdownMenuItem({ Text(account.name) }, { transferFromId = account.id; transferFromExpanded = false })
+                            }
+                        }
+                    }
+                    Box {
+                        OutlinedButton({ transferToExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("To: " + (transferSavingsAccounts.firstOrNull { it.id == transferToId }?.name ?: "Choose savings"))
+                        }
+                        DropdownMenu(transferToExpanded, { transferToExpanded = false }) {
+                            transferSavingsAccounts.forEach { account ->
+                                DropdownMenuItem({ Text(account.name) }, {
+                                    transferToId = account.id
+                                    accountId = account.id
+                                    transferToExpanded = false
+                                })
+                            }
+                        }
+                    }
+                    Text(
+                        "BillNest plans this transfer. Your bank remains authoritative for the real movement of money.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Box {
                     OutlinedButton({ accountExpanded = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Linked account: ${assetAccounts.firstOrNull { it.id == accountId }?.name ?: "None"}")
                     }
@@ -459,7 +560,10 @@ private fun SavingsGoalEditorDialog(
                             savedAmount = parsedSaved!!.coerceIn(0.0, parsedTarget),
                             targetDateIso = targetDate.takeIf { it.isNotBlank() },
                             accountId = accountId.ifBlank { null },
-                            paydayContribution = (contribution.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+                            paydayContribution = (contribution.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0),
+                            priority = priority,
+                            transferFromAccountId = transferFromId.ifBlank { null },
+                            transferToAccountId = transferToId.ifBlank { null }
                         )
                     )
                 }
