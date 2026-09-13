@@ -54,7 +54,8 @@ data class Payday(
     val amount: Double,
     val nextDateIso: String,
     val frequency: Frequency = Frequency.BIWEEKLY,
-    val receivedDates: List<String> = emptyList()
+    val receivedDates: List<String> = emptyList(),
+    val payCalculator: PaycheckCalculatorSettings? = null
 ) {
     fun nextDate(): LocalDate = LocalDate.parse(nextDateIso)
 }
