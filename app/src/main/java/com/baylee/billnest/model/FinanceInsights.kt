@@ -87,6 +87,38 @@ fun isVariableSpendingForInsights(row: FinanceTransaction): Boolean =
         row.amount > 0.0 &&
         !isNonVariableSpendingCategory(row.category)
 
+data class CategorySpendingBreakdownItem(
+    val transaction: FinanceTransaction,
+    val amount: Double,
+    val fromSplit: Boolean
+)
+
+fun categorySpendingBreakdown(
+    data: AppData,
+    month: YearMonth,
+    category: String
+): List<CategorySpendingBreakdownItem> =
+    data.transactions.mapNotNull { row ->
+        if (!isVariableSpendingForInsights(row)) return@mapNotNull null
+        val date = runCatching { LocalDate.parse(row.dateIso) }.getOrNull() ?: return@mapNotNull null
+        if (YearMonth.from(date) != month) return@mapNotNull null
+
+        val splits = row.splits.orEmpty()
+        if (splits.isNotEmpty()) {
+            val amount = splits
+                .filter { it.category.equals(category, true) }
+                .sumOf { it.amount.coerceAtLeast(0.0) }
+            if (amount > 0.005) CategorySpendingBreakdownItem(row, amount, true) else null
+        } else if (row.category.equals(category, true)) {
+            CategorySpendingBreakdownItem(row, row.amount.coerceAtLeast(0.0), false)
+        } else {
+            null
+        }
+    }.sortedWith(
+        compareByDescending<CategorySpendingBreakdownItem> { it.transaction.dateIso }
+            .thenByDescending { it.amount }
+    )
+
 fun monthlyRecap(data: AppData, month: YearMonth): MonthlyRecap {
     fun rowsFor(target: YearMonth): List<FinanceTransaction> = data.transactions.filter { row ->
         if (!isVariableSpendingForInsights(row)) return@filter false
