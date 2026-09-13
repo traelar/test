@@ -6,7 +6,9 @@ on:
     paths:
       - '.github/workflows/test-aevorwyn-mobile-interactions.yml'
       - '.aevorwyn/mobile-context-animation-red.patch'
-      - '.aevorwyn/mobile-context-animation-green.patch'
+      - '.aevorwyn/mobile-context-animation-green.patch.part00'
+      - '.aevorwyn/mobile-context-animation-green.patch.part01'
+      - '.aevorwyn/mobile-context-animation-green.patch.part02'
       - 'aevorwyn-mobile-test-trigger.txt'
   workflow_dispatch:
 
@@ -54,11 +56,14 @@ jobs:
       - name: Apply regression tests
         run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
 
-      - name: Apply fix if present
+      - name: Apply mobile interaction and animation fix
         run: |
-          if [ -f .aevorwyn/mobile-context-animation-green.patch ]; then
-            patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-green.patch
-          fi
+          cat \
+            .aevorwyn/mobile-context-animation-green.patch.part00 \
+            .aevorwyn/mobile-context-animation-green.patch.part01 \
+            .aevorwyn/mobile-context-animation-green.patch.part02 \
+            > mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
 
       - name: Download Godot 4.7.2
         run: |
