@@ -1,0 +1,174 @@
+diff --git a/tests/test_inventory_tab.gd b/tests/test_inventory_tab.gd
+new file mode 100644
+index 0000000..7bcb2e8
+--- /dev/null
++++ b/tests/test_inventory_tab.gd
+@@ -0,0 +1,45 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var script = load("res://src/ui/inventory_tab.gd")
++    if script == null:
++        failures.append("inventory tab should exist")
++        return failures
++    var tab = script.new()
++    if not tab.has_method("actions_for_item"):
++        failures.append("inventory tab must derive contextual actions from item capabilities")
++        tab.free()
++        return failures
++
++    var blade_actions: Array = tab.actions_for_item(ContentDB.item(&"training_blade"))
++    if not blade_actions.has("wield"):
++        failures.append("Traveler's Blade should expose Wield")
++    if not blade_actions.has("examine") or not blade_actions.has("drop"):
++        failures.append("inventory items should expose Examine and Drop")
++
++    var ration_actions: Array = tab.actions_for_item(ContentDB.item(&"small_ration"))
++    if not ration_actions.has("eat"):
++        failures.append("Field Ration should expose Eat")
++
++    var log_actions: Array = tab.actions_for_item(ContentDB.item(&"oak_log"))
++    if not log_actions.has("use"):
++        failures.append("Oak Log should expose Use")
++
++    if not tab.has_method("slot_view_models"):
++        failures.append("inventory tab must build view models from authoritative fixed slots")
++    else:
++        var inventory := InventoryService.new().create(24)
++        inventory = InventoryService.new().add_item(inventory, &"oak_log", 3, true)["state"]
++        var models: Array = tab.slot_view_models(inventory)
++        if models.size() != 24:
++            failures.append("inventory tab must preserve all 24 authoritative slots")
++        elif StringName(models[0].get("item_id", "")) != &"oak_log" or int(models[0].get("quantity", 0)) != 3:
++            failures.append("inventory slot view must preserve item id and stack quantity")
++    tab.free()
++
++    var session := GameSession.new()
++    session.new_game("Inventory Tester")
++    if not session.has_method("inventory_action"):
++        failures.append("GameSession must own authoritative inventory actions")
++    return failures
+diff --git a/tests/test_player_panel.gd b/tests/test_player_panel.gd
+new file mode 100644
+index 0000000..05b50e6
+--- /dev/null
++++ b/tests/test_player_panel.gd
+@@ -0,0 +1,28 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var script = load("res://src/ui/player_panel.gd")
++    if script == null:
++        failures.append("player panel should exist")
++        return failures
++    var panel = script.new()
++    if not panel.has_method("open_tab") or not panel.has_method("close") or not panel.has_method("is_open") or not panel.has_method("current_tab"):
++        failures.append("player panel must expose open/switch/close API")
++        panel.free()
++        return failures
++    panel.open_tab("inventory")
++    if not bool(panel.is_open()):
++        failures.append("player panel should be open after opening inventory")
++    if String(panel.current_tab()) != "inventory":
++        failures.append("inventory should be the active tab")
++    panel.open_tab("skills")
++    if String(panel.current_tab()) != "skills":
++        failures.append("skills should become the active tab")
++    if not panel.has_method("blocks_world_input") or not bool(panel.blocks_world_input()):
++        failures.append("open player panel must consume touch input instead of moving the world")
++    panel.close()
++    if bool(panel.is_open()):
++        failures.append("player panel should close")
++    panel.free()
++    return failures
+diff --git a/tests/test_rigged_character_visual.gd b/tests/test_rigged_character_visual.gd
+new file mode 100644
+index 0000000..b91065b
+--- /dev/null
++++ b/tests/test_rigged_character_visual.gd
+@@ -0,0 +1,27 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var script = load("res://src/player/rigged_character_visual.gd")
++    if script == null:
++        failures.append("rigged character visual controller should exist")
++        return failures
++
++    var visual = script.new()
++    if not visual.has_method("animation_name_for_action"):
++        failures.append("rigged character visual must expose animation_name_for_action()")
++        return failures
++    if StringName(visual.animation_name_for_action(&"chopping")) != &"TreeChopping_Loop":
++        failures.append("chopping must use the real TreeChopping_Loop animation")
++    if not visual.has_method("uses_high_quality_assets"):
++        failures.append("rigged character visual must report whether high-quality assets are active")
++    if not visual.has_method("required_asset_paths"):
++        failures.append("rigged character visual must expose deterministic required asset paths")
++    else:
++        var paths: Array = visual.required_asset_paths()
++        if not paths.has("res://assets/vendor/quaternius/character/Male_Peasant.gltf"):
++            failures.append("player visual should target the CC0 Male Peasant character")
++        if not paths.has("res://assets/vendor/quaternius/animations/UAL2_Standard.glb"):
++            failures.append("player visual should target the CC0 animation library")
++    visual.free()
++    return failures
+diff --git a/tests/test_runner.gd b/tests/test_runner.gd
+index 95cc6d9..d1847de 100644
+--- a/tests/test_runner.gd
++++ b/tests/test_runner.gd
+@@ -12,6 +12,10 @@ const TEST_PATHS := [
+     "res://tests/test_player_action_animator.gd",
+     "res://tests/test_player_presentation.gd",
+     "res://tests/test_mobile_ground_hold_behavior.gd",
++    "res://tests/test_rigged_character_visual.gd",
++    "res://tests/test_player_panel.gd",
++    "res://tests/test_inventory_tab.gd",
++    "res://tests/test_skills_tab.gd",
+ ]
+ 
+ var _ran := false
+diff --git a/tests/test_skills_tab.gd b/tests/test_skills_tab.gd
+new file mode 100644
+index 0000000..fb3c17b
+--- /dev/null
++++ b/tests/test_skills_tab.gd
+@@ -0,0 +1,35 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var script = load("res://src/ui/skills_tab.gd")
++    if script == null:
++        failures.append("skills tab should exist")
++        return failures
++    var tab = script.new()
++    if not tab.has_method("set_skills") or not tab.has_method("total_level") or not tab.has_method("skill_detail"):
++        failures.append("skills tab must expose skills, total level, and detail APIs")
++        tab.free()
++        return failures
++
++    var skills: Dictionary = {}
++    for skill_id in GameSession.SKILL_IDS:
++        skills[skill_id] = {"level": 1, "xp": 0}
++    tab.set_skills(skills)
++    if tab.skill_count() != 14:
++        failures.append("skills tab must show all 14 approved skills")
++    if tab.total_level() != 14:
++        failures.append("fourteen level-one skills should total level 14")
++
++    var detail: Dictionary = tab.skill_detail(&"woodcutting")
++    if StringName(detail.get("skill_id", "")) != &"woodcutting":
++        failures.append("skill detail must identify Woodcutting")
++    if int(detail.get("next_level_xp", 0)) != SkillService.new().xp_for_level(2):
++        failures.append("skill detail must use the canonical XP curve for next level")
++    if int(detail.get("xp_to_next", -1)) != SkillService.new().xp_for_level(2):
++        failures.append("skill detail must show XP remaining to level 2")
++    var progress := float(detail.get("progress", -1.0))
++    if progress < 0.0 or progress > 1.0:
++        failures.append("skill detail progress must be normalized")
++    tab.free()
++    return failures
