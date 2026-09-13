@@ -569,34 +569,43 @@ fun AccountsPage(
 
 @Composable
 fun CalendarPage(data: AppData, modifier: Modifier = Modifier) {
-    var month by remember { mutableStateOf(YearMonth.now()) }
-    val monthBills = data.bills.filter { YearMonth.from(it.dueDate()) == month }.sortedBy { it.dueDate() }
-    val monthIncome = data.paydays.filter { YearMonth.from(it.nextDate()) == month }.sortedBy { it.nextDate() }
-    val formatter = DateTimeFormatter.ofPattern("MMMM yyyy")
-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val today = LocalDate.now()
+    val projection = remember(data, today) { cashFlowProjection(data, today) }
+    val formatter = DateTimeFormatter.ofPattern("MMM d")
+    LazyColumn(
+        modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { month = month.minusMonths(1) }) { Text("‹") }
-                Text(month.format(formatter), style = MaterialTheme.typography.headlineSmall)
-                TextButton(onClick = { month = month.plusMonths(1) }) { Text("›") }
-            }
+            Text("Cash-flow calendar", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Current spendable cash plus future paychecks minus unpaid bills through month-end.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        item { Text("Bills: " + currency(monthBills.sumOf { it.amount }) + " • Income: " + currency(monthIncome.sumOf { it.amount }), style = MaterialTheme.typography.titleMedium) }
-        if (monthBills.isEmpty() && monthIncome.isEmpty()) item { Text("Nothing scheduled this month.") }
-        items(monthBills, key = { "bill-" + it.id }) { b ->
+        item {
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(prettyDate(b.dueDate()), style = MaterialTheme.typography.titleMedium)
-                    Text(b.name + " • " + currency(b.amount) + " • " + b.category)
-                    accountName(data, b.accountId)?.let { Text("From: $it", style = MaterialTheme.typography.bodySmall) }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Projected month-end", style = MaterialTheme.typography.titleMedium)
+                    Text(currency(projection.endingBalance), style = MaterialTheme.typography.headlineMedium)
+                    Text("Starting spendable: " + currency(projection.startingBalance))
+                    Text(
+                        "Lowest projected balance: " + currency(projection.lowestBalance) + " on " + projection.lowestBalanceDate.format(formatter),
+                        color = if (projection.lowestBalance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
-        items(monthIncome, key = { "pay-" + it.id }) { p ->
+        items(projection.days, key = { it.date.toString() }) { day ->
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(prettyDate(p.nextDate()), style = MaterialTheme.typography.titleMedium)
-                    Text(p.label + " • +" + currency(p.amount))
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(day.date.format(formatter), style = MaterialTheme.typography.titleMedium)
+                        Text(currency(day.endingBalance), color = if (day.endingBalance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    }
+                    if (day.income > 0) Text("+ " + currency(day.income) + " expected income", color = com.baylee.billnest.ui.theme.BillNestColors.positive)
+                    if (day.bills > 0) Text("- " + currency(day.bills) + " bills", color = com.baylee.billnest.ui.theme.BillNestColors.warning)
                 }
             }
         }
