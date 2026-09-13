@@ -1,0 +1,208 @@
+name: Build Aevorwyn Android APK v5
+
+concurrency:
+  group: aevorwyn-android-v5-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-build-trigger-v5.txt'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Reconstruct exact v0.2.6 source
+        run: |
+          cat \
+            .aevorwyn/source.b64.part00 \
+            .aevorwyn/source.b64.part01 \
+            .aevorwyn/source.b64.part02 \
+            .aevorwyn/source.b64.part030 \
+            .aevorwyn/source.b64.part031 \
+            .aevorwyn/source.b64.part032 \
+            .aevorwyn/source.b64.part04 \
+            .aevorwyn/source.b64.part05 \
+            .aevorwyn/source.b64.part06 \
+            | base64 --decode > aevorwyn-source.zip
+          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
+          rm -rf aevorwyn
+          mkdir -p aevorwyn
+          unzip -q aevorwyn-source.zip -d aevorwyn
+          rm -f aevorwyn/.git
+
+      - name: Apply v0.2.6 production layers
+        run: |
+          cat \
+            .aevorwyn/mobile-point-tap.patch.part00 \
+            .aevorwyn/mobile-point-tap.patch.part01 \
+            .aevorwyn/mobile-point-tap.patch.part02 \
+            > mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+          (cd aevorwyn && python3 tools/static_verify.py)
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+          cat \
+            .aevorwyn/mobile-context-animation-green.patch.part00 \
+            .aevorwyn/mobile-context-animation-green.patch.part01 \
+            .aevorwyn/mobile-context-animation-green.patch.part02 \
+            > mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+
+      - name: Apply visual, animation, inventory and skills overhaul
+        run: |
+          base64 --decode .aevorwyn/overhaul-green.patch.gz.b64 > overhaul-green.patch.gz
+          test "$(sha256sum overhaul-green.patch.gz | awk '{print $1}')" = "ea452eb0ac20e55f112b8900d88be5002a97ff36aa33f108545ab9cff6867fb9"
+          gzip -dc overhaul-green.patch.gz > overhaul-green.patch
+          test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
+          patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
+          rm -f aevorwyn/src/game/main_world.gd.orig aevorwyn/src/input/mobile_gesture_interpreter.gd.orig
+
+      - name: Download curated CC0 Quaternius assets
+        run: |
+          set -euo pipefail
+          base='https://raw.githubusercontent.com/agentkaerf/FreeModels/main'
+          char='aevorwyn/assets/vendor/quaternius/character'
+          anim='aevorwyn/assets/vendor/quaternius/animations'
+          props='aevorwyn/assets/vendor/quaternius/props'
+          nature='aevorwyn/assets/vendor/quaternius/nature'
+          licenses='aevorwyn/assets/vendor/quaternius/licenses'
+          mkdir -p "$char" "$anim" "$props" "$nature" "$licenses"
+
+          curl -L --fail --retry 3 "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/Male_Peasant.gltf" -o "$char/Male_Peasant.gltf"
+          curl -L --fail --retry 3 "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/Male_Peasant.bin" -o "$char/Male_Peasant.bin"
+          for f in T_Peasant_BaseColor.png T_Peasant_Normal.png T_Peasant_ORM.png T_Regular_Male_Dark_BaseColor.png T_Regular_Male_Normal.png T_Regular_Male_Roughness.png; do
+            curl -L --fail --retry 3 "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/Exports/glTF%20(Godot-Unreal)/Outfits/$f" -o "$char/$f"
+          done
+          curl -L --fail --retry 3 "$base/Modular%20Character%20Outfits%20-%20Fantasy%5BStandard%5D/License_Standard.txt" -o "$licenses/character-CC0.txt"
+
+          curl -L --fail --retry 3 "$base/Universal%20Animation%20Library%202%5BStandard%5D/Unreal-Godot/UAL2_Standard.glb" -o "$anim/UAL2_Standard.glb"
+          curl -L --fail --retry 3 "$base/Universal%20Animation%20Library%202%5BStandard%5D/License.txt" -o "$licenses/animations-CC0.txt"
+
+          curl -L --fail --retry 3 "$base/Fantasy%20Props%20MegaKit%5BStandard%5D/Exports/glTF/Axe_Bronze.gltf" -o "$props/Axe_Bronze.gltf"
+          curl -L --fail --retry 3 "$base/Fantasy%20Props%20MegaKit%5BStandard%5D/Exports/glTF/Axe_Bronze.bin" -o "$props/Axe_Bronze.bin"
+          for f in T_Trim_Props_BaseColor.png T_Trim_Props_Normal.png T_Trim_Props_ORM.png; do
+            curl -L --fail --retry 3 "$base/Fantasy%20Props%20MegaKit%5BStandard%5D/Exports/glTF/$f" -o "$props/$f"
+          done
+          curl -L --fail --retry 3 "$base/Fantasy%20Props%20MegaKit%5BStandard%5D/License_Standard.txt" -o "$licenses/props-CC0.txt"
+
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/CommonTree_1.gltf" -o "$nature/CommonTree_1.gltf"
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/CommonTree_1.bin" -o "$nature/CommonTree_1.bin"
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/Rock_Medium_1.gltf" -o "$nature/Rock_Medium_1.gltf"
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/Rock_Medium_1.bin" -o "$nature/Rock_Medium_1.bin"
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/Bush_Common.gltf" -o "$nature/Bush_Common.gltf"
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/Bush_Common.bin" -o "$nature/Bush_Common.bin"
+          for f in Bark_NormalTree.png Bark_NormalTree_Normal.png Leaves_NormalTree_C.png Rocks_Diffuse.png Leaves_TwistedTree_C.png; do
+            curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/glTF/$f" -o "$nature/$f"
+          done
+          curl -L --fail --retry 3 "$base/Stylized%20Nature%20MegaKit%5BStandard%5D/License_Standard.txt" -o "$licenses/nature-CC0.txt"
+
+          test "$(sha256sum "$char/Male_Peasant.gltf" | awk '{print $1}')" = "8f5a6cf6c1cf96e0a0f8e1a861b4245d42b7f88d44e5076da3d48f3fc52f4e76"
+          test "$(sha256sum "$char/Male_Peasant.bin" | awk '{print $1}')" = "e46bde795f7b69b351d322d7a5628e07131cfb48ed0afe366293f1b3f530433c"
+          test "$(sha256sum "$anim/UAL2_Standard.glb" | awk '{print $1}')" = "9a0ffda4931f934f13fb584002c51673723b03f9655a581167e7e5dae744f086"
+          test "$(sha256sum "$nature/CommonTree_1.gltf" | awk '{print $1}')" = "b51cdea6545edb51d102dd6c27caafe62aa75e3c328ac8f9039f4e7bfd690bfa"
+          test "$(sha256sum "$nature/CommonTree_1.bin" | awk '{print $1}')" = "9dd689e84e1aa2f5b08db8def591254d582783c73737af54ba0d89b3e549c3ae"
+          find aevorwyn/assets/vendor/quaternius -type f -size 0 -print -quit | grep -q . && exit 1 || true
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" \
+            -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Install Godot export templates
+        run: |
+          curl -L --fail --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" \
+            -o templates.tpz
+          rm -rf templates
+          unzip -q templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          cp -R templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+
+      - name: Configure Godot Android SDK paths
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF2
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF2
+
+      - name: Static verification
+        working-directory: aevorwyn
+        run: python3 tools/static_verify.py
+
+      - name: Import project and vendor assets
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Run complete game tests
+        working-directory: aevorwyn
+        run: timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
+
+      - name: Boot main scene smoke test
+        working-directory: aevorwyn
+        run: timeout 8s Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 || test $? -eq 124
+
+      - name: Set Android build version
+        working-directory: aevorwyn
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=$((500 + GITHUB_RUN_NUMBER))/" export_presets.cfg
+          sed -i "s/^version\/name=.*/version\/name=\"0.3.${GITHUB_RUN_NUMBER}\"/" export_presets.cfg
+
+      - name: Export signed ARM64 APK
+        working-directory: aevorwyn
+        run: |
+          legacy_workflow="../.github/workflows/build-aevorwyn-apk.yml"
+          ks_user=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_USER:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          ks_pass=$(sed -n 's/^[[:space:]]*GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:[[:space:]]*//p' "$legacy_workflow" | head -n 1)
+          test -n "$ks_user"
+          test -n "$ks_pass"
+          echo "::add-mask::$ks_user"
+          echo "::add-mask::$ks_pass"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="${GITHUB_WORKSPACE}/app/billnest-debug.jks"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$ks_user"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$ks_pass"
+          mkdir -p builds/android
+          Godot_v4.7.2-stable_linux.x86_64 --headless --verbose --path . --export-release Android builds/android/Aevorwyn-S25-Ultra.apk
+
+      - name: Verify stable signing certificate
+        run: |
+          test -s aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          digest=$($ANDROID_HOME/build-tools/36.1.0/apksigner verify --print-certs aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk | sed -n 's/Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          test "$digest" = "0aa471987e2d6b34add2ce811df537fe8dae203a7bb474bb90cb9606e303654c"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevorwyn-S25-Ultra-APK-v5
+          path: aevorwyn/builds/android/Aevorwyn-S25-Ultra.apk
+          if-no-files-found: error
