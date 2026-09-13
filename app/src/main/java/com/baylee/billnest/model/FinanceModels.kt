@@ -138,16 +138,21 @@ fun findBillMatches(bills: List<Bill>, transactions: List<FinanceTransaction>): 
     val expenses = transactions.filter { !it.transfer && !it.income && !it.excludedFromSpending }
     return bills.filterNot { it.isPaidFor() }.mapNotNull { bill ->
         val due = runCatching { bill.dueDate() }.getOrNull() ?: return@mapNotNull null
+        val billCategory = bill.category.trim().takeUnless {
+            it.isBlank() || it.equals("Other", true) || it.equals("Income", true) || it.startsWith("Transfer", true)
+        }
         expenses.mapNotNull { transaction ->
             val date = runCatching { LocalDate.parse(transaction.dateIso) }.getOrNull() ?: return@mapNotNull null
             val dayGap = kotlin.math.abs(ChronoUnit.DAYS.between(due, date))
-            val amountGap = kotlin.math.abs(transaction.amount - bill.amount)
+            val amountGap = kotlin.math.abs(kotlin.math.abs(transaction.amount) - bill.amount)
             val amountRatio = if (bill.amount > 0) amountGap / bill.amount else 1.0
             if (dayGap > 7 || amountRatio > 0.20) return@mapNotNull null
             val billWords = normalizeMerchant(bill.name).split(' ').filter { it.length > 2 }.toSet()
             val transactionWords = normalizeMerchant(transaction.name).split(' ').filter { it.length > 2 }.toSet()
             val nameMatch = billWords.intersect(transactionWords).isNotEmpty()
-            val confidence = ((1.0 - amountRatio) * 0.65 + (1.0 - dayGap / 7.0) * 0.20 + if (nameMatch) 0.15 else 0.0).coerceIn(0.0, 1.0)
+            val categoryMatch = billCategory != null && transaction.category.trim().equals(billCategory, ignoreCase = true)
+            val semanticMatch = nameMatch || categoryMatch
+            val confidence = ((1.0 - amountRatio) * 0.65 + (1.0 - dayGap / 7.0) * 0.20 + if (semanticMatch) 0.15 else 0.0).coerceIn(0.0, 1.0)
             BillMatchSuggestion(bill.id, transaction.id, confidence, confidence >= 0.90)
         }.maxByOrNull { it.confidence }
     }
