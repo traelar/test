@@ -1,0 +1,63 @@
+diff --git a/tests/test_player_action_animator.gd b/tests/test_player_action_animator.gd
+new file mode 100644
+index 0000000..dafb6c7
+--- /dev/null
++++ b/tests/test_player_action_animator.gd
+@@ -0,0 +1,45 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var script = load("res://src/player/player_action_animator.gd")
++    if script == null:
++        failures.append("player action animator should exist for visible chopping/walking animation")
++        return failures
++
++    var animator = script.new()
++    if not animator.has_method("start_chop") or not animator.has_method("advance") or not animator.has_method("pose"):
++        failures.append("animator must expose start_chop(), advance(), and pose()")
++        return failures
++
++    animator.start_chop(1.8, 3)
++    var start_pose: Dictionary = animator.pose()
++    if String(start_pose.get("action", "")) != "chopping":
++        failures.append("start_chop should enter chopping state")
++    if not bool(start_pose.get("axe_visible", false)):
++        failures.append("axe should be visible during chopping")
++
++    var impacts := 0
++    var finished := false
++    for _i in range(24):
++        var event: Dictionary = animator.advance(0.1, false)
++        if bool(event.get("impact", false)):
++            impacts += 1
++        if bool(event.get("finished", false)):
++            finished = true
++            break
++    if impacts != 3:
++        failures.append("a three-swing chop action should emit exactly three impact beats")
++    if not finished:
++        failures.append("chop action should finish after its configured duration")
++    if String(animator.pose().get("action", "")) != "idle":
++        failures.append("finished chop action should return to idle")
++
++    animator.advance(0.2, true)
++    var walk_pose: Dictionary = animator.pose()
++    if String(walk_pose.get("action", "")) != "walking":
++        failures.append("movement should select walking animation")
++    if absf(float(walk_pose.get("left_leg", 0.0))) < 0.01:
++        failures.append("walking pose should move the legs")
++
++    return failures
+diff --git a/tests/test_runner.gd b/tests/test_runner.gd
+index a5f22d7..0221d8e 100644
+--- a/tests/test_runner.gd
++++ b/tests/test_runner.gd
+@@ -9,6 +9,7 @@ const TEST_PATHS := [
+     "res://tests/test_persistence_service.gd",
+     "res://tests/test_game_session.gd",
+     "res://tests/test_mobile_gesture_interpreter.gd",
++    "res://tests/test_player_action_animator.gd",
+ ]
+ 
+ var _ran := false
