@@ -1,0 +1,17 @@
+--- a/tests/test_runner.gd
++++ b/tests/test_runner.gd
+@@ -30,8 +30,14 @@ func _initialize() -> void:
+         var script := load(test_path)
+         if script == null:
+             failures.append("Could not load test suite: %s" % test_path)
+             continue
++        if not script.can_instantiate():
++            failures.append("Test suite cannot instantiate: %s" % test_path)
++            continue
+         var suite = script.new()
++        if suite == null:
++            failures.append("Could not instantiate test suite: %s" % test_path)
++            continue
+         if not suite.has_method("run"):
+             failures.append("Test suite has no run() method: %s" % test_path)
+             continue
