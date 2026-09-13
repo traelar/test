@@ -35,7 +35,7 @@ jobs:
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
 
-      - name: Apply overhaul candidate and compile fix
+      - name: Apply overhaul candidate and verified fixes
         run: |
           cat .aevorwyn/overhaul-green.patch.gz.b64.part00 .aevorwyn/overhaul-green.patch.gz.b64.part01 .aevorwyn/overhaul-green.patch.gz.b64.part02 .aevorwyn/overhaul-green.patch.gz.b64.part03 .aevorwyn/overhaul-green.patch.gz.b64.part04 > overhaul-green.patch.gz.b64
           test "$(wc -c < overhaul-green.patch.gz.b64)" = "22108"
@@ -46,6 +46,7 @@ jobs:
           test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
           patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-compile-fix.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-runtime-fix.patch
 
       - name: Download Godot 4.7.2
         run: |
@@ -75,7 +76,7 @@ jobs:
             exit 1
           fi
 
-      - name: RED - strict main scene smoke validation
+      - name: GREEN - strict main scene smoke validation
         working-directory: aevorwyn
         run: |
           set -o pipefail
