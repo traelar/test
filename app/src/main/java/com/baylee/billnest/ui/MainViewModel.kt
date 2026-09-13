@@ -40,6 +40,13 @@ class MainViewModel(val repo: BillRepository) : ViewModel() {
     fun deleteTransaction(id: String) = repo.deleteTransaction(id)
     fun saveTransactionRule(v: TransactionRule) = repo.saveTransactionRule(v)
     fun deleteTransactionRule(id: String) = repo.deleteTransactionRule(id)
+    fun saveMerchantProfile(v: MerchantProfile) = repo.saveMerchantProfile(v)
+    fun deleteMerchantProfile(id: String) = repo.deleteMerchantProfile(id)
+    fun saveSmartTransactionRule(v: SmartTransactionRule) = repo.saveSmartTransactionRule(v)
+    fun deleteSmartTransactionRule(id: String) = repo.deleteSmartTransactionRule(id)
+    fun resolveReview(fingerprint: String, disposition: ReviewDisposition) =
+        repo.saveReviewResolution(ReviewResolution(fingerprint, disposition))
+    fun deleteReviewResolution(fingerprint: String) = repo.deleteReviewResolution(fingerprint)
     fun syncPlaidTransactions(v: List<FinanceTransaction>) {
         repo.syncPlaidTransactions(v)
         reconcileKnownBills()
