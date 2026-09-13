@@ -35,7 +35,7 @@ jobs:
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
 
-      - name: Apply overhaul candidate
+      - name: Apply overhaul candidate and compile fix
         run: |
           cat .aevorwyn/overhaul-green.patch.gz.b64.part00 .aevorwyn/overhaul-green.patch.gz.b64.part01 .aevorwyn/overhaul-green.patch.gz.b64.part02 .aevorwyn/overhaul-green.patch.gz.b64.part03 .aevorwyn/overhaul-green.patch.gz.b64.part04 > overhaul-green.patch.gz.b64
           test "$(wc -c < overhaul-green.patch.gz.b64)" = "22108"
@@ -45,6 +45,7 @@ jobs:
           gzip -dc overhaul-green.patch.gz > overhaul-green.patch
           test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
           patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-compile-fix.patch
 
       - name: Download Godot 4.7.2
         run: |
@@ -53,7 +54,7 @@ jobs:
           chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
           echo "$PWD/godot-bin" >> "$GITHUB_PATH"
 
-      - name: RED - reject Godot parse and compile errors
+      - name: GREEN - reject Godot parse and compile errors
         working-directory: aevorwyn
         run: |
           set -o pipefail
