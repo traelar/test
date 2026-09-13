@@ -120,6 +120,13 @@ object SyncMapper {
     fun encodeSubscriptionPreference(value: SubscriptionPreference): String = gson.toJson(value)
     fun decodeSubscriptionPreference(value: String): SubscriptionPreference = gson.fromJson(value, SubscriptionPreference::class.java)
 
+    fun encodeMerchantProfile(value: MerchantProfile): String = gson.toJson(value)
+    fun decodeMerchantProfile(value: String): MerchantProfile = gson.fromJson(value, MerchantProfile::class.java)
+    fun encodeSmartTransactionRule(value: SmartTransactionRule): String = gson.toJson(value)
+    fun decodeSmartTransactionRule(value: String): SmartTransactionRule = gson.fromJson(value, SmartTransactionRule::class.java)
+    fun encodeReviewResolution(value: ReviewResolution): String = gson.toJson(value)
+    fun decodeReviewResolution(value: String): ReviewResolution = gson.fromJson(value, ReviewResolution::class.java)
+
     fun billMutation(bill: Bill): SyncRecordDraft = SyncRecordDraft("bill", bill.id, encodeBill(bill))
     fun paydayMutation(payday: Payday): SyncRecordDraft = SyncRecordDraft("payday", payday.id, encodePayday(payday))
 
@@ -138,6 +145,9 @@ object SyncMapper {
     fun goalMutation(value: SavingsGoal) = SyncRecordDraft("savings_goal", value.id, encodeGoal(value))
     fun reservedFundMutation(value: ReservedFund) = SyncRecordDraft("reserved_fund", value.id, encodeReservedFund(value))
     fun subscriptionPreferenceMutation(value: SubscriptionPreference) = SyncRecordDraft("subscription_preference", value.merchantKey, encodeSubscriptionPreference(value))
+    fun merchantProfileMutation(value: MerchantProfile) = SyncRecordDraft("merchant_profile", value.id, encodeMerchantProfile(value))
+    fun smartTransactionRuleMutation(value: SmartTransactionRule) = SyncRecordDraft("smart_transaction_rule", value.id, encodeSmartTransactionRule(value))
+    fun reviewResolutionMutation(value: ReviewResolution) = SyncRecordDraft("review_resolution", value.fingerprint, encodeReviewResolution(value))
 
     internal fun normalizeBudgetJson(root: com.google.gson.JsonObject) {
         listOf(
