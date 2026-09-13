@@ -90,14 +90,52 @@ index 0000000..69d8e29
 +
 +    return failures
 diff --git a/tests/test_runner.gd b/tests/test_runner.gd
-index a5f22d7..0221d8e 100644
+index a5f22d7..7e8604c 100644
 --- a/tests/test_runner.gd
 +++ b/tests/test_runner.gd
-@@ -9,6 +9,7 @@ const TEST_PATHS := [
+@@ -9,6 +9,8 @@ const TEST_PATHS := [
      "res://tests/test_persistence_service.gd",
      "res://tests/test_game_session.gd",
      "res://tests/test_mobile_gesture_interpreter.gd",
 +    "res://tests/test_player_action_animator.gd",
++    "res://tests/test_player_presentation.gd",
  ]
  
  var _ran := false
+diff --git a/tests/test_player_presentation.gd b/tests/test_player_presentation.gd
+new file mode 100644
+index 0000000..59c535b
+--- /dev/null
++++ b/tests/test_player_presentation.gd
+@@ -0,0 +1,31 @@
++extends RefCounted
++
++func run() -> Array[String]:
++    var failures: Array[String] = []
++    var packed := load("res://scenes/player.tscn") as PackedScene
++    if packed == null:
++        failures.append("player scene should load")
++        return failures
++    var player := packed.instantiate()
++    var visual = player.get_node_or_null("Visual")
++    if visual == null:
++        failures.append("player scene must contain a visible animated character rig")
++    else:
++        if not visual.has_method("start_chop") or not visual.has_method("stop_chop"):
++            failures.append("visible player rig must expose chopping controls")
++        if not visual.has_signal("chop_impact"):
++            failures.append("visible player rig must emit chop impact beats")
++    player.free()
++
++    var hud := AevorwynHUD.new()
++    hud._ready()
++    if not hud.has_method("presentation_metrics"):
++        failures.append("HUD must expose compact mobile presentation metrics")
++    else:
++        var metrics: Dictionary = hud.presentation_metrics()
++        if float(metrics.get("status_width", 999.0)) > 260.0:
++            failures.append("mobile status HUD should stay compact and leave the world visible")
++        if not bool(metrics.get("uses_quick_actions", false)):
++            failures.append("mobile HUD should use compact quick-action buttons instead of a debug inventory dump")
++    hud.free()
++    return failures
