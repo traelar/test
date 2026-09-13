@@ -1,0 +1,33 @@
+name: Aevorwyn original character RED
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - '.aevorwyn/original-character-red-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct v7 baseline
+        run: |
+          bash .github/scripts/aevorwyn-reconstruct-v6.sh
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-green.patch
+      - name: Apply RED regressions only
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/original-character-red.patch
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+      - name: Import current source
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+      - name: Run RED regressions
+        working-directory: aevorwyn
+        run: timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
