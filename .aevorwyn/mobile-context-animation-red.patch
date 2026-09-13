@@ -1,0 +1,92 @@
+--- a/tests/test_mobile_gesture_interpreter.gd
++++ b/tests/test_mobile_gesture_interpreter.gd
+@@ -31,4 +31,32 @@
+     if first_pinch_release.get("type", "") == "tap" or second_pinch_release.get("type", "") == "tap":
+         failures.append("a pinch gesture must not trigger a world tap when fingers release")
+ 
++    gestures.reset()
++    gestures.touch_pressed(0, Vector2(160, 140))
++    if not gestures.has_method("advance"):
++        failures.append("mobile gestures must expose timed long-press detection")
++    else:
++        var before_hold := gestures.advance(0.30)
++        if not before_hold.is_empty():
++            failures.append("a normal short touch must not open the context menu early")
++        var hold_events := gestures.advance(0.20)
++        if hold_events.is_empty() or hold_events[0].get("type", "") != "long_press":
++            failures.append("holding one finger should emit a long_press event")
++        else:
++            if Vector2(hold_events[0].get("position", Vector2.ZERO)).distance_to(Vector2(160, 140)) > 1.0:
++                failures.append("long_press should use the original touch position")
++        var held_release := gestures.touch_released(0, Vector2(161, 140))
++        if held_release.get("type", "") == "tap":
++            failures.append("releasing after a long press must not also trigger walking")
++
++    gestures.reset()
++    gestures.touch_pressed(0, Vector2(220, 180))
++    if not gestures.has_method("consume_active_touches"):
++        failures.append("magnify gestures need a way to consume active touches so zoom never walks")
++    else:
++        gestures.consume_active_touches()
++        var magnify_release := gestures.touch_released(0, Vector2(221, 181))
++        if magnify_release.get("type", "") == "tap":
++            failures.append("a touch involved in magnify/zoom must never resolve as a world tap")
++
+     return failures
+--- a/tests/test_player_action_animator.gd
++++ b/tests/test_player_action_animator.gd
+@@ -42,4 +42,21 @@
+     if absf(float(walk_pose.get("left_leg", 0.0))) < 0.01:
+         failures.append("walking pose should move the legs")
+ 
++    animator.start_chop()
++    animator.advance(0.12, false)
++    var windup_pose: Dictionary = animator.pose()
++    animator.advance(0.28, false)
++    var strike_pose: Dictionary = animator.pose()
++    animator.advance(0.24, false)
++    var follow_pose: Dictionary = animator.pose()
++    for key in ["left_elbow", "right_elbow", "torso_yaw", "axe_pitch", "grip_inward"]:
++        if not windup_pose.has(key):
++            failures.append("improved two-handed chop pose must expose %s" % key)
++    if windup_pose.has("right_elbow") and strike_pose.has("right_elbow"):
++        if absf(float(windup_pose["right_elbow"]) - float(strike_pose["right_elbow"])) < 0.18:
++            failures.append("chopping should visibly bend the elbows through the strike")
++    if windup_pose.has("torso_yaw") and follow_pose.has("torso_yaw"):
++        if absf(float(windup_pose["torso_yaw"]) - float(follow_pose["torso_yaw"])) < 0.08:
++            failures.append("chopping should rotate the torso instead of only flapping rigid arms")
++
+     return failures
+--- a/tests/test_player_presentation.gd
++++ b/tests/test_player_presentation.gd
+@@ -15,6 +15,9 @@
+             failures.append("visible player rig must expose chopping controls")
+         if not visual.has_signal("chop_impact"):
+             failures.append("visible player rig must emit chop impact beats")
++        visual._ready()
++        if visual.get_node_or_null("BodyRoot/RightArm/Forearm") == null or visual.get_node_or_null("BodyRoot/LeftArm/Forearm") == null:
++            failures.append("chop rig should use articulated forearms instead of rigid one-piece arms")
+     player.free()
+ 
+     var hud := AevorwynHUD.new()
+@@ -27,5 +30,20 @@
+             failures.append("mobile status HUD should stay compact and leave the world visible")
+         if not bool(metrics.get("uses_quick_actions", false)):
+             failures.append("mobile HUD should use compact quick-action buttons instead of a debug inventory dump")
++    if not hud.has_method("show_context_menu") or not hud.has_method("hide_context_menu") or not hud.has_method("is_context_menu_open"):
++        failures.append("HUD must provide a RuneScape-style context action menu for long press/right click")
++    else:
++        hud.show_context_menu(Vector2(320, 220), [
++            {"id": "chop", "label": "Chop Oak"},
++            {"id": "walk", "label": "Walk here"},
++            {"id": "cancel", "label": "Cancel"},
++        ])
++        if not hud.is_context_menu_open():
++            failures.append("context menu should be visible after show_context_menu")
++        if hud.has_method("context_menu_entry_count") and int(hud.context_menu_entry_count()) != 3:
++            failures.append("context menu should render every supplied action")
++        hud.hide_context_menu()
++        if hud.is_context_menu_open():
++            failures.append("hide_context_menu should close the context action menu")
+     hud.free()
+     return failures
