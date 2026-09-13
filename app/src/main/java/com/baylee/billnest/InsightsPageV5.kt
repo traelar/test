@@ -316,6 +316,7 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
                         ) {
                             items(rows, key = { item -> item.transaction.id + "-" + category }) { item ->
                                 val tx = item.transaction
+                                val displayName = tx.effectiveDisplayName()
                                 val account = tx.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
                                 Card(
                                     colors = CardDefaults.cardColors(containerColor = BillNestColors.cardRaised),
@@ -331,7 +332,14 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
                                             verticalAlignment = Alignment.Top
                                         ) {
                                             Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                                                Text(tx.name, style = MaterialTheme.typography.titleSmall)
+                                                Text(displayName, style = MaterialTheme.typography.titleSmall)
+                                                if (displayName != tx.name) {
+                                                    Text(
+                                                        "Bank: ${tx.name}",
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
                                                 Text(
                                                     buildString {
                                                         append(tx.dateIso)
@@ -358,7 +366,7 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                         }
-                                        val merchantKey = subscriptionKey(tx.name)
+                                        val merchantKey = subscriptionKey(displayName)
                                         val trackedSubscription = data.subscriptionPreferences.any {
                                             it.merchantKey == merchantKey && it.status == SubscriptionStatus.CONFIRMED
                                         }
@@ -381,7 +389,9 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
                                                                     if (trackedSubscription) {
                                                                         vm.deleteSubscriptionPreference(merchantKey)
                                                                     } else {
-                                                                        vm.saveSubscriptionPreference(subscriptionPreferenceForTransaction(tx))
+                                                                        vm.saveSubscriptionPreference(
+                                                                            SubscriptionPreference(merchantKey, displayName, SubscriptionStatus.CONFIRMED)
+                                                                        )
                                                                     }
                                                                 }
                                                                 InsightTransactionAction.RULE -> {
@@ -440,16 +450,16 @@ fun InsightsPageV5(data: AppData, vm: MainViewModel, modifier: Modifier = Modifi
     }
 
     ruleFor?.let { transaction ->
-        TransactionRuleDialog(
+        SmartRuleEditorDialog(
             data = data,
-            source = transaction,
+            sourceTransaction = transaction,
             onDismiss = {
                 ruleFor = null
                 selectedCategory = reopenCategory
                 reopenCategory = null
             },
             onSave = {
-                vm.saveTransactionRule(it)
+                vm.saveSmartTransactionRule(it)
                 ruleFor = null
                 selectedCategory = reopenCategory
                 reopenCategory = null
