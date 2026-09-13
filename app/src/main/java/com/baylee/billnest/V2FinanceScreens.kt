@@ -723,9 +723,10 @@ private fun ReserveEditorDialog(data: AppData, existing: ReservedFund?, onDismis
 
 @Composable
 fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
-    val detected = detectSubscriptions(data.transactions)
+    val detected = detectSubscriptions(data.transactions.filterNot { it.pending })
     val subscriptions = visibleSubscriptionSuggestions(detected, data.subscriptionPreferences)
     val confirmed = data.subscriptionPreferences.filter { it.status == SubscriptionStatus.CONFIRMED }
+    val cleanup = remember(data) { subscriptionCleanup(data) }
     FinanceList(modifier, "Subscriptions", "", {}) {
         item {
             Text(
@@ -733,9 +734,36 @@ fun SubscriptionsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Mod
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (confirmed.isNotEmpty()) item { Text("Confirmed", style = MaterialTheme.typography.titleMedium) }
-        items(confirmed, key = { "confirmed-${it.merchantKey}" }) { row ->
-            FinanceRow(row.name, "Confirmed", "Tracked subscription", BillNestColors.positive) { vm.deleteSubscriptionPreference(row.merchantKey) }
+        item {
+            PremiumFinanceCard {
+                Text("Subscription cleanup", style = MaterialTheme.typography.titleMedium)
+                Text(currencyV2(cleanup.monthlyCost) + " / month", style = MaterialTheme.typography.headlineSmall)
+                Text(currencyV2(cleanup.annualCost) + " / year", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val increased = cleanup.items.count { row -> row.priceIncreased }
+                if (increased > 0) Text(increased.toString() + " price increase" + if (increased == 1) "" else "s" + " detected", color = BillNestColors.warning)
+                if (cleanup.possibleDuplicates.isNotEmpty()) Text(cleanup.possibleDuplicates.size.toString() + " possible duplicate service pair(s)", color = BillNestColors.warning)
+            }
+        }
+        if (cleanup.items.isNotEmpty()) item { Text("Tracked", style = MaterialTheme.typography.titleMedium) }
+        items(cleanup.items, key = { row -> "cleanup-" + row.merchantKey }) { item ->
+            PremiumFinanceCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.name, style = MaterialTheme.typography.titleMedium)
+                        Text("Last charged " + item.lastDateIso, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(currencyV2(item.latestAmount), style = MaterialTheme.typography.titleLarge)
+                }
+                if (item.priceIncreased && item.priorAmount != null) {
+                    Text("Price increased from " + currencyV2(item.priorAmount), color = BillNestColors.warning)
+                }
+                TextButton(onClick = { vm.deleteSubscriptionPreference(item.merchantKey) }) { Text("Stop tracking") }
+            }
+        }
+
+        val missingHistory = confirmed.filterNot { pref -> cleanup.items.any { item -> item.merchantKey == pref.merchantKey } }
+        items(missingHistory, key = { row -> "confirmed-" + row.merchantKey }) { row ->
+            FinanceRow(row.name, "Confirmed", "Waiting for charge history", BillNestColors.positive) { vm.deleteSubscriptionPreference(row.merchantKey) }
         }
         if (subscriptions.isNotEmpty()) item { Text("Needs review", style = MaterialTheme.typography.titleMedium) }
         if (subscriptions.isEmpty() && confirmed.isEmpty()) item { EmptyFinanceState("No subscriptions tracked yet. Confirm a detected pattern here or use Track sub on any transaction.") }
