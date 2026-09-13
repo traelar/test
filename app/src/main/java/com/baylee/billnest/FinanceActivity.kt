@@ -297,7 +297,7 @@ fun BillNestHomeV2(
                 "Budgets" -> BudgetsPageV2(data, vm, Modifier.padding(pad))
                 "Debt" -> DebtPageV4(data, vm, Modifier.padding(pad))
                 "Paycheck Plan" -> PaycheckPlanPageV4(data, vm, Modifier.padding(pad))
-                "Insights" -> InsightsPageV5(data, Modifier.padding(pad))
+                "Insights" -> InsightsPageV5(data, vm, Modifier.padding(pad))
                 "Net Worth" -> NetWorthPageV25(data, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
