@@ -3,8 +3,11 @@ package com.baylee.billnest.model
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class BillObligationRegressionTest {
+    private val today = LocalDate.of(2026, 9, 12)
+
     @Test
     fun matchingClearedTransactionPreventsAlreadyPaidBillFromBeingSubtractedAgain() {
         val checking = Account(
@@ -30,7 +33,8 @@ class BillObligationRegressionTest {
         )
 
         val summary = calculateMoneySummary(
-            AppData(accounts = listOf(checking), bills = listOf(mortgage), transactions = listOf(cleared))
+            AppData(accounts = listOf(checking), bills = listOf(mortgage), transactions = listOf(cleared)),
+            referenceDate = today
         )
 
         assertEquals(0.0, summary.upcomingBills, 0.001)
@@ -38,7 +42,7 @@ class BillObligationRegressionTest {
     }
 
     @Test
-    fun trulyUnpaidBillStillCountsAsAnObligation() {
+    fun trulyUnpaidBillStillCountsAsAnObligationForCurrentMonth() {
         val checking = Account(
             name = "Checking",
             balance = 1000.0,
@@ -52,10 +56,37 @@ class BillObligationRegressionTest {
             category = "Utilities"
         )
 
-        val summary = calculateMoneySummary(AppData(accounts = listOf(checking), bills = listOf(electric)))
+        val summary = calculateMoneySummary(
+            AppData(accounts = listOf(checking), bills = listOf(electric)),
+            referenceDate = today
+        )
 
         assertEquals(100.0, summary.upcomingBills, 0.001)
         assertEquals(900.0, summary.availableAfterUpcomingBills, 0.001)
+    }
+
+    @Test
+    fun nextMonthBillDoesNotReduceCurrentMonthAvailableMoney() {
+        val checking = Account(
+            name = "Checking",
+            balance = 1000.0,
+            role = AccountRole.SPENDING,
+            includeInSpendable = true
+        )
+        val octoberBill = Bill(
+            name = "October rent",
+            amount = 700.0,
+            dueDateIso = "2026-10-01",
+            category = "Housing"
+        )
+
+        val summary = calculateMoneySummary(
+            AppData(accounts = listOf(checking), bills = listOf(octoberBill)),
+            referenceDate = today
+        )
+
+        assertEquals(0.0, summary.upcomingBills, 0.001)
+        assertEquals(1000.0, summary.availableAfterUpcomingBills, 0.001)
     }
 
     @Test
