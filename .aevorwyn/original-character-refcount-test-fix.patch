@@ -1,0 +1,8 @@
+--- a/tests/test_aevorwyn_character_animator.gd
++++ b/tests/test_aevorwyn_character_animator.gd
+@@ -11,5 +11,4 @@
+     var phases: Array = animator.chop_phases()
+     if phases != [&"ready", &"backswing", &"strike", &"impact", &"recover"]:
+         failures.append("woodcutting phases must be ready/backswing/strike/impact/recover")
+-    animator.free()
+     return failures
