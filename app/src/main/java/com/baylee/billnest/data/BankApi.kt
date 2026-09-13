@@ -181,7 +181,7 @@ object BankApi {
     suspend fun fetchTransactions(backendUrl: String, apiKey: String): Pair<List<FinanceTransaction>, List<BankConnectionIssue>> = withContext(Dispatchers.IO) {
         val json = request(base(backendUrl) + "/api/plaid/transactions", "GET", null, authToken(apiKey))
         val response = gson.fromJson(json, PlaidTransactionsResponse::class.java)
-        response.transactions.filter { !it.pending && it.transactionId.isNotBlank() && it.date.isNotBlank() }.map { dto ->
+        response.transactions.filter { it.transactionId.isNotBlank() && it.date.isNotBlank() }.map { dto ->
             val transfer = isPlaidTransferCategory(dto.category)
             FinanceTransaction(
                 id = "plaid:${dto.transactionId}",
@@ -192,7 +192,8 @@ object BankApi {
                 accountId = dto.accountId,
                 source = TransactionSource.PLAID,
                 transfer = transfer,
-                income = dto.income && !transfer
+                income = dto.income && !transfer,
+                pending = dto.pending
             )
         } to response.issues
     }
