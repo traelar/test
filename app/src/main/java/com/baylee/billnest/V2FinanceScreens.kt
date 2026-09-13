@@ -208,29 +208,314 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
 
 @Composable
 fun SavingsGoalsPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
-    var editor by remember { mutableStateOf(false) }
-    FinanceList(modifier, "Savings / Goals", "Add goal", { editor = true }) {
-        if (data.savingsGoals.isEmpty()) item { EmptyFinanceState("No savings goals yet.") }
-        items(data.savingsGoals, key = { it.id }) { row ->
-            val progress = if (row.targetAmount > 0) (row.savedAmount / row.targetAmount).coerceIn(0.0, 1.0).toFloat() else 0f
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<SavingsGoal?>(null) }
+    var funding by remember { mutableStateOf<SavingsGoal?>(null) }
+
+    val savingsAccounts = data.accounts.filter {
+        it.type != AccountType.CREDIT && it.role != AccountRole.CREDIT &&
+            (it.type == AccountType.SAVINGS || it.role == AccountRole.SAVINGS)
+    }
+    val savingsBalance = savingsAccounts.sumOf { it.balance.coerceAtLeast(0.0) }
+    val goalSaved = data.savingsGoals.sumOf { it.savedAmount.coerceAtLeast(0.0) }
+    val goalTargets = data.savingsGoals.sumOf { it.targetAmount.coerceAtLeast(0.0) }
+    val autoPerPayday = data.savingsGoals.sumOf { it.paydayContribution.coerceAtLeast(0.0) }
+    val overallProgress = if (goalTargets > 0.0) (goalSaved / goalTargets).coerceIn(0.0, 1.0).toFloat() else 0f
+
+    FinanceList(modifier, "Savings / Goals", "Add goal", { adding = true }) {
+        item {
             PremiumFinanceCard {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(row.name, style = MaterialTheme.typography.titleMedium)
-                    Text("${(progress * 100).toInt()}%", color = BillNestColors.positive, style = MaterialTheme.typography.titleMedium)
+                Text("Savings overview", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Savings accounts", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                        Text(currencyV2(savingsBalance), style = MaterialTheme.typography.titleLarge)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Allocated to goals", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                        Text(currencyV2(goalSaved), style = MaterialTheme.typography.titleLarge, color = BillNestColors.positive)
+                    }
                 }
-                Text("${currencyV2(row.savedAmount)} of ${currencyV2(row.targetAmount)}", style = MaterialTheme.typography.titleLarge)
-                FinanceProgress(progress, BillNestColors.positive)
+                if (goalTargets > 0.0) {
+                    FinanceProgress(overallProgress, BillNestColors.positive)
+                    Text(
+                        "${currencyV2((goalTargets - goalSaved).coerceAtLeast(0.0))} remaining across all goals",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (autoPerPayday > 0.0) {
+                    Text(
+                        "${currencyV2(autoPerPayday)} planned automatically from each payday",
+                        color = BillNestColors.info
+                    )
+                }
                 Text(
-                    (row.targetDateIso?.let { "Target $it" } ?: "No target date") + if (row.paydayContribution > 0) " • ${currencyV2(row.paydayContribution)} each payday" else "",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "Goal allocations are planning amounts. Linked savings account balances remain authoritative from your account data.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ vm.deleteGoal(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }
+            }
+        }
+
+        if (data.savingsGoals.isEmpty()) {
+            item {
+                EmptyFinanceState(
+                    "No savings goals yet. Add goals such as an emergency fund, vacation, Christmas, or car repairs and track them separately."
+                )
+            }
+        }
+
+        items(data.savingsGoals.sortedWith(compareBy<SavingsGoal> { it.targetDateIso == null }.thenBy { it.targetDateIso ?: "" }.thenBy { it.name }), key = { it.id }) { row ->
+            val summary = savingsGoalProgress(row)
+            val pace = savingsGoalTargetPace(row)
+            val linked = row.accountId?.let { id -> data.accounts.firstOrNull { it.id == id } }
+
+            PremiumFinanceCard {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(row.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (summary.remaining <= 0.005) "Goal complete" else "${currencyV2(summary.remaining)} left to save",
+                            color = if (summary.remaining <= 0.005) BillNestColors.positive else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    FinanceTag(
+                        if (summary.remaining <= 0.005) "COMPLETE" else "${(summary.progress * 100).toInt()}%",
+                        if (summary.remaining <= 0.005) BillNestColors.positive else BillNestColors.accent
+                    )
+                }
+
+                Text(
+                    "${currencyV2(row.savedAmount)} of ${currencyV2(row.targetAmount)}",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                FinanceProgress(summary.progress.toFloat(), if (summary.remaining <= 0.005) BillNestColors.positive else BillNestColors.accent)
+
+                row.targetDateIso?.let { target ->
+                    Text("Target date $target", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    pace?.let {
+                        if (summary.remaining > 0.005) {
+                            Text(
+                                "To stay on pace: about ${currencyV2(it.neededPerMonth)} / month",
+                                color = BillNestColors.info,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                } ?: Text("No target date", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                if (row.paydayContribution > 0.0) {
+                    val checks = summary.paydaysRemaining
+                    Text(
+                        buildString {
+                            append("${currencyV2(row.paydayContribution)} each payday")
+                            if (checks != null && checks > 0) append(" • about $checks payday${if (checks == 1) "" else "s"} remaining")
+                        },
+                        color = BillNestColors.positive
+                    )
+                }
+
+                if (linked != null) {
+                    Text(
+                        "Linked account: ${linked.name} • balance ${currencyV2(linked.balance)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Text(
+                        "No savings account linked",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton({ funding = row }) { Text("Adjust saved") }
+                    TextButton({ editing = row }) { Text("Edit") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton({ vm.deleteGoal(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
             }
         }
     }
-    if (editor) SimpleFinanceEditor(EditorKind.GOAL, data, { editor = false }) { name, amount, _, _, contribution, _ ->
-        vm.saveGoal(SavingsGoal(name = name, targetAmount = amount, paydayContribution = contribution)); editor = false
+
+    if (adding || editing != null) {
+        SavingsGoalEditorDialog(
+            data = data,
+            existing = editing,
+            onDismiss = { adding = false; editing = null },
+            onSave = {
+                vm.saveGoal(it)
+                adding = false
+                editing = null
+            }
+        )
     }
+
+    funding?.let { goal ->
+        SavingsFundingDialog(
+            goal = goal,
+            onDismiss = { funding = null },
+            onSave = { updated ->
+                vm.saveGoal(updated)
+                funding = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun SavingsGoalEditorDialog(
+    data: AppData,
+    existing: SavingsGoal?,
+    onDismiss: () -> Unit,
+    onSave: (SavingsGoal) -> Unit
+) {
+    var name by remember(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
+    var target by remember(existing?.id) { mutableStateOf(existing?.targetAmount?.toString().orEmpty()) }
+    var saved by remember(existing?.id) { mutableStateOf(existing?.savedAmount?.toString().orEmpty()) }
+    var targetDate by remember(existing?.id) { mutableStateOf(existing?.targetDateIso.orEmpty()) }
+    var contribution by remember(existing?.id) { mutableStateOf(existing?.paydayContribution?.takeIf { it > 0.0 }?.toString().orEmpty()) }
+    var accountId by remember(existing?.id) { mutableStateOf(existing?.accountId.orEmpty()) }
+    var accountExpanded by remember { mutableStateOf(false) }
+
+    val assetAccounts = data.accounts.filter { it.type != AccountType.CREDIT && it.role != AccountRole.CREDIT }
+    val parsedTarget = target.toDoubleOrNull()
+    val parsedSaved = saved.toDoubleOrNull()
+    val canSave = name.isNotBlank() && parsedTarget != null && parsedTarget > 0.0 && parsedSaved != null && parsedSaved >= 0.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "Add savings goal" else "Edit savings goal") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(name, { name = it }, label = { Text("Goal name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(target, { target = it }, label = { Text("Target amount") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    saved,
+                    { saved = it },
+                    label = { Text("Already saved / allocated") },
+                    supportingText = { Text("This is the amount assigned to this goal, not a replacement for your bank balance.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                if (targetDate.isBlank()) {
+                    DatePickerButton("Set target date", LocalDate.now().plusMonths(6).toString()) { targetDate = it }
+                } else {
+                    DatePickerButton("Target date", targetDate) { targetDate = it }
+                    TextButton({ targetDate = "" }) { Text("Remove target date") }
+                }
+
+                OutlinedTextField(
+                    contribution,
+                    { contribution = it },
+                    label = { Text("Automatic amount from each payday") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Box {
+                    OutlinedButton({ accountExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Linked account: ${assetAccounts.firstOrNull { it.id == accountId }?.name ?: "None"}")
+                    }
+                    DropdownMenu(accountExpanded, { accountExpanded = false }) {
+                        DropdownMenuItem({ Text("None") }, { accountId = ""; accountExpanded = false })
+                        assetAccounts.forEach { account ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(account.name)
+                                        Text(currencyV2(account.balance), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                onClick = {
+                                    accountId = account.id
+                                    accountExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = canSave,
+                onClick = {
+                    if (!canSave) return@Button
+                    onSave(
+                        SavingsGoal(
+                            id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                            name = name.trim(),
+                            targetAmount = parsedTarget!!.coerceAtLeast(0.0),
+                            savedAmount = parsedSaved!!.coerceIn(0.0, parsedTarget),
+                            targetDateIso = targetDate.takeIf { it.isNotBlank() },
+                            accountId = accountId.ifBlank { null },
+                            paydayContribution = (contribution.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+                        )
+                    )
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun SavingsFundingDialog(
+    goal: SavingsGoal,
+    onDismiss: () -> Unit,
+    onSave: (SavingsGoal) -> Unit
+) {
+    var amount by remember(goal.id) { mutableStateOf("") }
+    val parsed = amount.toDoubleOrNull()?.coerceAtLeast(0.0)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Adjust ${goal.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Currently allocated ${currencyV2(goal.savedAmount)} of ${currencyV2(goal.targetAmount)}.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    amount,
+                    { amount = it },
+                    label = { Text("Amount") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    enabled = parsed != null && parsed > 0.0,
+                    onClick = {
+                        val value = parsed ?: return@OutlinedButton
+                        onSave(goal.copy(savedAmount = (goal.savedAmount - value).coerceAtLeast(0.0)))
+                    }
+                ) { Text("Remove") }
+                Button(
+                    enabled = parsed != null && parsed > 0.0,
+                    onClick = {
+                        val value = parsed ?: return@Button
+                        onSave(goal.copy(savedAmount = (goal.savedAmount + value).coerceAtMost(goal.targetAmount)))
+                    }
+                ) { Text("Add") }
+            }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
