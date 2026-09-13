@@ -9,7 +9,7 @@ import java.time.LocalDate
  */
 fun visibleIncomeTransactions(transactions: List<FinanceTransaction>): List<FinanceTransaction> =
     transactions.filter { row ->
-        if (row.transfer) return@filter false
+        if (row.pending || row.transfer) return@filter false
         if (row.userClassificationOverride) {
             return@filter row.income || row.category.equals("Income", true)
         }
