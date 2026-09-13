@@ -66,7 +66,8 @@ class Alpha19FinanceTest {
 
         val applied = applyTransactionRules(rows, listOf(groceryRule, pharmacyRule)).associateBy { it.id }
 
-        assertEquals("Walmart Grocery", applied.getValue("food").name)
+        assertEquals("WALMART SUPERCENTER 123", applied.getValue("food").name)
+        assertEquals("Walmart Grocery", applied.getValue("food").displayNameOverride)
         assertEquals("Groceries", applied.getValue("food").category)
         assertFalse(applied.getValue("food").excludedFromSpending)
         assertEquals("Medical", applied.getValue("rx").category)
@@ -76,7 +77,7 @@ class Alpha19FinanceTest {
     @Test
     fun plaidDeletionCreatesHouseholdTombstoneAndRefreshCannotRestoreIt() {
         val row = FinanceTransaction(id = "plaid-tx", name = "Test deposit", amount = -50.0, dateIso = "2026-09-10", source = TransactionSource.PLAID)
-        val deleted = deleteFinanceTransaction(AppData(transactions = listOf(row)), row.id)
+        val deleted = deleteFinanceTransaction(AppData(transactions = listOf(row), plaidConnected = true), row.id)
 
         assertEquals(row.id, deleted.transactionTombstones.single().transactionId)
         assertTrue(row.id in deleted.deletedPlaidTransactionIds)
