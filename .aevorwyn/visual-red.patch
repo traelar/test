@@ -1,6 +1,46 @@
+diff --git a/tests/test_gathering_service.gd b/tests/test_gathering_service.gd
+index 977929a..105cb55 100644
+--- a/tests/test_gathering_service.gd
++++ b/tests/test_gathering_service.gd
+@@ -35,4 +35,35 @@ func run() -> Array[String]:
+     full_player["inventory"] = inv
+     if service.harvest(full_player, tree)["ok"]:
+         failures.append("harvest should fail when inventory has no capacity")
++
++    if not service.has_method("success_chance") or not service.has_method("roll_success"):
++        failures.append("gathering must expose level/tool/resource-based success rolls")
++        return failures
++
++    var timed_tree := tree.duplicate(true)
++    timed_tree["base_success_chance"] = 0.18
++    timed_tree["difficulty_level"] = 1
++    var novice_chance := float(service.success_chance(player, timed_tree, 1))
++    if novice_chance <= 0.0 or novice_chance >= 1.0:
++        failures.append("novice gather chance should be a real probability, not instant success")
++
++    var skilled_player := player.duplicate(true)
++    skilled_player["skills"] = {&"woodcutting": {"xp": 0, "level": 40}}
++    var skilled_chance := float(service.success_chance(skilled_player, timed_tree, 1))
++    if skilled_chance <= novice_chance:
++        failures.append("higher Woodcutting level should increase log success chance per swing")
++
++    var better_tool_chance := float(service.success_chance(player, timed_tree, 4))
++    if better_tool_chance <= novice_chance:
++        failures.append("better axe power should increase log success chance per swing")
++
++    var hard_tree := timed_tree.duplicate(true)
++    hard_tree["difficulty_level"] = 20
++    if float(service.success_chance(player, hard_tree, 1)) >= novice_chance:
++        failures.append("harder resources should take longer on average at the same level/tool")
++
++    if not service.roll_success(player, timed_tree, 1, maxf(0.0, novice_chance - 0.01)):
++        failures.append("a roll below success chance should obtain the resource")
++    if service.roll_success(player, timed_tree, 1, minf(0.999, novice_chance + 0.01)):
++        failures.append("a roll above success chance should keep chopping")
+     return failures
 diff --git a/tests/test_player_action_animator.gd b/tests/test_player_action_animator.gd
 new file mode 100644
-index 0000000..dafb6c7
+index 0000000..69d8e29
 --- /dev/null
 +++ b/tests/test_player_action_animator.gd
 @@ -0,0 +1,45 @@
@@ -8,17 +48,18 @@ index 0000000..dafb6c7
 +
 +func run() -> Array[String]:
 +    var failures: Array[String] = []
-+    var script = load("res://src/player/player_action_animator.gd")
++    var script_path := "res://" + "src/player/player_action_animator.gd"
++    var script = load(script_path)
 +    if script == null:
 +        failures.append("player action animator should exist for visible chopping/walking animation")
 +        return failures
 +
 +    var animator = script.new()
-+    if not animator.has_method("start_chop") or not animator.has_method("advance") or not animator.has_method("pose"):
-+        failures.append("animator must expose start_chop(), advance(), and pose()")
++    if not animator.has_method("start_chop") or not animator.has_method("stop_chop") or not animator.has_method("advance") or not animator.has_method("pose"):
++        failures.append("animator must expose start_chop(), stop_chop(), advance(), and pose()")
 +        return failures
 +
-+    animator.start_chop(1.8, 3)
++    animator.start_chop()
 +    var start_pose: Dictionary = animator.pose()
 +    if String(start_pose.get("action", "")) != "chopping":
 +        failures.append("start_chop should enter chopping state")
@@ -26,20 +67,19 @@ index 0000000..dafb6c7
 +        failures.append("axe should be visible during chopping")
 +
 +    var impacts := 0
-+    var finished := false
-+    for _i in range(24):
++    for _i in range(30):
 +        var event: Dictionary = animator.advance(0.1, false)
 +        if bool(event.get("impact", false)):
 +            impacts += 1
-+        if bool(event.get("finished", false)):
-+            finished = true
-+            break
-+    if impacts != 3:
-+        failures.append("a three-swing chop action should emit exactly three impact beats")
-+    if not finished:
-+        failures.append("chop action should finish after its configured duration")
++    if impacts < 3:
++        failures.append("continuous chopping should emit repeated impact beats until stopped")
++    if String(animator.pose().get("action", "")) != "chopping":
++        failures.append("chopping must continue until gathering succeeds or is cancelled")
++
++    animator.stop_chop()
++    animator.advance(0.01, false)
 +    if String(animator.pose().get("action", "")) != "idle":
-+        failures.append("finished chop action should return to idle")
++        failures.append("stop_chop should return the character to idle")
 +
 +    animator.advance(0.2, true)
 +    var walk_pose: Dictionary = animator.pose()
