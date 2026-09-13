@@ -104,6 +104,18 @@ jobs:
         working-directory: aevorwyn
         run: python3 tools/static_verify.py
 
+      - name: Apply mobile interaction regression tests
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+
+      - name: Apply mobile context and improved chopping implementation
+        run: |
+          cat \
+            .aevorwyn/mobile-context-animation-green.patch.part00 \
+            .aevorwyn/mobile-context-animation-green.patch.part01 \
+            .aevorwyn/mobile-context-animation-green.patch.part02 \
+            > mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+
       - name: Import project
         working-directory: aevorwyn
         run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
