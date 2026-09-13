@@ -36,7 +36,9 @@ import com.baylee.billnest.data.BankApi
 import com.baylee.billnest.data.BankConnection
 import com.baylee.billnest.data.HouseholdApi
 import com.baylee.billnest.data.HouseholdSyncRepository
+import com.baylee.billnest.model.AppData
 import com.baylee.billnest.model.HouseholdDetails
+import com.baylee.billnest.model.householdActivity
 import com.baylee.billnest.model.HouseholdInvite
 import com.baylee.billnest.model.SessionData
 import com.baylee.billnest.ui.theme.BillNestColors
@@ -47,6 +49,7 @@ fun HouseholdSettings(
     session: SessionData,
     backendUrl: String,
     syncRepository: HouseholdSyncRepository,
+    appData: AppData,
     api: HouseholdApi = HouseholdApi(),
     onBankConnectionsChanged: suspend () -> Unit = {},
     onBack: () -> Unit
@@ -61,6 +64,7 @@ fun HouseholdSettings(
     var bankBusy by remember { mutableStateOf(false) }
     var bankError by remember { mutableStateOf<String?>(null) }
     var disconnectTarget by remember { mutableStateOf<BankConnection?>(null) }
+    val recentActivity = remember(appData) { householdActivity(appData) }
 
     fun refresh() {
         if (busy) return
@@ -231,6 +235,19 @@ fun HouseholdSettings(
                             Text("Disconnect", color = MaterialTheme.colorScheme.error)
                         }
                     }
+                }
+            }
+        }
+
+        item { Text("Recent household activity", style = MaterialTheme.typography.titleLarge) }
+        if (recentActivity.isEmpty()) {
+            item { EmptyHouseholdMessage("No recent finance activity yet.") }
+        } else {
+            items(recentActivity.take(10), key = { row -> row.dateIso + "-" + row.title }) { row ->
+                HouseholdCard {
+                    Text(row.title, style = MaterialTheme.typography.titleMedium)
+                    Text(row.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(row.dateIso, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
