@@ -10,26 +10,15 @@ on:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Reconstruct exact v0.2.6 source
         run: |
-          cat \
-            .aevorwyn/source.b64.part00 \
-            .aevorwyn/source.b64.part01 \
-            .aevorwyn/source.b64.part02 \
-            .aevorwyn/source.b64.part030 \
-            .aevorwyn/source.b64.part031 \
-            .aevorwyn/source.b64.part032 \
-            .aevorwyn/source.b64.part04 \
-            .aevorwyn/source.b64.part05 \
-            .aevorwyn/source.b64.part06 \
-            | base64 --decode > aevorwyn-source.zip
+          cat .aevorwyn/source.b64.part00 .aevorwyn/source.b64.part01 .aevorwyn/source.b64.part02 .aevorwyn/source.b64.part030 .aevorwyn/source.b64.part031 .aevorwyn/source.b64.part032 .aevorwyn/source.b64.part04 .aevorwyn/source.b64.part05 .aevorwyn/source.b64.part06 | base64 --decode > aevorwyn-source.zip
           test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
-          rm -rf aevorwyn
-          mkdir -p aevorwyn
+          rm -rf aevorwyn && mkdir -p aevorwyn
           unzip -q aevorwyn-source.zip -d aevorwyn
           rm -f aevorwyn/.git
 
@@ -57,11 +46,19 @@ jobs:
           test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
           patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
 
-      - name: Print UI typing context
+      - name: Download Godot 4.7.2
         run: |
-          echo '===== skills_tab.gd ====='
-          nl -ba aevorwyn/src/ui/skills_tab.gd | sed -n '1,190p'
-          echo '===== inventory_tab.gd ====='
-          nl -ba aevorwyn/src/ui/inventory_tab.gd | sed -n '1,210p'
-          echo '===== test_runner.gd ====='
-          nl -ba aevorwyn/tests/test_runner.gd | sed -n '1,100p'
+          curl -L --fail --retry 3 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: RED - reject Godot parse and compile errors
+        working-directory: aevorwyn
+        run: |
+          set -o pipefail
+          Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee godot-import.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Compile Error:|Failed to load script|Invalid call\.' godot-import.log; then
+            echo 'Strict Godot validation found script/runtime errors.' >&2
+            exit 1
+          fi
