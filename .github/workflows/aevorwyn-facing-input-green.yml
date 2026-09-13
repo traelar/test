@@ -1,0 +1,41 @@
+name: Aevorwyn facing input GREEN
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-facing-green-trigger.txt'
+  workflow_dispatch:
+
+jobs:
+  green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v6 source
+        run: bash .github/scripts/aevorwyn-reconstruct-v6.sh
+      - name: Apply regression tests and production fix
+        run: |
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/facing-input-green.patch
+      - name: Download corrected character and existing CC0 assets
+        run: bash .github/scripts/aevorwyn-assets-v7.sh
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+      - name: Strict import tests and boot
+        run: |
+          set -euo pipefail
+          cd aevorwyn
+          python3 tools/static_verify.py
+          Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee /tmp/import.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|Cannot get class' /tmp/import.log
+          timeout 45s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd 2>&1 | tee /tmp/tests.log
+          grep -q 'ALL TESTS PASSED' /tmp/tests.log
+          ! grep -E 'TEST FAILURES|SCRIPT ERROR|Parse Error' /tmp/tests.log
+          timeout 8s Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 3 2>&1 | tee /tmp/boot.log || test ${PIPESTATUS[0]} -eq 124
+          ! grep -E 'SCRIPT ERROR|Parse Error|Condition .* is true|Invalid access|Invalid call' /tmp/boot.log
