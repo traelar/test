@@ -206,13 +206,15 @@ fun BillNestHomeV2(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val destinations = listOf(
-        "Dashboard", "Accounts", "Transactions", "Bills", "Budgets", "Debt",
-        "Paycheck Plan", "Insights", "Net Worth", "Savings / Goals", "Reserved Funds", "Subscriptions",
-        "Income", "Calendar", "Household", "Settings"
-    )
+    val destinations = billNestDestinationsV30()
     var destination by remember { mutableStateOf("Dashboard") }
     val destinationHistory = remember { mutableStateListOf<String>() }
+    val navigateTo: (String) -> Unit = { name ->
+        if (name != destination) {
+            destinationHistory.add(destination)
+            destination = name
+        }
+    }
 
     BackHandler(enabled = drawerState.isOpen || destinationHistory.isNotEmpty() || destination != "Dashboard") {
         when {
@@ -248,9 +250,8 @@ fun BillNestHomeV2(
                             onClick = {
                                 if (name == "Household") {
                                     context.startActivity(Intent(context, HouseholdActivity::class.java))
-                                } else if (name != destination) {
-                                    destinationHistory.add(destination)
-                                    destination = name
+                                } else {
+                                    navigateTo(name)
                                 }
                                 scope.launch { drawerState.close() }
                             },
@@ -281,7 +282,11 @@ fun BillNestHomeV2(
             }
         ) { pad ->
             when (destination) {
-                "Dashboard" -> DashboardV4(data, Modifier.padding(pad))
+                "Dashboard" -> DashboardV5(
+                    data = data,
+                    modifier = Modifier.padding(pad),
+                    onOpenReviewInbox = { navigateTo("Review Inbox") }
+                )
                 "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
                 "Accounts" -> AccountsPageV3(
                     data = data,
@@ -293,7 +298,15 @@ fun BillNestHomeV2(
                     onReconnectBank = onReconnectBank,
                     onRefreshBanks = onRefreshBanks
                 )
-                "Transactions" -> TransactionsPageV3(data, vm, Modifier.padding(pad))
+                "Transactions" -> TransactionsPageV4(
+                    data = data,
+                    vm = vm,
+                    modifier = Modifier.padding(pad),
+                    onOpenReviewInbox = { navigateTo("Review Inbox") },
+                    onOpenMerchantsAndRules = { navigateTo("Merchants & Rules") }
+                )
+                "Review Inbox" -> ReviewInboxPage(data, vm, Modifier.padding(pad))
+                "Merchants & Rules" -> MerchantManagerPage(data, vm, Modifier.padding(pad))
                 "Budgets" -> BudgetsPageV2(data, vm, Modifier.padding(pad))
                 "Debt" -> DebtPageV4(data, vm, Modifier.padding(pad))
                 "Paycheck Plan" -> PaycheckPlanPageV4(data, vm, Modifier.padding(pad))
