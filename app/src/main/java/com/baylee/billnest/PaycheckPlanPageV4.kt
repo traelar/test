@@ -171,6 +171,20 @@ fun PaycheckPlanPageV4(data: AppData, vm: MainViewModel, modifier: Modifier = Mo
                         EstimateLine("Bills before next paycheck", -plan.bills)
                         EstimateLine("Reserve contributions", -plan.reserves)
                         EstimateLine("Savings contributions", -plan.savings)
+                        val plannedTransfers = recommendedSavingsOrder(data.savingsGoals).filter { goal ->
+                            goal.paydayContribution > 0.0 &&
+                                !goal.transferFromAccountId.isNullOrBlank() &&
+                                !goal.transferToAccountId.isNullOrBlank()
+                        }
+                        plannedTransfers.forEach { goal ->
+                            val from = data.accounts.firstOrNull { it.id == goal.transferFromAccountId }?.name ?: "Checking"
+                            val to = data.accounts.firstOrNull { it.id == goal.transferToAccountId }?.name ?: "Savings"
+                            Text(
+                                goal.name + ": " + pMoney(goal.paydayContribution) + " planned " + from + " → " + to,
+                                color = BillNestColors.info,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                         EstimateLine("Debt minimums", -plan.debtMinimums)
                         EstimateLine("Variable budgets", -plan.variableBudgets)
                         HorizontalDivider(color = BillNestColors.border)
