@@ -1,7 +1,7 @@
 name: Build Aevorwyn Android APK
 
 concurrency:
-  group: aevorwyn-android-${{ github.ref }}
+  group: aevorwyn-android-v2-${{ github.ref }}
   cancel-in-progress: true
 
 on:
