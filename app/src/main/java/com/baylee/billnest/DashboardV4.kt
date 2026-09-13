@@ -392,3 +392,66 @@ fun DashboardV4(data: AppData, modifier: Modifier = Modifier) {
         }
     }
 }
+
+
+@Composable
+fun NetWorthPageV25(data: AppData, modifier: Modifier = Modifier) {
+    val money = remember(data) { calculateMoneySummary(data) }
+    val totalDebt = data.debts.sumOf { it.balance.coerceAtLeast(0.0) }
+    val current = money.totalMoney - totalDebt
+    val history = remember(data) { netWorthHistory(data) }
+    val previous = history.dropLast(1).lastOrNull()?.netWorth
+
+    LazyColumn(
+        modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
+        item {
+            Text("Net worth", style = MaterialTheme.typography.headlineSmall)
+            Text("Assets, debt, and progress over time.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            DashboardCard {
+                Text("Current net worth", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    dashboardMoney(current),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = if (current >= 0) BillNestColors.positive else BillNestColors.danger
+                )
+                Text("Assets " + dashboardMoney(money.totalMoney) + " • Debt " + dashboardMoney(totalDebt))
+                previous?.let { prior ->
+                    val change = current - prior
+                    Text(
+                        (if (change >= 0) "+" else "-") + dashboardMoney(kotlin.math.abs(change)) + " since previous snapshot",
+                        color = if (change >= 0) BillNestColors.positive else BillNestColors.warning
+                    )
+                }
+            }
+        }
+        if (history.isEmpty()) {
+            item { DashboardCard { Text("History starts building as BillNest captures account and debt snapshots.") } }
+        } else {
+            item { Text("History", style = MaterialTheme.typography.titleLarge) }
+            items(history.reversed(), key = { point -> point.month.toString() }) { point ->
+                DashboardCard {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text(point.month.format(DateTimeFormatter.ofPattern("MMM yyyy")), style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Assets " + dashboardMoney(point.assets) + " • Debt " + dashboardMoney(point.debts),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Text(
+                            dashboardMoney(point.netWorth),
+                            color = if (point.netWorth >= 0) BillNestColors.positive else BillNestColors.danger,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
