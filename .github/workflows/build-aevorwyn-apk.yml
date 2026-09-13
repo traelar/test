@@ -33,11 +33,21 @@ jobs:
 
       - name: Reconstruct Aevorwyn source
         run: |
-          cat .aevorwyn/source.b64.part* | base64 --decode > aevorwyn-source.zip
+          cat \
+            .aevorwyn/source.b64.part00 \
+            .aevorwyn/source.b64.part01 \
+            .aevorwyn/source.b64.part02 \
+            .aevorwyn/source.b64.part030 \
+            .aevorwyn/source.b64.part031 \
+            .aevorwyn/source.b64.part032 \
+            .aevorwyn/source.b64.part04 \
+            .aevorwyn/source.b64.part05 \
+            .aevorwyn/source.b64.part06 \
+            | base64 --decode > aevorwyn-source.zip
+          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
           rm -rf aevorwyn
           mkdir -p aevorwyn
           unzip -q aevorwyn-source.zip -d aevorwyn
-          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
 
       - name: Download Godot 4.7.2
         run: |
