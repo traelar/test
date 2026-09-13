@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the first stage of the approved BillNest smart-finance expansion as Alpha30: a Financial Review Inbox, Merchant Manager, deterministic multi-condition transaction rules with preview, and household-synced merchant/rule/review metadata without breaking Plaid Production, existing transaction overrides, category behavior, household sync, or update-in-place signing.
+**Goal:** Ship Alpha30 with the first approved smart-finance stage: Financial Review Inbox, Merchant Manager, deterministic multi-condition transaction rules with preview, and household-synced merchant/rule/review metadata, while preserving Plaid Production, Alpha29 category behavior, existing user transaction overrides, household sync, and update-in-place signing.
 
-**Architecture:** Keep Plaid-owned transaction fields authoritative and layer BillNest-owned merchant/display/classification metadata on top. Add pure Kotlin engines for merchant identity, smart rules, and review generation; persist only user-owned metadata/resolutions in `AppData`; reuse the existing generic household `finance_records` sync path for three new record kinds; then wire focused Compose screens into the existing `FinanceActivity` shell. Legacy `TransactionRule` records remain supported and can be converted instead of destructively migrated.
+**Architecture:** Raw Plaid transaction fields stay authoritative. BillNest adds separate display/merchant/rule metadata, pure Kotlin engines generate derived merchant/rule/review state, and only user-owned profiles/rules/review resolutions are persisted and household-synced. The existing generic `finance_records` sync table handles three new kinds, so Stage A requires no new D1 tables. Legacy `TransactionRule` records remain supported and are converted only when the user chooses.
 
 **Tech Stack:** Kotlin, Jetpack Compose Material 3, Gson, encrypted local `AppData`, existing SQLite sync outbox, Cloudflare Worker + D1 generic finance-record sync, Node test runner, Gradle/JUnit, GitHub Actions.
 
@@ -12,39 +12,29 @@
 
 ## Global Constraints
 
-- Work on `billnest-apk-build`; do not start over or replace the current architecture.
-- Preserve Android package `com.baylee.billnest`.
-- Preserve Plaid Production behavior and current Cloudflare Worker/D1 backend.
-- Do not mutate raw Plaid merchant/name fields to achieve a BillNest display rename. New renames must use BillNest-owned metadata.
-- Explicit per-transaction user classification/category overrides remain higher priority than automatic merchant profiles or smart rules.
-- Preserve Alpha29 shared category behavior: every new category selector must reuse `CategoryPickerField` / `canonicalCategoryName`.
-- Keep legacy `TransactionRule` support for existing users; do not delete old rules during Stage A.
-- Do not add household privacy yet; that is Stage E. Stage A records are household-scoped like the existing finance metadata.
-- Do not implement recurring price-change/missed-renewal logic yet; those belong to Stage B. Stage A may surface the current recurring suggestions as `POSSIBLE_RECURRING`.
-- Keep the dark-only visual system and phone-safe action layouts.
-- Every code change follows TDD: write the failing test, run it and confirm the intended failure, implement minimally, rerun to green, then commit.
-- Alpha30 release target: `versionCode 37`, `versionName "2.0.0-alpha30"`.
-- Do not call Alpha30 complete until Worker syntax/tests, Android unit tests, signing pre-check, APK build, APK certificate verification, artifact upload, and Live Auth all pass on the exact release HEAD.
+- Work on `billnest-apk-build`; do not rewrite the app.
+- Keep package `com.baylee.billnest` and working Plaid Production support.
+- Never replace a raw Plaid merchant/name to implement a BillNest rename; use BillNest-owned display metadata.
+- Explicit user transaction classification/category overrides always beat automatic merchant/rule behavior.
+- Reuse `CategoryPickerField`, `CategoryMultiPickerField`, `canonicalCategoryName`, and category normalization everywhere.
+- Keep legacy `TransactionRule` support during Stage A.
+- Household privacy is Stage E; Stage A metadata follows the current household-shared model.
+- Advanced recurring price-change/missed-renewal intelligence is Stage B; Stage A only reuses current recurring detection for review suggestions.
+- Keep the current dark UI and phone-safe action layouts.
+- TDD for every behavioral task: RED test first, minimal implementation, GREEN test, commit.
+- Alpha30 target: `versionCode 37`, `versionName "2.0.0-alpha30"`.
+- Do not claim release completion until exact-HEAD Worker tests, Android tests, signing precheck, APK build, APK certificate verification, artifact upload, and Live Auth succeed.
 
----
+## File Map
 
-## File Structure
-
-### New model/engine files
-
-- `app/src/main/java/com/baylee/billnest/model/SmartTransactionModels.kt` — Stage A data contracts.
-- `app/src/main/java/com/baylee/billnest/model/MerchantEngine.kt` — merchant normalization, profile resolution, profile application.
-- `app/src/main/java/com/baylee/billnest/model/SmartTransactionRuleEngine.kt` — smart matching, priority, preview, application.
-- `app/src/main/java/com/baylee/billnest/model/ReviewInboxEngine.kt` — review detection, fingerprints, suppression.
-
-### New UI files
-
-- `app/src/main/java/com/baylee/billnest/ReviewInboxPage.kt`
+**Create**
+- `app/src/main/java/com/baylee/billnest/model/SmartTransactionModels.kt`
+- `app/src/main/java/com/baylee/billnest/model/MerchantEngine.kt`
+- `app/src/main/java/com/baylee/billnest/model/SmartTransactionRuleEngine.kt`
+- `app/src/main/java/com/baylee/billnest/model/ReviewInboxEngine.kt`
 - `app/src/main/java/com/baylee/billnest/MerchantManagerPage.kt`
 - `app/src/main/java/com/baylee/billnest/SmartRuleEditorDialog.kt`
-
-### New tests
-
+- `app/src/main/java/com/baylee/billnest/ReviewInboxPage.kt`
 - `app/src/test/java/com/baylee/billnest/model/SmartTransactionModelsTest.kt`
 - `app/src/test/java/com/baylee/billnest/model/MerchantEngineTest.kt`
 - `app/src/test/java/com/baylee/billnest/model/SmartTransactionRuleEngineTest.kt`
@@ -52,8 +42,7 @@
 - `app/src/test/java/com/baylee/billnest/model/SmartTransactionSyncMapperTest.kt`
 - `cloudflare-worker/test/smart-transaction-sync-kinds.test.js`
 
-### Existing files to modify
-
+**Modify**
 - `app/src/main/java/com/baylee/billnest/model/FinanceModels.kt`
 - `app/src/main/java/com/baylee/billnest/model/Models.kt`
 - `app/src/main/java/com/baylee/billnest/model/TransactionMerge.kt`
@@ -74,43 +63,26 @@
 
 ---
 
-## Task 1 — Add Stage A models and preserve BillNest-owned transaction metadata across Plaid refresh
+## Task 1 — Add Stage A models and preserve BillNest-owned transaction metadata
 
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/model/SmartTransactionModels.kt`
-- Modify `app/src/main/java/com/baylee/billnest/model/FinanceModels.kt`
-- Modify `app/src/main/java/com/baylee/billnest/model/Models.kt`
-- Modify `app/src/main/java/com/baylee/billnest/model/TransactionMerge.kt`
-- Create `app/src/test/java/com/baylee/billnest/model/SmartTransactionModelsTest.kt`
+**Files:** create `SmartTransactionModels.kt`, modify `FinanceModels.kt`, `Models.kt`, `TransactionMerge.kt`, create `SmartTransactionModelsTest.kt`.
 
-- [ ] **Step 1: Write the failing metadata-preservation test.**
-
-Add a test proving a fresh Plaid row refreshes the raw bank name/amount/date while keeping BillNest display/merchant metadata and existing manual classification metadata:
+- [ ] Write a failing test proving a fresh Plaid row updates raw name/amount while retaining saved `displayNameOverride`, `merchantProfileId`, `appliedSmartRuleId`, and any explicit user classification/splits.
 
 ```kotlin
 @Test
-fun plaidRefreshPreservesBillNestOwnedMerchantMetadata() {
+fun plaidRefreshPreservesBillNestOwnedMetadata() {
     val saved = FinanceTransaction(
-        id = "tx-1",
-        name = "WM SUPERCENTER 1234",
-        amount = 42.0,
-        dateIso = "2026-09-12",
-        category = "Groceries",
-        source = TransactionSource.PLAID,
-        displayNameOverride = "Walmart",
-        merchantProfileId = "merchant-walmart",
+        id = "tx-1", name = "WM SUPERCENTER 1234", amount = 42.0,
+        dateIso = "2026-09-12", category = "Groceries", source = TransactionSource.PLAID,
+        displayNameOverride = "Walmart", merchantProfileId = "merchant-walmart",
         appliedSmartRuleId = "rule-walmart"
     )
     val fresh = saved.copy(
-        name = "WAL-MART #1234",
-        amount = 44.0,
-        displayNameOverride = null,
-        merchantProfileId = null,
-        appliedSmartRuleId = null
+        name = "WAL-MART #1234", amount = 44.0,
+        displayNameOverride = null, merchantProfileId = null, appliedSmartRuleId = null
     )
-
     val merged = mergePlaidTransactions(listOf(saved), listOf(fresh)).single()
-
     assertEquals("WAL-MART #1234", merged.name)
     assertEquals(44.0, merged.amount, 0.001)
     assertEquals("Walmart", merged.displayNameOverride)
@@ -119,35 +91,22 @@ fun plaidRefreshPreservesBillNestOwnedMerchantMetadata() {
 }
 ```
 
-Run:
+Run and confirm RED:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionModelsTest --stacktrace
 ```
 
-Expected: RED because the new metadata fields do not exist yet.
-
-- [ ] **Step 2: Add focused Stage A contracts.**
-
-Create `SmartTransactionModels.kt` with these shapes:
+- [ ] Add exact Stage A contracts:
 
 ```kotlin
-package com.baylee.billnest.model
-
-import java.util.UUID
-
 enum class TransactionDirection { INFLOW, OUTFLOW }
 enum class MerchantConfirmation { AUTO, USER_CONFIRMED }
 enum class ReviewDisposition { RESOLVED, DISMISSED }
 enum class ReviewType {
-    UNCATEGORIZED,
-    UNKNOWN_MERCHANT,
-    POSSIBLE_TRANSFER,
-    POSSIBLE_INCOME,
-    POSSIBLE_RECURRING,
-    POTENTIAL_DUPLICATE,
-    CATEGORY_CONFLICT,
-    UNUSUAL_AMOUNT
+    UNCATEGORIZED, UNKNOWN_MERCHANT, POSSIBLE_TRANSFER, POSSIBLE_INCOME,
+    POSSIBLE_RECURRING, POTENTIAL_DUPLICATE, CATEGORY_CONFLICT, UNUSUAL_AMOUNT,
+    ACCOUNT_METADATA_MISSING, DEBT_METADATA_MISSING
 }
 
 data class MerchantProfile(
@@ -156,6 +115,8 @@ data class MerchantProfile(
     val aliases: List<String> = emptyList(),
     val preferredCategory: String? = null,
     val defaultClassification: TransactionClassification? = null,
+    val linkedBillId: String? = null,
+    val subscriptionMerchantKey: String? = null,
     val confirmation: MerchantConfirmation = MerchantConfirmation.USER_CONFIRMED,
     val lastSeenEpochMs: Long = System.currentTimeMillis(),
     val updatedAtEpochMs: Long = System.currentTimeMillis()
@@ -211,7 +172,9 @@ data class ReviewResolution(
 data class ReviewItem(
     val fingerprint: String,
     val type: ReviewType,
-    val transactionIds: List<String>,
+    val transactionIds: List<String> = emptyList(),
+    val accountId: String? = null,
+    val debtId: String? = null,
     val title: String,
     val explanation: String,
     val confidence: Double,
@@ -221,9 +184,7 @@ data class ReviewItem(
 )
 ```
 
-- [ ] **Step 3: Add BillNest-owned transaction metadata.**
-
-Append defaulted fields to `FinanceTransaction` so old encrypted JSON remains source-compatible:
+- [ ] Append defaulted fields to `FinanceTransaction`:
 
 ```kotlin
 val displayNameOverride: String? = null,
@@ -238,7 +199,7 @@ fun FinanceTransaction.effectiveDisplayName(): String =
     displayNameOverride?.trim()?.takeIf { it.isNotBlank() } ?: name
 ```
 
-- [ ] **Step 4: Add Stage A collections to `AppData`.**
+- [ ] Add to `AppData`:
 
 ```kotlin
 val merchantProfiles: List<MerchantProfile> = emptyList(),
@@ -246,99 +207,52 @@ val smartTransactionRules: List<SmartTransactionRule> = emptyList(),
 val reviewResolutions: List<ReviewResolution> = emptyList(),
 ```
 
-- [ ] **Step 5: Update Plaid merge preservation.**
+- [ ] In `mergePlaidTransactions`, always preserve the three BillNest metadata fields from a matching saved transaction. Preserve category/classification/splits only when the existing `userClassificationOverride` rule says to do so.
 
-In `mergePlaidTransactions`, always carry BillNest-owned metadata from the saved row when IDs match, independently of `userClassificationOverride`. Classification/splits remain preserved only under the existing explicit-user-override rule.
-
-Core merge shape:
-
-```kotlin
-val base = fresh.copy(
-    displayNameOverride = saved?.displayNameOverride,
-    merchantProfileId = saved?.merchantProfileId,
-    appliedSmartRuleId = saved?.appliedSmartRuleId
-)
-if (saved?.userClassificationOverride == true) {
-    base.copy(
-        category = saved.category,
-        transfer = saved.transfer,
-        income = saved.income,
-        transferFromAccountId = saved.transferFromAccountId,
-        transferToAccountId = saved.transferToAccountId,
-        userClassificationOverride = true,
-        splits = saved.splits
-    )
-} else base
-```
-
-- [ ] **Step 6: Rerun the focused test and existing transaction tests.**
+- [ ] Rerun:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionModelsTest --tests com.baylee.billnest.model.FinanceModelsTest --stacktrace
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 7: Commit.**
+- [ ] Commit:
 
 ```bash
-git add app/src/main/java/com/baylee/billnest/model/SmartTransactionModels.kt app/src/main/java/com/baylee/billnest/model/FinanceModels.kt app/src/main/java/com/baylee/billnest/model/Models.kt app/src/main/java/com/baylee/billnest/model/TransactionMerge.kt app/src/test/java/com/baylee/billnest/model/SmartTransactionModelsTest.kt
+git add app/src/main/java/com/baylee/billnest/model app/src/test/java/com/baylee/billnest/model/SmartTransactionModelsTest.kt
 git commit -m "feat: add smart transaction metadata foundation"
 ```
 
 ---
 
-## Task 2 — Build the Merchant Manager engine
+## Task 2 — Build merchant identity/profile engine
 
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/model/MerchantEngine.kt`
-- Create `app/src/test/java/com/baylee/billnest/model/MerchantEngineTest.kt`
-- Modify `app/src/main/java/com/baylee/billnest/model/BillCategoryRules.kt`
+**Files:** create `MerchantEngine.kt`, `MerchantEngineTest.kt`; modify `BillCategoryRules.kt`.
 
-- [ ] **Step 1: Write failing alias/canonical-name tests.**
-
-Cover at minimum:
-- `WM SUPERCENTER #1234` and `WAL-MART 1234` can resolve to one user-confirmed Walmart profile when aliases contain `WM SUPERCENTER` / `WAL MART`.
-- longest matching alias wins when two profiles could match;
-- a profile preferred category uses `canonicalCategoryName` and does not overwrite an explicit transaction user classification override;
-- `effectiveDisplayName()` returns the profile display name after application.
-
-Representative test:
+- [ ] RED tests must cover alias normalization, longest-alias winner, category canonicalization, user override protection, and raw-name preservation.
 
 ```kotlin
 @Test
-fun profileAliasResolvesUglyBankMerchantToCanonicalMerchant() {
+fun profileAliasCreatesBillNestDisplayNameWithoutChangingRawName() {
     val profile = MerchantProfile(
-        id = "walmart",
-        displayName = "Walmart",
-        aliases = listOf("WM SUPERCENTER", "WAL MART"),
-        preferredCategory = "Groceries"
+        id = "walmart", displayName = "Walmart",
+        aliases = listOf("WM SUPERCENTER", "WAL MART"), preferredCategory = "Groceries"
     )
-    val tx = FinanceTransaction(
-        id = "tx",
-        name = "WM SUPERCENTER #1234",
-        amount = 51.25,
-        dateIso = "2026-09-13"
-    )
-
-    val applied = applyMerchantProfiles(listOf(tx), listOf(profile), AppData()).single()
-
-    assertEquals("WM SUPERCENTER #1234", applied.name)
-    assertEquals("Walmart", applied.displayNameOverride)
-    assertEquals("walmart", applied.merchantProfileId)
-    assertEquals("Groceries", applied.category)
+    val tx = FinanceTransaction(id = "tx", name = "WM SUPERCENTER #1234", amount = 51.25, dateIso = "2026-09-13")
+    val result = applyMerchantProfiles(listOf(tx), listOf(profile), AppData()).single()
+    assertEquals("WM SUPERCENTER #1234", result.name)
+    assertEquals("Walmart", result.displayNameOverride)
+    assertEquals("walmart", result.merchantProfileId)
+    assertEquals("Groceries", result.category)
 }
 ```
 
-Run and confirm RED:
+Run RED:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.MerchantEngineTest --stacktrace
 ```
 
-- [ ] **Step 2: Implement deterministic merchant normalization/resolution.**
-
-Expose:
+- [ ] Implement:
 
 ```kotlin
 fun merchantIdentityKey(value: String): String
@@ -347,35 +261,26 @@ fun applyMerchantProfile(transaction: FinanceTransaction, profile: MerchantProfi
 fun applyMerchantProfiles(transactions: List<FinanceTransaction>, profiles: List<MerchantProfile>, data: AppData): List<FinanceTransaction>
 ```
 
-Normalization rules:
-1. lowercase;
-2. replace punctuation with spaces;
-3. collapse whitespace;
-4. remove standalone numeric store/terminal fragments from the comparison key;
-5. do not mutate the raw transaction name.
+Normalization: lowercase → punctuation to spaces → collapse whitespace → remove standalone numeric store/terminal tokens. Never mutate raw transaction `name`.
 
-Profile selection order: longest normalized matching alias, then newest `updatedAtEpochMs`, then lexical profile ID as final deterministic tie-breaker.
+Resolution order: longest matching normalized alias → newest `updatedAtEpochMs` → lexical profile ID.
 
-- [ ] **Step 3: Extend category catalog with smart profiles/rules.**
+Preferred category uses `canonicalCategoryName(data, value)` and must not override a transaction with `userClassificationOverride == true`. Default classification is also skipped for explicit user overrides.
 
-`categoryOptions(data)` must include:
+- [ ] Extend `categoryOptions(data)`:
 
 ```kotlin
 data.merchantProfiles.forEach { add(it.preferredCategory) }
 data.smartTransactionRules.forEach { add(it.action.category) }
 ```
 
-This keeps Alpha29 category reuse working in new Stage A screens.
-
-- [ ] **Step 4: Run tests.**
+- [ ] Run GREEN:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.MerchantEngineTest --tests com.baylee.billnest.model.CategoryCatalogTest --stacktrace
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 5: Commit.**
+- [ ] Commit:
 
 ```bash
 git add app/src/main/java/com/baylee/billnest/model/MerchantEngine.kt app/src/main/java/com/baylee/billnest/model/BillCategoryRules.kt app/src/test/java/com/baylee/billnest/model/MerchantEngineTest.kt
@@ -384,117 +289,40 @@ git commit -m "feat: add merchant identity engine"
 
 ---
 
-## Task 3 — Replace simple-only automation with deterministic smart rules and non-mutating preview
+## Task 3 — Add deterministic smart rules and non-mutating preview
 
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/model/SmartTransactionRuleEngine.kt`
-- Create `app/src/test/java/com/baylee/billnest/model/SmartTransactionRuleEngineTest.kt`
-- Modify `app/src/main/java/com/baylee/billnest/model/TransactionRules.kt`
+**Files:** create `SmartTransactionRuleEngine.kt`, `SmartTransactionRuleEngineTest.kt`; modify `TransactionRules.kt`.
 
-- [ ] **Step 1: Write failing tests for matching, priority, preview, and user overrides.**
-
-Tests must prove:
-- conditions can combine raw merchant text + account + amount range + category + classification + direction;
-- higher `priority` wins over a lower-priority matching rule;
-- equal priority uses greater condition specificity, then newest update time, then stable ID tie-break;
-- preview returns before/after rows without mutating the input list;
-- a smart rule never overwrites category/classification when `userClassificationOverride == true`;
-- display rename is stored in `displayNameOverride`, leaving `name` unchanged;
-- recurring action upserts a `SubscriptionPreference` rather than mutating a transaction into a fake subscription;
-- legacy rule rename now writes `displayNameOverride` rather than replacing the raw `name`.
-
-Representative priority test:
+- [ ] RED tests must prove combined matching, priority conflict resolution, non-mutating preview, user override protection, display rename metadata, recurring preference action, and legacy raw-name safety.
 
 ```kotlin
 @Test
-fun higherPriorityRuleWinsAndPreviewDoesNotMutateSource() {
+fun highPrioritySpecificRuleWinsWithoutMutatingPreviewInput() {
     val tx = FinanceTransaction(id = "tx", name = "TARGET 123", amount = 60.0, dateIso = "2026-09-13")
     val low = SmartTransactionRule(
-        id = "low",
-        name = "Generic Target",
-        priority = 1,
+        id = "low", name = "Generic", priority = 1,
         match = SmartRuleMatch(rawNameContains = "TARGET"),
         action = SmartRuleAction(category = "Shopping")
     )
     val high = SmartTransactionRule(
-        id = "high",
-        name = "Target groceries",
-        priority = 10,
+        id = "high", name = "Groceries", priority = 10,
         match = SmartRuleMatch(rawNameContains = "TARGET", minAmount = 50.0),
         action = SmartRuleAction(category = "Groceries")
     )
-
     val preview = previewSmartRuleSet(listOf(tx), listOf(low, high), emptyList(), AppData())
-
     assertEquals("Groceries", preview.single().after.category)
     assertEquals("high", preview.single().winningRuleId)
     assertEquals("Other", tx.category)
 }
 ```
 
-Run and confirm RED:
-
-```bash
-gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionRuleEngineTest --stacktrace
-```
-
-- [ ] **Step 2: Implement exact classification/direction helpers and match logic.**
-
-Expose:
+- [ ] Implement:
 
 ```kotlin
 fun transactionClassification(transaction: FinanceTransaction): TransactionClassification
 fun transactionDirection(transaction: FinanceTransaction): TransactionDirection
 fun smartRuleMatches(transaction: FinanceTransaction, rule: SmartTransactionRule): Boolean
 fun winningSmartRule(transaction: FinanceTransaction, rules: List<SmartTransactionRule>): SmartTransactionRule?
-```
-
-Direction rule: negative amount is `INFLOW`, zero/positive is `OUTFLOW`. Classification always uses explicit `transfer`/`income` flags first and otherwise `SPENDING`.
-
-- [ ] **Step 3: Implement rule application without creating manual overrides.**
-
-Rule-applied classification must not set `userClassificationOverride = true`. Use a dedicated helper rather than `reclassifyTransaction`, because `reclassifyTransaction` correctly marks real user edits as manual.
-
-Pseudo-shape to implement exactly:
-
-```kotlin
-private fun applyAutomaticClassification(
-    transaction: FinanceTransaction,
-    classification: TransactionClassification,
-    category: String?
-): FinanceTransaction {
-    if (transaction.userClassificationOverride) return transaction
-    return when (classification) {
-        TransactionClassification.SPENDING -> transaction.copy(
-            category = category ?: transaction.category,
-            transfer = false,
-            income = false,
-            transferFromAccountId = null,
-            transferToAccountId = null
-        )
-        TransactionClassification.INCOME -> transaction.copy(
-            category = "Income",
-            transfer = false,
-            income = true,
-            transferFromAccountId = null,
-            transferToAccountId = null,
-            splits = null
-        )
-        TransactionClassification.TRANSFER -> transaction.copy(
-            category = "Transfer",
-            transfer = true,
-            income = false,
-            splits = null
-        )
-    }
-}
-```
-
-- [ ] **Step 4: Implement batch application and preview.**
-
-Expose:
-
-```kotlin
 fun applySmartRuleSet(
     transactions: List<FinanceTransaction>,
     rules: List<SmartTransactionRule>,
@@ -502,7 +330,6 @@ fun applySmartRuleSet(
     subscriptions: List<SubscriptionPreference>,
     data: AppData
 ): SmartRuleBatchResult
-
 fun previewSmartRuleSet(
     transactions: List<FinanceTransaction>,
     rules: List<SmartTransactionRule>,
@@ -511,33 +338,35 @@ fun previewSmartRuleSet(
 ): List<RulePreviewRow>
 ```
 
-The preview must operate on copies and never mutate `AppData` or lists in place.
+Direction: negative amount = `INFLOW`; zero/positive = `OUTFLOW`. Classification uses `transfer`, then `income`, else `SPENDING`.
 
-- [ ] **Step 5: Make legacy rules raw-data-safe.**
+Winning rule order: enabled only → highest `priority` → most non-null match conditions → newest `updatedAtEpochMs` → lexical ID.
 
-Change legacy `applyTransactionRules()` rename behavior from:
+Automatic classification must not call `reclassifyTransaction`, because that marks a user override. Implement a dedicated automatic helper that changes flags/category while leaving `userClassificationOverride = false`.
 
-```kotlin
-name = matching.renameTo ?: transaction.name
-```
+- [ ] Change legacy rename behavior to write `displayNameOverride` rather than `name`. Preserve legacy category/exclusion semantics.
 
-to:
+- [ ] Add converter:
 
 ```kotlin
-displayNameOverride = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() } ?: transaction.displayNameOverride
+fun TransactionRule.toSmartRule(): SmartTransactionRule = SmartTransactionRule(
+    name = "Legacy: $merchantContains",
+    match = SmartRuleMatch(rawNameContains = merchantContains),
+    action = SmartRuleAction(
+        displayName = renameTo,
+        category = category,
+        excludeFromSpending = excludeFromSpending
+    )
+)
 ```
 
-Leave legacy category/exclusion semantics intact for compatibility.
-
-- [ ] **Step 6: Run focused and regression tests.**
+- [ ] Run GREEN:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionRuleEngineTest --tests com.baylee.billnest.model.FinanceModelsTest --stacktrace
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 7: Commit.**
+- [ ] Commit:
 
 ```bash
 git add app/src/main/java/com/baylee/billnest/model/SmartTransactionRuleEngine.kt app/src/main/java/com/baylee/billnest/model/TransactionRules.kt app/src/test/java/com/baylee/billnest/model/SmartTransactionRuleEngineTest.kt
@@ -546,53 +375,44 @@ git commit -m "feat: add deterministic smart transaction rules"
 
 ---
 
-## Task 4 — Build the Review Inbox engine with stable resolution fingerprints
+## Task 4 — Build Review Inbox engine and stable suppression
 
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/model/ReviewInboxEngine.kt`
-- Create `app/src/test/java/com/baylee/billnest/model/ReviewInboxEngineTest.kt`
+**Files:** create `ReviewInboxEngine.kt`, `ReviewInboxEngineTest.kt`.
 
-- [ ] **Step 1: Write failing detector and suppression tests.**
+- [ ] RED tests cover all ten Stage A review types:
+  - uncategorized spending;
+  - unknown merchant;
+  - possible transfer pair;
+  - possible income/paycheck;
+  - current recurring suggestion;
+  - potential duplicate;
+  - category conflict;
+  - unusual merchant amount;
+  - account metadata missing;
+  - debt metadata missing.
 
-Create tests for all Stage A review types:
-1. `UNCATEGORIZED`: spending transaction category is blank/Other.
-2. `UNKNOWN_MERCHANT`: no user-confirmed merchant profile resolves for the normalized merchant identity.
-3. `POSSIBLE_TRANSFER`: opposite-signed same-amount rows on different accounts within three days.
-4. `POSSIBLE_INCOME`: unclassified inflow with payroll/direct-deposit language or a repeated payday-like payer.
-5. `POSSIBLE_RECURRING`: current `detectSubscriptions()` finds a candidate without a confirmed/ignored subscription preference.
-6. `POTENTIAL_DUPLICATE`: same normalized merchant, account, absolute amount, and date within one day.
-7. `CATEGORY_CONFLICT`: current merchant category differs from a dominant historical category supported by at least two prior rows.
-8. `UNUSUAL_AMOUNT`: merchant has at least three prior amounts and current absolute amount is at least 2x the median and at least $25 above it.
-9. Exact resolved/dismissed fingerprints suppress an item; changed evidence produces a new fingerprint and is visible.
+Account metadata rule for Stage A: flag an active account whose `role == AccountRole.OTHER`, because BillNest cannot reliably know whether it is spendable/savings/other until classified.
 
-Representative suppression test:
+Debt metadata rule for Stage A: flag active debts with any of: `apr <= 0`, `minimumPayment <= 0`, or credit-card `creditLimit <= 0`. Do not require Stage B statement fields yet.
+
+- [ ] RED suppression test:
 
 ```kotlin
 @Test
-fun resolvedFingerprintStaysHiddenUntilEvidenceChanges() {
-    val tx = FinanceTransaction(id = "tx", name = "New Cafe", amount = 20.0, dateIso = "2026-09-13", category = "Other")
+fun resolutionSuppressesExactEvidenceButChangedEvidenceCanReturn() {
+    val tx = FinanceTransaction(id = "tx", name = "Cafe", amount = 20.0, dateIso = "2026-09-13", category = "Other")
     val first = generateReviewItems(AppData(transactions = listOf(tx))).first { it.type == ReviewType.UNCATEGORIZED }
-    val resolvedData = AppData(
+    val resolved = AppData(
         transactions = listOf(tx),
         reviewResolutions = listOf(ReviewResolution(first.fingerprint, ReviewDisposition.RESOLVED))
     )
-
-    assertTrue(visibleReviewItems(resolvedData).none { it.fingerprint == first.fingerprint })
-
-    val changed = resolvedData.copy(transactions = listOf(tx.copy(amount = 39.0)))
+    assertTrue(visibleReviewItems(resolved).none { it.fingerprint == first.fingerprint })
+    val changed = resolved.copy(transactions = listOf(tx.copy(amount = 39.0)))
     assertTrue(visibleReviewItems(changed).any { it.type == ReviewType.UNCATEGORIZED })
 }
 ```
 
-Run and confirm RED:
-
-```bash
-gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.ReviewInboxEngineTest --stacktrace
-```
-
-- [ ] **Step 2: Implement stable fingerprints.**
-
-Use SHA-256 from `java.security.MessageDigest`:
+- [ ] Implement SHA-256 fingerprints:
 
 ```kotlin
 fun reviewFingerprint(type: ReviewType, entityKey: String, evidenceKey: String): String {
@@ -603,16 +423,9 @@ fun reviewFingerprint(type: ReviewType, entityKey: String, evidenceKey: String):
 }
 ```
 
-Fingerprint evidence rules:
-- unknown merchant: normalized merchant key only, so “keep as is” suppresses repeat noise for the same raw identity;
-- uncategorized/unusual/category conflict: transaction ID plus amount/category evidence;
-- duplicate: sorted pair of transaction IDs plus amount/date evidence;
-- transfer: sorted pair IDs plus amount evidence;
-- recurring: normalized merchant + detected frequency + typical amount bucket.
+Fingerprint rules: unknown merchant uses normalized merchant identity; duplicate/transfer uses sorted pair IDs + evidence; transaction issues include transaction ID + material amount/category evidence; account/debt uses record ID + missing-field evidence; recurring uses merchant identity + frequency + typical amount bucket.
 
-- [ ] **Step 3: Implement review generation and filtering.**
-
-Expose:
+- [ ] Implement:
 
 ```kotlin
 fun generateReviewItems(data: AppData): List<ReviewItem>
@@ -620,52 +433,42 @@ fun visibleReviewItems(data: AppData): List<ReviewItem>
 fun reviewAttentionCount(data: AppData): Int = visibleReviewItems(data).size
 ```
 
-Sort visible items by confidence descending, then newest associated transaction date, then fingerprint for deterministic UI order.
+Detector thresholds:
+- transfer: opposite signs, equal absolute amount within $0.01, different account IDs, dates within 3 days;
+- duplicate: same merchant key/account/absolute amount, dates within 1 day;
+- category conflict: at least two historical same-merchant rows and one category owns >= 70% of comparable rows;
+- unusual amount: at least three prior same-merchant amounts, current >= 2x median and >= $25 above median;
+- possible income: unclassified inflow with payroll/direct-deposit language or repeated payday-like payer;
+- possible recurring: reuse `detectSubscriptions()` and honor existing confirmed/ignored subscription preferences.
 
-- [ ] **Step 4: Run tests.**
+Sort by confidence descending, associated transaction date descending, then fingerprint.
+
+- [ ] Run GREEN:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.ReviewInboxEngineTest --stacktrace
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 5: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/model/ReviewInboxEngine.kt app/src/test/java/com/baylee/billnest/model/ReviewInboxEngineTest.kt
-git commit -m "feat: add financial review inbox engine"
-```
+- [ ] Commit.
 
 ---
 
-## Task 5 — Persist and household-sync merchant profiles, smart rules, and review resolutions
+## Task 5 — Persist and household-sync Stage A metadata
 
-**Files:**
-- Modify `app/src/main/java/com/baylee/billnest/model/SyncModels.kt`
-- Modify `app/src/main/java/com/baylee/billnest/data/EncryptedStore.kt`
-- Modify `app/src/main/java/com/baylee/billnest/data/BillRepository.kt`
-- Modify `app/src/main/java/com/baylee/billnest/data/HouseholdSyncRepository.kt`
-- Modify `cloudflare-worker/src/sync.js`
-- Create `app/src/test/java/com/baylee/billnest/model/SmartTransactionSyncMapperTest.kt`
-- Create `cloudflare-worker/test/smart-transaction-sync-kinds.test.js`
+**Files:** modify `SyncModels.kt`, `EncryptedStore.kt`, `BillRepository.kt`, `HouseholdSyncRepository.kt`, `cloudflare-worker/src/sync.js`; create mapper + Worker tests.
 
-- [ ] **Step 1: Write failing Android mapper tests.**
-
-Test JSON round-trip + mutation kinds for all three new records:
+- [ ] RED Android sync test:
 
 ```kotlin
 @Test
-fun stageASyncKindsRoundTrip() {
+fun stageARecordsRoundTripAndUseExpectedKinds() {
     val merchant = MerchantProfile(id = "m1", displayName = "Walmart", aliases = listOf("WM SUPERCENTER"))
     val rule = SmartTransactionRule(
-        id = "r1",
-        name = "Walmart groceries",
+        id = "r1", name = "Walmart groceries",
         match = SmartRuleMatch(merchantProfileId = "m1"),
         action = SmartRuleAction(category = "Groceries")
     )
     val resolution = ReviewResolution("fingerprint-1", ReviewDisposition.DISMISSED)
-
     assertEquals(merchant, SyncMapper.decodeMerchantProfile(SyncMapper.encodeMerchantProfile(merchant)))
     assertEquals("merchant_profile", SyncMapper.merchantProfileMutation(merchant).kind)
     assertEquals("smart_transaction_rule", SyncMapper.smartTransactionRuleMutation(rule).kind)
@@ -673,22 +476,9 @@ fun stageASyncKindsRoundTrip() {
 }
 ```
 
-Run and confirm RED:
+- [ ] Add `SyncMapper` encode/decode/mutation functions. Record IDs: profile ID, rule ID, resolution fingerprint.
 
-```bash
-gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionSyncMapperTest --stacktrace
-```
-
-- [ ] **Step 2: Add codecs and mutation helpers.**
-
-In `SyncMapper`, add encode/decode/mutation methods with record IDs:
-- merchant profile → `profile.id`
-- smart rule → `rule.id`
-- review resolution → `resolution.fingerprint`
-
-- [ ] **Step 3: Make encrypted Alpha29 data backward-compatible.**
-
-In `EncryptedStore.load()`, inject empty JSON arrays when absent:
+- [ ] Backward-compatible encrypted data migration:
 
 ```kotlin
 listOf("merchantProfiles", "smartTransactionRules", "reviewResolutions").forEach { field ->
@@ -696,19 +486,7 @@ listOf("merchantProfiles", "smartTransactionRules", "reviewResolutions").forEach
 }
 ```
 
-- [ ] **Step 4: Write failing Worker allow-list test.**
-
-`smart-transaction-sync-kinds.test.js` must assert that `merchant_profile`, `smart_transaction_rule`, and `review_resolution` are accepted through the existing authenticated household sync endpoint, while a made-up kind remains rejected.
-
-Run and confirm RED:
-
-```bash
-node --test cloudflare-worker/test/smart-transaction-sync-kinds.test.js
-```
-
-- [ ] **Step 5: Add the three Worker kinds only.**
-
-Extend `ALLOWED_KINDS` in `cloudflare-worker/src/sync.js`:
+- [ ] RED Worker test proving the new kinds are rejected before allow-list change, then add exactly:
 
 ```js
 'merchant_profile',
@@ -716,11 +494,15 @@ Extend `ALLOWED_KINDS` in `cloudflare-worker/src/sync.js`:
 'review_resolution'
 ```
 
-Do not add D1 tables: existing `finance_records` already stores arbitrary allowed kinds.
+No new D1 tables.
 
-- [ ] **Step 6: Add repository CRUD and remote replay.**
+Run:
 
-Add methods:
+```bash
+node --test cloudflare-worker/test/smart-transaction-sync-kinds.test.js
+```
+
+- [ ] Repository CRUD:
 
 ```kotlin
 fun saveMerchantProfile(value: MerchantProfile)
@@ -731,53 +513,28 @@ fun saveReviewResolution(value: ReviewResolution)
 fun deleteReviewResolution(fingerprint: String)
 ```
 
-Each local mutation queues exactly one corresponding sync mutation. Remote replay updates `AppData` without queueing another local mutation.
+Local changes enqueue one mutation; remote replay must not enqueue another mutation.
 
-For remote profile/rule updates, re-run the local merchant + smart-rule pipeline after changing the list so another household member sees the effect immediately.
+- [ ] `HouseholdSyncRepository` must seed/replay all three collections. Remote profile/rule changes trigger local transaction re-evaluation after the record is applied.
 
-- [ ] **Step 7: Extend legacy household snapshot/migration replay.**
-
-In `HouseholdSyncRepository`, include these collections when seeding a household snapshot and add change handlers for the new kinds.
-
-- [ ] **Step 8: Run focused/full sync tests.**
+- [ ] Run GREEN:
 
 ```bash
 gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionSyncMapperTest --tests com.baylee.billnest.data.SyncMappingTest --stacktrace
 node --test cloudflare-worker/test/smart-transaction-sync-kinds.test.js cloudflare-worker/test/sync.test.js
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 9: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/model/SyncModels.kt app/src/main/java/com/baylee/billnest/data/EncryptedStore.kt app/src/main/java/com/baylee/billnest/data/BillRepository.kt app/src/main/java/com/baylee/billnest/data/HouseholdSyncRepository.kt cloudflare-worker/src/sync.js app/src/test/java/com/baylee/billnest/model/SmartTransactionSyncMapperTest.kt cloudflare-worker/test/smart-transaction-sync-kinds.test.js
-git commit -m "feat: sync smart transaction metadata"
-```
+- [ ] Commit.
 
 ---
 
-## Task 6 — Integrate the smart pipeline into repository and ViewModel behavior
+## Task 6 — Wire the smart processing pipeline into repository/ViewModel
 
-**Files:**
-- Modify `app/src/main/java/com/baylee/billnest/data/BillRepository.kt`
-- Modify `app/src/main/java/com/baylee/billnest/ui/MainViewModel.kt`
-- Add/extend tests under `app/src/test/java/com/baylee/billnest/model/`
+**Files:** modify `BillRepository.kt`, `MainViewModel.kt`, `SmartTransactionRuleEngine.kt`; extend model tests.
 
-- [ ] **Step 1: Write a failing pipeline regression test.**
+- [ ] RED pipeline test proves the order: account-ID mapping → legacy compatibility rule → merchant profile → smart rules → Plaid merge/user overrides.
 
-Prove this order on a Plaid refresh:
-1. raw Plaid row mapped to BillNest account ID;
-2. legacy rule compatibility layer;
-3. merchant profile application;
-4. smart-rule application;
-5. merge with saved per-transaction user overrides/metadata.
-
-The test must also prove a manual category override survives even when a matching merchant profile and smart rule disagree.
-
-- [ ] **Step 2: Extract one reusable pure pipeline helper.**
-
-Implement in a focused model file or `SmartTransactionRuleEngine.kt`:
+- [ ] Add pure helper:
 
 ```kotlin
 fun processIncomingTransactions(data: AppData, incoming: List<FinanceTransaction>): SmartRuleBatchResult {
@@ -793,13 +550,11 @@ fun processIncomingTransactions(data: AppData, incoming: List<FinanceTransaction
 }
 ```
 
-Repository `syncPlaidTransactions()` maps account IDs before calling this helper, then uses `mergePlaidTransactions()`.
+`BillRepository.syncPlaidTransactions()` maps Plaid account IDs first, then calls this helper, then `mergePlaidTransactions()`.
 
-- [ ] **Step 3: Apply rules/profiles immediately when they are saved or remotely received.**
+- [ ] Saving or remotely receiving a merchant profile/smart rule immediately re-evaluates local transactions. If a rule changes subscription preferences, queue only actually changed preferences.
 
-`saveMerchantProfile()` and `saveSmartTransactionRule()` must recalculate local derived transaction metadata. When smart-rule application changes subscription preferences, upsert and queue only preferences whose stored value actually changed.
-
-- [ ] **Step 4: Add ViewModel wrappers.**
+- [ ] ViewModel wrappers:
 
 ```kotlin
 fun saveMerchantProfile(v: MerchantProfile) = repo.saveMerchantProfile(v)
@@ -810,138 +565,23 @@ fun resolveReview(fingerprint: String, disposition: ReviewDisposition) =
     repo.saveReviewResolution(ReviewResolution(fingerprint, disposition))
 ```
 
-- [ ] **Step 5: Run tests.**
-
-```bash
-gradle :app:testDebugUnitTest --tests com.baylee.billnest.model.SmartTransactionRuleEngineTest --tests com.baylee.billnest.model.SmartTransactionModelsTest --stacktrace
-```
-
-Expected: GREEN.
-
-- [ ] **Step 6: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/data/BillRepository.kt app/src/main/java/com/baylee/billnest/ui/MainViewModel.kt app/src/main/java/com/baylee/billnest/model/SmartTransactionRuleEngine.kt app/src/test/java/com/baylee/billnest/model
-git commit -m "feat: wire smart transaction processing pipeline"
-```
+- [ ] Run focused model tests and commit.
 
 ---
 
-## Task 7 — Build the Review Inbox UI and resolution actions
+## Task 7 — Build Merchant Manager + smart rule editor/preview first
 
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/ReviewInboxPage.kt`
-- Reuse `TransactionEditorDialog.kt`, `CategoryPicker.kt`, `SmartRuleEditorDialog.kt` once Task 8 creates it
-- Modify `app/src/main/java/com/baylee/billnest/ui/MainViewModel.kt` only if a thin action wrapper is missing
+**Files:** create `MerchantManagerPage.kt`, `SmartRuleEditorDialog.kt`; modify `Alpha19FinanceScreens.kt`, `InsightsPageV5.kt`.
 
-- [ ] **Step 1: Implement a focused dark Review Inbox page.**
+This task intentionally precedes Review Inbox UI so Review actions can reuse finished merchant/rule components.
 
-Signature:
+- [ ] Build `MerchantManagerPage(data, vm, modifier)` with search, merchant profiles, smart rules, `+ Merchant`, and `+ Rule`.
 
-```kotlin
-@Composable
-fun ReviewInboxPage(
-    data: AppData,
-    vm: MainViewModel,
-    modifier: Modifier = Modifier
-)
-```
+Merchant editor fields: display name, aliases, preferred category via `CategoryPickerField`, optional default classification, optional existing bill link, optional subscription identity, save/delete.
 
-Derive items with `remember(data) { visibleReviewItems(data) }`. Use one `LazyColumn`; no nested whole-page scrolling.
+- [ ] Build `SmartRuleEditorDialog` with all Stage A conditions/actions: raw text, merchant, account, amount range, current category, current classification, direction, priority, enabled; actions for display rename, category, classification, exclusion, recurring status.
 
-Each card shows:
-- type label;
-- transaction effective display name + amount/date when available;
-- the engine explanation;
-- confidence only as human-readable `High`, `Medium`, or `Low`, not fake precision percentages;
-- phone-safe action rows.
-
-- [ ] **Step 2: Wire one-tap resolutions by review type.**
-
-Required actions:
-- `UNCATEGORIZED`: choose existing/new category via `CategoryPickerField`, save transaction, resolve fingerprint.
-- `UNKNOWN_MERCHANT`: open merchant-profile editor prefilled from raw merchant; saving profile resolves fingerprint.
-- `POSSIBLE_TRANSFER`: mark the paired rows as transfer using existing reclassification behavior when both sides are present; otherwise open transaction editor; resolve after save.
-- `POSSIBLE_INCOME`: mark as Income or dismiss.
-- `POSSIBLE_RECURRING`: Track subscription or dismiss.
-- `POTENTIAL_DUPLICATE`: open both details; delete selected duplicate or dismiss as legitimate.
-- `CATEGORY_CONFLICT`: apply suggested category to this transaction, create rule, or keep current/dismiss.
-- `UNUSUAL_AMOUNT`: edit transaction or `Looks right` dismiss.
-
-Never silently delete/reclassify from detection alone.
-
-- [ ] **Step 3: Add empty state and resolved behavior.**
-
-Empty copy: `You're all caught up. BillNest has nothing that needs review right now.`
-
-After a resolution is saved, the card must disappear because the same `AppData` recomputes through `visibleReviewItems()`.
-
-- [ ] **Step 4: Compile-test UI wiring.**
-
-```bash
-gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
-```
-
-Expected: GREEN.
-
-- [ ] **Step 5: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/ReviewInboxPage.kt app/src/main/java/com/baylee/billnest/ui/MainViewModel.kt
-git commit -m "feat: add financial review inbox UI"
-```
-
----
-
-## Task 8 — Build Merchant Manager and smart rule editor with preview
-
-**Files:**
-- Create `app/src/main/java/com/baylee/billnest/MerchantManagerPage.kt`
-- Create `app/src/main/java/com/baylee/billnest/SmartRuleEditorDialog.kt`
-- Modify `app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt`
-- Modify `app/src/main/java/com/baylee/billnest/InsightsPageV5.kt`
-
-- [ ] **Step 1: Build Merchant Manager page.**
-
-Signature:
-
-```kotlin
-@Composable
-fun MerchantManagerPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier)
-```
-
-Page sections:
-- search;
-- confirmed merchant profiles with display name, aliases, preferred category/classification;
-- smart rules with enabled state, priority, concise match summary, action summary;
-- `+ Merchant` and `+ Rule` actions.
-
-Merchant editor requirements:
-- canonical display name;
-- multiple aliases/patterns;
-- `CategoryPickerField` for preferred category;
-- optional default classification;
-- save/delete using ViewModel.
-
-- [ ] **Step 2: Build smart rule editor with all Stage A conditions/actions.**
-
-The dialog must support:
-- raw name contains;
-- canonical merchant;
-- account;
-- minimum/maximum absolute amount;
-- current category;
-- current classification;
-- inflow/outflow;
-- priority;
-- enabled toggle;
-- actions: display rename, category, classification, exclusion, recurring status.
-
-Use `CategoryPickerField`; do not add a second custom category implementation.
-
-- [ ] **Step 3: Make preview a required step before save when the rule has matches.**
-
-Compute:
+- [ ] Rule preview is mandatory before saving a rule that has current matches:
 
 ```kotlin
 val preview = previewSmartRuleSet(
@@ -949,70 +589,73 @@ val preview = previewSmartRuleSet(
     rules = data.smartTransactionRules.filterNot { it.id == candidate.id } + candidate,
     profiles = data.merchantProfiles,
     data = data
-)
+).filter { it.winningRuleId == candidate.id }
 ```
 
-Show only rows where `winningRuleId == candidate.id`, including before/after merchant display name, category/classification, and exclusion state. Saving is permitted after the user sees the preview; if there are zero current matches, clearly state `No current transactions match. The rule will still apply to future matches.`
+Show before/after display name, category/classification, and exclusion. For zero matches show: `No current transactions match. The rule will still apply to future matches.`
 
-- [ ] **Step 4: Replace current “Make rule” entry points with the smart editor.**
+- [ ] Replace `Make rule` in Transactions and Insights with `SmartRuleEditorDialog` prefilled from source transaction.
 
-In `TransactionsPageV3` and Insights category transaction actions, `Make rule` opens `SmartRuleEditorDialog` prefilled from the source transaction. Keep existing `TransactionRule` rows visible as `Legacy rules` until converted/deleted.
+- [ ] Existing simple rules appear under `Legacy rules`. Conversion saves the new smart rule first, then deletes the old rule only after local save succeeds.
 
-Provide a conversion helper/action:
+- [ ] Transactions and Insights render `effectiveDisplayName()` while raw bank name remains available in edit/details.
 
-```kotlin
-fun TransactionRule.toSmartRule(): SmartTransactionRule = SmartTransactionRule(
-    name = "Legacy: $merchantContains",
-    match = SmartRuleMatch(rawNameContains = merchantContains),
-    action = SmartRuleAction(
-        displayName = renameTo,
-        category = category,
-        excludeFromSpending = excludeFromSpending
-    )
-)
-```
-
-Conversion must create the smart rule first, then delete the legacy rule only after save succeeds locally.
-
-- [ ] **Step 5: Display effective merchant names.**
-
-Transactions and Insights should render `row.effectiveDisplayName()` instead of raw `row.name`, while raw name remains available inside detail/editor context when useful.
-
-- [ ] **Step 6: Compile and run all Android unit tests.**
+- [ ] Run:
 
 ```bash
 gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
 ```
 
-Expected: GREEN.
-
-- [ ] **Step 7: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/MerchantManagerPage.kt app/src/main/java/com/baylee/billnest/SmartRuleEditorDialog.kt app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt app/src/main/java/com/baylee/billnest/InsightsPageV5.kt
-git commit -m "feat: add merchant manager and smart rule preview"
-```
+- [ ] Commit.
 
 ---
 
-## Task 9 — Add navigation and Dashboard attention entry points
+## Task 8 — Build Review Inbox UI using the finished shared components
 
-**Files:**
-- Modify `app/src/main/java/com/baylee/billnest/FinanceActivity.kt`
-- Modify `app/src/main/java/com/baylee/billnest/DashboardV4.kt`
-- Modify transaction header in `app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt`
+**Files:** create `ReviewInboxPage.kt`; reuse `TransactionEditorDialog.kt`, `CategoryPicker.kt`, `SmartRuleEditorDialog.kt`, merchant editor component from Task 7.
 
-- [ ] **Step 1: Add routes without replacing the current shell.**
+- [ ] Implement:
 
-Add destinations:
-- `Review Inbox`
-- `Merchants & Rules`
+```kotlin
+@Composable
+fun ReviewInboxPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier)
+```
 
-Route them to `ReviewInboxPage(data, vm, Modifier.padding(pad))` and `MerchantManagerPage(data, vm, Modifier.padding(pad))`.
+Use `remember(data) { visibleReviewItems(data) }` in one `LazyColumn`. Each card shows review type, affected record/transaction, explanation, human-readable confidence (`High`/`Medium`/`Low`), and phone-safe actions.
 
-- [ ] **Step 2: Add a Dashboard review-attention card only when count > 0.**
+- [ ] Wire actions:
+  - uncategorized → shared category picker, save current transaction, resolve;
+  - unknown merchant → merchant editor prefilled with raw alias, save profile, resolve;
+  - possible transfer → confirm paired transfer or edit; no automatic mutation;
+  - possible income → mark Income or dismiss;
+  - possible recurring → Track or dismiss;
+  - duplicate → inspect/delete selected duplicate or dismiss;
+  - category conflict → use suggested category, open smart rule editor, or keep current;
+  - unusual amount → edit or `Looks right` dismiss;
+  - account metadata → open/focus existing account edit flow to set role, or dismiss;
+  - debt metadata → open/focus existing debt edit flow for APR/minimum/limit, or dismiss.
 
-Change signature to:
+Detection alone never deletes, reclassifies, tracks, or edits anything.
+
+Empty state: `You're all caught up. BillNest has nothing that needs review right now.`
+
+- [ ] Run:
+
+```bash
+gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+```
+
+- [ ] Commit.
+
+---
+
+## Task 9 — Navigation and Dashboard attention entry points
+
+**Files:** modify `FinanceActivity.kt`, `DashboardV4.kt`, Transactions header in `Alpha19FinanceScreens.kt`.
+
+- [ ] Add destinations `Review Inbox` and `Merchants & Rules` to the existing authenticated shell; do not create a new Activity.
+
+- [ ] Update Dashboard signature:
 
 ```kotlin
 @Composable
@@ -1023,37 +666,19 @@ fun DashboardV4(
 )
 ```
 
-Compute `reviewAttentionCount(data)` and show a compact `Needs review` card near the top. The button changes the internal FinanceActivity route to `Review Inbox`; it must not start another activity or reset authenticated state.
+When `reviewAttentionCount(data) > 0`, show a compact `Needs review` card with count and action. No empty attention card when count is zero.
 
-- [ ] **Step 3: Add transaction shortcuts.**
+- [ ] Add phone-safe `Review` and `Merchants & Rules` shortcuts to Transactions via navigation callbacks from `FinanceActivity`.
 
-At the top of Transactions, add phone-safe buttons for `Review` and `Merchants & Rules`, using navigation callbacks passed from `FinanceActivity` rather than hardcoding activities.
-
-- [ ] **Step 4: Verify navigation and compile.**
-
-```bash
-gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
-```
-
-Expected: GREEN and no duplicate/nested scroll regression.
-
-- [ ] **Step 5: Commit.**
-
-```bash
-git add app/src/main/java/com/baylee/billnest/FinanceActivity.kt app/src/main/java/com/baylee/billnest/DashboardV4.kt app/src/main/java/com/baylee/billnest/Alpha19FinanceScreens.kt
-git commit -m "feat: surface smart review navigation"
-```
+- [ ] Compile/test and commit.
 
 ---
 
-## Task 10 — Full regression pass and Alpha30 release
+## Task 10 — Full regression + Alpha30 release
 
-**Files:**
-- Modify `app/build.gradle.kts`
-- Modify `.github/workflows/build-billnest-apk.yml`
-- Modify tests only if a real regression is found; do not weaken assertions to make CI green.
+**Files:** modify `app/build.gradle.kts`, `.github/workflows/build-billnest-apk.yml` only after all implementation tests are green.
 
-- [ ] **Step 1: Run the entire local test suite before version bump.**
+- [ ] Full pre-release tests:
 
 ```bash
 node --check cloudflare-worker/src/index.js
@@ -1061,70 +686,36 @@ node --test cloudflare-worker/test/*.test.js
 gradle :app:testDebugUnitTest --stacktrace
 ```
 
-Expected: all GREEN.
+- [ ] Explicitly preserve regressions: Alpha29 category normalization, split transactions, Dashboard current-vs-projected cash, manual transaction overrides across Plaid refresh, Plaid account/debt merge, tombstones, household sync, budgets excluding transfer/income, and paycheck calculator behavior.
 
-- [ ] **Step 2: Explicitly regression-check existing critical behavior.**
-
-Confirm tests cover and still pass:
-- Alpha29 category normalization/shared category catalog;
-- split transactions;
-- current-vs-projected Dashboard cash behavior;
-- Plaid transaction manual classification override preservation;
-- Plaid account/debt merge behavior;
-- transaction tombstones;
-- household sync generic kinds;
-- budget calculations excluding transfers/income;
-- paycheck calculator unchanged.
-
-- [ ] **Step 3: Bump Alpha30 only after tests are green.**
-
-`app/build.gradle.kts`:
+- [ ] Version bump:
 
 ```kotlin
 versionCode = 37
 versionName = "2.0.0-alpha30"
 ```
 
-`.github/workflows/build-billnest-apk.yml`:
+Workflow output:
 
-```yaml
-cp app/build/outputs/apk/debug/app-debug.apk BillNest-v2.0.0-alpha30-debug.apk
-```
-
-Artifact name:
-
-```yaml
+```text
+BillNest-v2.0.0-alpha30-debug.apk
 BillNest-v2.0.0-alpha30-debug-apk
 ```
 
-Do not alter the signing config or expected fingerprints.
+Do not change signing configuration.
 
-- [ ] **Step 4: Commit release metadata.**
+- [ ] Commit release metadata:
 
 ```bash
 git add app/build.gradle.kts .github/workflows/build-billnest-apk.yml
 git commit -m "release: package BillNest alpha30"
 ```
 
-- [ ] **Step 5: Verify exact branch HEAD before judging CI.**
+- [ ] Record exact release HEAD and accept only CI runs matching that SHA.
 
-Record the exact `billnest-apk-build` HEAD SHA. Only workflow runs whose `head_sha` equals that SHA qualify as Alpha30 verification.
+Build workflow must pass: Worker syntax, all Worker tests, Android SDK setup, all Android unit tests, stable keystore fingerprint, APK build, APK certificate verification, rename, artifact upload.
 
-- [ ] **Step 6: Require all GitHub Actions release gates on the exact HEAD.**
-
-The Build BillNest APK job must show success for:
-1. Validate Cloudflare Worker syntax
-2. Run Cloudflare Worker regression tests
-3. Accept Android licenses
-4. Install Android SDK
-5. Run Android unit tests
-6. Verify stable BillNest signing certificate
-7. Build debug APK
-8. Verify APK uses stable signing certificate
-9. Rename APK
-10. Upload artifact
-
-Required signing values remain:
+Expected fingerprints remain:
 
 ```text
 Keystore SHA-256:
@@ -1134,31 +725,26 @@ APK signer SHA-256:
 0aa471987e2d6b34add2ce811df537fe8dae203a7bb474bb90cb9606e303654c
 ```
 
-Also require the exact-HEAD `Verify BillNest Live Auth` workflow to conclude `success`.
+Also require exact-HEAD `Verify BillNest Live Auth` success.
 
-- [ ] **Step 7: Download and verify the built artifact before delivery.**
+- [ ] Download the exact `BillNest-v2.0.0-alpha30-debug-apk` artifact, extract to `/mnt/data/billnest-alpha30/`, verify the APK exists, compute SHA-256, and deliver that exact APK.
 
-Download the exact run artifact `BillNest-v2.0.0-alpha30-debug-apk`, extract it under `/mnt/data/billnest-alpha30/`, confirm the APK exists, compute SHA-256, and provide the user the sandbox link to that exact APK.
+- [ ] Alpha30 completion message must accurately state Stage A only. Stage B recurring price-change/missed-renewal and credit-card statement intelligence are next; Stages C–G remain unimplemented until their own plans execute.
 
-- [ ] **Step 8: Do not claim future stages are implemented.**
+## Completion Checklist
 
-Alpha30 completion language must say Stage A includes Review Inbox + Merchant Manager + smart rules/preview/sync. Stage B recurring price-change/missed-renewal and credit-card statement intelligence remain the next stage.
-
----
-
-## Stage A Completion Checklist
-
-- [ ] Raw Plaid merchant names remain authoritative and are not overwritten by new rename logic.
-- [ ] Merchant aliases resolve deterministically and preferred categories reuse the shared category catalog.
+- [ ] Raw Plaid names remain raw; BillNest display renames are separate metadata.
+- [ ] Merchant alias resolution is deterministic.
+- [ ] Merchant profiles support category/classification and optional bill/subscription linkage.
 - [ ] Smart rules support all approved Stage A match/action fields.
-- [ ] Rule conflicts have deterministic winners and previews show the winning rule.
-- [ ] Rule preview is non-mutating.
-- [ ] Explicit user transaction overrides beat automatic rules.
-- [ ] Review Inbox detects all eight Stage A review types and never auto-mutates from detection alone.
-- [ ] Review resolutions suppress unchanged issues and allow changed evidence to reappear.
-- [ ] Merchant profiles, smart rules, and review resolutions household-sync through existing generic sync infrastructure.
-- [ ] Legacy transaction rules still load/work and can be converted deliberately.
-- [ ] Transactions and Insights display BillNest effective merchant names while retaining raw bank names.
-- [ ] Dashboard/Transactions provide clear entry points to Review Inbox and Merchant Manager.
+- [ ] Conflicts have deterministic winners and preview shows the winner.
+- [ ] Preview is non-mutating.
+- [ ] Explicit transaction user overrides beat automation.
+- [ ] Review Inbox covers transaction, account, and debt attention cases and never auto-mutates from detection alone.
+- [ ] Resolution fingerprints suppress unchanged issues and changed evidence can return.
+- [ ] Profiles/rules/resolutions household-sync through the existing generic sync system.
+- [ ] Legacy rules still work and can be deliberately converted.
+- [ ] Transactions/Insights show effective merchant names without losing raw names.
+- [ ] Dashboard and Transactions expose clear Review/Merchant entry points.
 - [ ] No Stage B–G feature is falsely represented as finished.
-- [ ] Alpha30 exact HEAD passes all Worker/Android/signing/artifact/Live Auth gates.
+- [ ] Exact Alpha30 HEAD passes all Worker/Android/signing/artifact/Live Auth gates.
