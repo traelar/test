@@ -17,9 +17,8 @@ data class TransactionTombstone(
 )
 
 /**
- * Legacy rule application retained for existing callers. The newer smart-rule engine stores a
- * presentation rename in displayNameOverride so Plaid identity can stay authoritative, while this
- * compatibility path continues to expose the renamed name exactly as older screens/tests expect.
+ * Legacy rules now keep the authoritative bank-provided transaction name untouched. A rename is
+ * presentation metadata, matching the smart-rule/merchant-profile model used by Alpha30.
  */
 fun applyTransactionRules(
     transactions: List<FinanceTransaction>,
@@ -36,10 +35,9 @@ fun applyTransactionRules(
         )
         ?: return@map transaction
 
-    val rename = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() }
     transaction.copy(
-        name = rename ?: transaction.name,
-        displayNameOverride = rename ?: transaction.displayNameOverride,
+        displayNameOverride = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() }
+            ?: transaction.displayNameOverride,
         category = if (transaction.userClassificationOverride) {
             transaction.category
         } else {
