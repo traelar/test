@@ -31,6 +31,12 @@ fun IncomePageV2(
     val incomeTransactions = recentVisibleIncomeTransactions(data.transactions)
         .sortedByDescending { it.dateIso }
     val comparisons = remember(data) { paycheckComparisons(data) }
+    val allPostedIncome = remember(data.transactions) { visibleIncomeTransactions(data.transactions).filterNot { it.pending } }
+    val thisYear = LocalDate.now().year
+    val ytdIncome = allPostedIncome.filter { row ->
+        runCatching { LocalDate.parse(row.dateIso).year == thisYear }.getOrDefault(false)
+    }.sumOf { kotlin.math.abs(it.amount) }
+    val averageNetCheck = if (allPostedIncome.isEmpty()) 0.0 else allPostedIncome.map { kotlin.math.abs(it.amount) }.average()
     val detected = detectPaydayPatterns(incomeTransactions).filterNot { suggestion ->
         data.paydays.any { it.label.equals(suggestion.label, true) && it.frequency == suggestion.frequency }
     }
@@ -46,6 +52,37 @@ fun IncomePageV2(
                     "Showing the latest 30 days of deposits. Older transactions stay saved for history and budgeting.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+                border = BorderStroke(1.dp, BillNestColors.border)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Paycheck history", style = MaterialTheme.typography.titleMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("YTD income", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                            Text(incomeCurrency(ytdIncome), style = MaterialTheme.typography.titleLarge, color = BillNestColors.positive)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Average net deposit", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                            Text(if (averageNetCheck > 0.0) incomeCurrency(averageNetCheck) else "—", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    val nextCalculator = data.paydays.firstOrNull { it.payCalculator != null }?.payCalculator
+                    if (nextCalculator != null) {
+                        Text(
+                            "Current hours plan: " + nextCalculator.regularHours + " regular • " +
+                                nextCalculator.overtimeHours + " OT • " + nextCalculator.doubleTimeHours + " double-time",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
         }
 
