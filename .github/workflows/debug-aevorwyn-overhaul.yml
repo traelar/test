@@ -35,34 +35,20 @@ jobs:
 
       - name: Apply v0.2.6 production layers exactly
         run: |
-          cat \
-            .aevorwyn/mobile-point-tap.patch.part00 \
-            .aevorwyn/mobile-point-tap.patch.part01 \
-            .aevorwyn/mobile-point-tap.patch.part02 \
-            > mobile-point-tap.patch
+          cat .aevorwyn/mobile-point-tap.patch.part00 .aevorwyn/mobile-point-tap.patch.part01 .aevorwyn/mobile-point-tap.patch.part02 > mobile-point-tap.patch
           patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
           (cd aevorwyn && python3 tools/static_verify.py)
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
-          cat \
-            .aevorwyn/mobile-context-animation-green.patch.part00 \
-            .aevorwyn/mobile-context-animation-green.patch.part01 \
-            .aevorwyn/mobile-context-animation-green.patch.part02 \
-            > mobile-context-animation-green.patch
+          cat .aevorwyn/mobile-context-animation-green.patch.part00 .aevorwyn/mobile-context-animation-green.patch.part01 .aevorwyn/mobile-context-animation-green.patch.part02 > mobile-context-animation-green.patch
           patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
           patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
 
       - name: Apply overhaul candidate
         run: |
-          cat \
-            .aevorwyn/overhaul-green.patch.gz.b64.part00 \
-            .aevorwyn/overhaul-green.patch.gz.b64.part01 \
-            .aevorwyn/overhaul-green.patch.gz.b64.part02 \
-            .aevorwyn/overhaul-green.patch.gz.b64.part03 \
-            .aevorwyn/overhaul-green.patch.gz.b64.part04 \
-            > overhaul-green.patch.gz.b64
+          cat .aevorwyn/overhaul-green.patch.gz.b64.part00 .aevorwyn/overhaul-green.patch.gz.b64.part01 .aevorwyn/overhaul-green.patch.gz.b64.part02 .aevorwyn/overhaul-green.patch.gz.b64.part03 .aevorwyn/overhaul-green.patch.gz.b64.part04 > overhaul-green.patch.gz.b64
           test "$(wc -c < overhaul-green.patch.gz.b64)" = "22108"
           test "$(sha256sum overhaul-green.patch.gz.b64 | awk '{print $1}')" = "65d7bbe69071dd3cfd79ca3046ef9a90b5acafcc9e7a44f15acf5594c66e9524"
           base64 --decode overhaul-green.patch.gz.b64 > overhaul-green.patch.gz
@@ -71,17 +57,11 @@ jobs:
           test "$(sha256sum overhaul-green.patch | awk '{print $1}')" = "3e64eb70432925f99965a84bba23f22d33b9878c219cd91140088d64d3540f49"
           patch --batch --forward -p1 -d aevorwyn < overhaul-green.patch
 
-      - name: Print broken source sections
+      - name: Print UI typing context
         run: |
-          echo '===== skills_tab.gd 105-145 ====='
-          nl -ba aevorwyn/src/ui/skills_tab.gd | sed -n '105,145p'
-          echo '===== player_panel.gd 1-140 ====='
-          nl -ba aevorwyn/src/ui/player_panel.gd | sed -n '1,140p'
+          echo '===== skills_tab.gd ====='
+          nl -ba aevorwyn/src/ui/skills_tab.gd | sed -n '1,190p'
+          echo '===== inventory_tab.gd ====='
+          nl -ba aevorwyn/src/ui/inventory_tab.gd | sed -n '1,210p'
           echo '===== test_runner.gd ====='
-          nl -ba aevorwyn/tests/test_runner.gd | sed -n '1,140p'
-          echo '===== main_world.gd 25-65 ====='
-          nl -ba aevorwyn/src/game/main_world.gd | sed -n '25,65p'
-          echo '===== main_world.gd 460-495 ====='
-          nl -ba aevorwyn/src/game/main_world.gd | sed -n '460,495p'
-          echo '===== rigged_character_visual.gd 105-145 ====='
-          nl -ba aevorwyn/src/player/rigged_character_visual.gd | sed -n '105,145p'
+          nl -ba aevorwyn/tests/test_runner.gd | sed -n '1,100p'
