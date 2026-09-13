@@ -208,7 +208,7 @@ fun BillNestHomeV2(
     val scope = rememberCoroutineScope()
     val destinations = listOf(
         "Dashboard", "Accounts", "Transactions", "Bills", "Budgets", "Debt",
-        "Paycheck Plan", "Insights", "Savings / Goals", "Reserved Funds", "Subscriptions",
+        "Paycheck Plan", "Insights", "Net Worth", "Savings / Goals", "Reserved Funds", "Subscriptions",
         "Income", "Calendar", "Household", "Settings"
     )
     var destination by remember { mutableStateOf("Dashboard") }
@@ -298,6 +298,7 @@ fun BillNestHomeV2(
                 "Debt" -> DebtPageV4(data, vm, Modifier.padding(pad))
                 "Paycheck Plan" -> PaycheckPlanPageV4(data, vm, Modifier.padding(pad))
                 "Insights" -> InsightsPageV5(data, Modifier.padding(pad))
+                "Net Worth" -> NetWorthPageV25(data, Modifier.padding(pad))
                 "Savings / Goals" -> SavingsGoalsPage(data, vm, Modifier.padding(pad))
                 "Reserved Funds" -> ReservedFundsPage(data, vm, Modifier.padding(pad))
                 "Subscriptions" -> SubscriptionsPage(data, vm, Modifier.padding(pad))
