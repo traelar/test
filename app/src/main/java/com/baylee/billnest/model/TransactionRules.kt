@@ -32,7 +32,8 @@ fun applyTransactionRules(
         ?: return@map transaction
 
     transaction.copy(
-        name = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() } ?: transaction.name,
+        displayNameOverride = matching.renameTo?.trim()?.takeIf { it.isNotEmpty() }
+            ?: transaction.displayNameOverride,
         category = if (transaction.userClassificationOverride) {
             transaction.category
         } else {
