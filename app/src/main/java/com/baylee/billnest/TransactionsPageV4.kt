@@ -3,6 +3,7 @@ package com.baylee.billnest
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,7 +65,7 @@ private fun transactionV4Date(value: String): String = runCatching {
 }.getOrDefault(value)
 
 @Composable
-private fun TransactionV4Card(content: @Composable Column.() -> Unit) {
+private fun TransactionV4Card(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
