@@ -47,6 +47,16 @@ fun applyTransactionRules(
     )
 }
 
+fun TransactionRule.toSmartRule(): SmartTransactionRule = SmartTransactionRule(
+    name = "Legacy: $merchantContains",
+    match = SmartRuleMatch(rawNameContains = merchantContains),
+    action = SmartRuleAction(
+        displayName = renameTo,
+        category = category,
+        excludeFromSpending = excludeFromSpending
+    )
+)
+
 fun transactionTombstoneIds(data: AppData): Set<String> = buildSet {
     addAll(data.deletedPlaidTransactionIds)
     addAll(data.transactionTombstones.map { it.transactionId })
