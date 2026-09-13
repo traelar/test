@@ -86,7 +86,8 @@ fun mergePlaidTransactions(
                 income = saved.income,
                 transferFromAccountId = saved.transferFromAccountId,
                 transferToAccountId = saved.transferToAccountId,
-                userClassificationOverride = true
+                userClassificationOverride = true,
+                splits = saved.splits
             )
         } else {
             fresh
