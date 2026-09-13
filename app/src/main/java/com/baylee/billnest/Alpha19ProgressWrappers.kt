@@ -39,6 +39,12 @@ fun DebtPageV4(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) 
         }
     }
     Column(modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(onClick = { vm.requestAddDebt() }) { Text("+ Add debt") }
+        }
         if (splits.isNotEmpty()) {
             val totalPayments = splits.sumOf { it.second.paymentAmount }
             val totalPrincipal = splits.sumOf { it.second.estimatedPrincipal }
