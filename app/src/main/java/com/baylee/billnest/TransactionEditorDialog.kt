@@ -152,15 +152,17 @@ fun TransactionEditorDialog(
 
                 when (classification) {
                     TransactionClassification.SPENDING -> {
-                        OutlinedTextField(
+                        CategoryPickerField(
+                            data = data,
                             value = category,
                             onValueChange = { category = it },
-                            label = { Text("Category for this transaction") },
-                            supportingText = {
-                                Text("This changes only this purchase. Use a transaction rule only when you want matching merchant charges changed automatically.")
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            label = "Category for this transaction",
+                            extraOptions = splits.map { it.category }
+                        )
+                        Text(
+                            "This changes only this purchase. Use a transaction rule only when you want matching merchant charges changed automatically.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
                         )
                         Row(
                             Modifier.fillMaxWidth(),
@@ -178,7 +180,7 @@ fun TransactionEditorDialog(
                                     if (enabled && splits.size < 2) {
                                         val half = expectedSplitTotal / 2.0
                                         splits = listOf(
-                                            TransactionSplit(category = category.ifBlank { "Other" }, amount = half),
+                                            TransactionSplit(category = canonicalCategoryName(data, category.ifBlank { "Other" }), amount = half),
                                             TransactionSplit(category = "Other", amount = expectedSplitTotal - half)
                                         )
                                     }
@@ -189,14 +191,14 @@ fun TransactionEditorDialog(
                             splits.forEachIndexed { index, split ->
                                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                                     Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        OutlinedTextField(
+                                        CategoryPickerField(
+                                            data = data,
                                             value = split.category,
                                             onValueChange = { value ->
                                                 splits = splits.toMutableList().also { rows -> rows[index] = split.copy(category = value) }
                                             },
-                                            label = { Text("Split category") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            singleLine = true
+                                            label = "Split category",
+                                            extraOptions = listOf(category) + splits.map { it.category }
                                         )
                                         OutlinedTextField(
                                             value = if (split.amount == 0.0) "" else split.amount.toString(),
@@ -272,6 +274,10 @@ fun TransactionEditorDialog(
             Button(
                 enabled = if (isPlaid) plaidCanSave else canSave,
                 onClick = {
+                    val canonicalCategory = canonicalCategoryName(data, category.ifBlank { "Other" })
+                    val canonicalSplits = splits.map { split ->
+                        split.copy(category = canonicalCategoryName(data, split.category))
+                    }
                     val base = if (existing != null) {
                         if (isPlaid) existing else existing.copy(
                             name = name.ifBlank { existing.name },
@@ -284,7 +290,7 @@ fun TransactionEditorDialog(
                             name = name.ifBlank { "Transaction" },
                             amount = parsedAmount ?: 0.0,
                             dateIso = dateIso,
-                            category = category.ifBlank { "Other" },
+                            category = canonicalCategory,
                             accountId = if (classification == TransactionClassification.TRANSFER) fromAccountId.ifBlank { null } else null,
                             source = TransactionSource.MANUAL
                         )
@@ -294,11 +300,11 @@ fun TransactionEditorDialog(
                         classification = classification,
                         fromAccountId = fromAccountId.ifBlank { null },
                         toAccountId = toAccountId.ifBlank { null },
-                        spendingCategory = category.ifBlank { "Other" }
+                        spendingCategory = canonicalCategory
                     )
                     onSave(
                         classified.copy(
-                            splits = if (classification == TransactionClassification.SPENDING && splitMode) splits else null
+                            splits = if (classification == TransactionClassification.SPENDING && splitMode) canonicalSplits else null
                         )
                     )
                 }
