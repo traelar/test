@@ -30,6 +30,7 @@ fun IncomePageV2(
     var deletingTransaction by remember { mutableStateOf<FinanceTransaction?>(null) }
     val incomeTransactions = recentVisibleIncomeTransactions(data.transactions)
         .sortedByDescending { it.dateIso }
+    val comparisons = remember(data) { paycheckComparisons(data) }
     val detected = detectPaydayPatterns(incomeTransactions).filterNot { suggestion ->
         data.paydays.any { it.label.equals(suggestion.label, true) && it.frequency == suggestion.frequency }
     }
@@ -139,6 +140,29 @@ fun IncomePageV2(
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
+                    }
+                }
+            }
+        }
+
+        if (comparisons.isNotEmpty()) {
+            item {
+                Text("Expected vs actual paycheck", style = MaterialTheme.typography.titleLarge)
+            }
+            items(comparisons.take(4), key = { "compare-" + it.label + "-" + it.actualDateIso }) { row ->
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = BillNestColors.card),
+                    border = BorderStroke(1.dp, BillNestColors.border)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(row.label, style = MaterialTheme.typography.titleMedium)
+                        Text("Expected " + incomeCurrency(row.expected) + " • Actual " + incomeCurrency(row.actual))
+                        val diff = row.difference
+                        Text(
+                            (if (diff >= 0) "+" else "-") + incomeCurrency(kotlin.math.abs(diff)) + " vs estimate",
+                            color = if (diff >= 0) BillNestColors.positive else BillNestColors.warning
+                        )
                     }
                 }
             }
