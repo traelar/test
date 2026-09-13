@@ -160,6 +160,9 @@ class HouseholdSyncRepository(
             data.savingsGoals.forEach { add(SyncMapper.goalMutation(it)) }
             data.reservedFunds.forEach { add(SyncMapper.reservedFundMutation(it)) }
             data.subscriptionPreferences.forEach { add(SyncMapper.subscriptionPreferenceMutation(it)) }
+            data.merchantProfiles.forEach { add(SyncMapper.merchantProfileMutation(it)) }
+            data.smartTransactionRules.forEach { add(SyncMapper.smartTransactionRuleMutation(it)) }
+            data.reviewResolutions.forEach { add(SyncMapper.reviewResolutionMutation(it)) }
         }
         extraDrafts.forEach { draft ->
             if (syncDb.currentVersion(draft.kind, draft.recordId) == 0) {
@@ -191,7 +194,8 @@ class HouseholdSyncRepository(
             }
             "transaction", "transaction_rule", "transaction_tombstone", "financial_snapshot",
             "budget", "budget_override", "budget_adjustment", "debt", "savings_goal",
-            "reserved_fund", "subscription_preference" -> repo.applyRemoteFinance(
+            "reserved_fund", "subscription_preference", "merchant_profile",
+            "smart_transaction_rule", "review_resolution" -> repo.applyRemoteFinance(
                 kind = change.kind,
                 payload = if (change.deleted) null else change.payloadJson,
                 deletedId = if (change.deleted) change.recordId else null
