@@ -1,0 +1,77 @@
+name: Test Aevorwyn Overhaul RED
+
+on:
+  push:
+    branches: [ aevorwyn-mobile-build ]
+    paths:
+      - 'aevorwyn-overhaul-red-trigger.txt'
+      - '.aevorwyn/overhaul-red.patch'
+      - '.github/workflows/test-aevorwyn-overhaul-red.yml'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact v0.2.6 source
+        run: |
+          cat \
+            .aevorwyn/source.b64.part00 \
+            .aevorwyn/source.b64.part01 \
+            .aevorwyn/source.b64.part02 \
+            .aevorwyn/source.b64.part030 \
+            .aevorwyn/source.b64.part031 \
+            .aevorwyn/source.b64.part032 \
+            .aevorwyn/source.b64.part04 \
+            .aevorwyn/source.b64.part05 \
+            .aevorwyn/source.b64.part06 \
+            | base64 --decode > aevorwyn-source.zip
+          test "$(sha256sum aevorwyn-source.zip | awk '{print $1}')" = "5e49cf4075e0858136729defb6a30ecaefccaa81925b962bc67c839a64441d70"
+          rm -rf aevorwyn
+          mkdir -p aevorwyn
+          unzip -q aevorwyn-source.zip -d aevorwyn
+          rm -f aevorwyn/.git
+
+      - name: Apply current v0.2.6 production layers
+        run: |
+          cat \
+            .aevorwyn/mobile-point-tap.patch.part00 \
+            .aevorwyn/mobile-point-tap.patch.part01 \
+            .aevorwyn/mobile-point-tap.patch.part02 \
+            > mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-point-tap.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/visual-green.patch
+          (cd aevorwyn && python3 tools/static_verify.py)
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-context-animation-red.patch
+          cat \
+            .aevorwyn/mobile-context-animation-green.patch.part00 \
+            .aevorwyn/mobile-context-animation-green.patch.part01 \
+            .aevorwyn/mobile-context-animation-green.patch.part02 \
+            > mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < mobile-context-animation-green.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-red.patch
+          patch --batch --forward -p1 -d aevorwyn < .aevorwyn/mobile-ground-hold-green.patch
+
+      - name: Apply new overhaul tests only
+        run: patch --batch --forward -p1 -d aevorwyn < .aevorwyn/overhaul-red.patch
+
+      - name: Download Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 \
+            'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip' \
+            -o godot.zip
+          unzip -q godot.zip -d godot-bin
+          chmod +x godot-bin/Godot_v4.7.2-stable_linux.x86_64
+          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Import project
+        working-directory: aevorwyn
+        run: Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path . --quit
+
+      - name: Run tests expecting overhaul failures
+        working-directory: aevorwyn
+        run: timeout 30s Godot_v4.7.2-stable_linux.x86_64 --headless --path . -s tests/test_runner.gd
