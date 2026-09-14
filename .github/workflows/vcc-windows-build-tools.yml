@@ -3,6 +3,7 @@ name: VCC Windows Build Tools
 on:
   push:
     branches:
+      - main
       - vcc-windows-build-tools
   workflow_dispatch:
 
