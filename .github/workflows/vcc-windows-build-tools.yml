@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - vcc-windows-build-tools
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
