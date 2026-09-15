@@ -282,11 +282,7 @@ fun BillNestHomeV2(
             }
         ) { pad ->
             when (destination) {
-                "Dashboard" -> DashboardV5(
-                    data = data,
-                    modifier = Modifier.padding(pad),
-                    onOpenReviewInbox = { navigateTo("Review Inbox") }
-                )
+                "Dashboard" -> DashboardV4(data, Modifier.padding(pad))
                 "Bills" -> BillsPage(data, vm, Modifier.padding(pad), onEdit = { editingBill = it })
                 "Accounts" -> AccountsPageV3(
                     data = data,
