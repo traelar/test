@@ -42,6 +42,7 @@ data class Bill(
     val notes: String = "",
     val variableAmount: Boolean = false,
     val accountId: String? = null,
+    val sourceDebtId: String? = null,
     val paidDates: List<String> = emptyList()
 ) {
     fun dueDate(): LocalDate = LocalDate.parse(dueDateIso)
