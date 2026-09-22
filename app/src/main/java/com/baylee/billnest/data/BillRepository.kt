@@ -12,7 +12,7 @@ class BillRepository(
     private val onSyncNeeded: (() -> Unit)? = null
 ) {
     private val store = EncryptedStore(context)
-    private val initialData = captureFinancialSnapshot(migrateLegacy(store.load())).also { store.save(it) }
+    private val initialData = captureFinancialSnapshot(reconcileDebtBills(migrateLegacy(store.load()))).also { store.save(it) }
     private val _data = MutableStateFlow(initialData)
     val data: StateFlow<AppData> = _data
 
@@ -110,11 +110,27 @@ class BillRepository(
     }
 
     fun updateBill(bill: Bill) {
-        update { data -> data.copy(bills = data.bills.map { if (it.id == bill.id) bill else it }) }
+        update { data ->
+            val debts = bill.sourceDebtId?.let { debtId ->
+                val due = runCatching { bill.dueDate() }.getOrNull()
+                if (due == null) data.debts else data.debts.map { debt ->
+                    if (debt.id == debtId) debt.copy(dueDateIso = due.toString(), dueDay = due.dayOfMonth) else debt
+                }
+            } ?: data.debts
+            data.copy(
+                bills = data.bills.map { if (it.id == bill.id) bill else it },
+                debts = debts
+            )
+        }
         queue(SyncMapper.billMutation(bill))
+        bill.sourceDebtId?.let { debtId ->
+            _data.value.debts.firstOrNull { it.id == debtId }?.let { queue(SyncMapper.debtMutation(it)) }
+        }
     }
 
     fun deleteBill(id: String) {
+        val existing = _data.value.bills.firstOrNull { it.id == id }
+        if (existing?.sourceDebtId != null) return
         update { it.copy(bills = it.bills.filterNot { bill -> bill.id == id }) }
         queueDelete("bill", id)
     }
@@ -326,16 +342,51 @@ class BillRepository(
     }
 
     fun saveDebt(value: Debt) {
-        val removedDuplicateIds = _data.value.debts.filter { it.id != value.id && !value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId }.map { it.id }
-        update { data -> data.copy(debts = upsertDebtRecord(data.debts, value)) }
+        val explicitDue = value.dueDateIso
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val normalized = value.copy(
+            dueDateIso = explicitDue?.toString(),
+            dueDay = explicitDue?.dayOfMonth ?: value.dueDay.coerceIn(0, 31)
+        )
+
+        val before = _data.value
+        val removedDuplicateIds = before.debts
+            .filter {
+                it.id != normalized.id &&
+                    !normalized.plaidAccountId.isNullOrBlank() &&
+                    it.plaidAccountId == normalized.plaidAccountId
+            }
+            .map { it.id }
+        val affectedDebtIds = (removedDuplicateIds + normalized.id).toSet()
+        val previousLinkedBills = before.bills.filter { it.sourceDebtId in affectedDebtIds }
+
+        update { data ->
+            reconcileDebtBills(
+                data.copy(debts = upsertDebtRecord(data.debts, normalized))
+            )
+        }
+
         removedDuplicateIds.forEach { queueDelete("debt", it) }
-        queue(SyncMapper.debtMutation(value))
+        previousLinkedBills
+            .filter { old -> _data.value.bills.none { it.id == old.id } }
+            .forEach { queueDelete("bill", it.id) }
+
+        queue(SyncMapper.debtMutation(normalized))
+        _data.value.bills
+            .firstOrNull { it.sourceDebtId == normalized.id }
+            ?.let { queue(SyncMapper.billMutation(it)) }
         captureTodaySnapshot()
     }
 
     fun deleteDebt(id: String) {
-        update { it.copy(debts = it.debts.filterNot { row -> row.id == id }) }
+        val linkedBill = _data.value.bills.firstOrNull { it.sourceDebtId == id }
+        update { data ->
+            reconcileDebtBills(data.copy(debts = data.debts.filterNot { row -> row.id == id }))
+        }
         queueDelete("debt", id)
+        linkedBill?.let { queueDelete("bill", it.id) }
         captureTodaySnapshot()
     }
 
@@ -379,7 +430,15 @@ class BillRepository(
         val before = _data.value
         val merged = mergePlaidAccounts(before.accounts, incoming, retainMissing)
         val debts = mergePlaidCreditDebts(before.debts, merged)
-        update { it.copy(accounts = merged, debts = debts, plaidConnected = merged.any { account -> account.source == AccountSource.PLAID }) }
+        update {
+            reconcileDebtBills(
+                it.copy(
+                    accounts = merged,
+                    debts = debts,
+                    plaidConnected = merged.any { account -> account.source == AccountSource.PLAID }
+                )
+            )
+        }
         debts.filter { debt -> before.debts.firstOrNull { it.id == debt.id } != debt }.forEach { queue(SyncMapper.debtMutation(it)) }
         captureTodaySnapshot()
     }
@@ -400,29 +459,72 @@ class BillRepository(
     }
 
     fun markPaid(id: String) {
+        val linkedDebtId = _data.value.bills.firstOrNull { it.id == id }?.sourceDebtId
         update { data ->
             val paidBill = data.bills.firstOrNull { it.id == id }
-            data.copy(
-                bills = data.bills.map { bill ->
-                    if (bill.id != id) bill else {
-                        val due = bill.dueDate()
-                        val paid = (bill.paidDates + due.toString()).distinct()
-                        if (bill.frequency == Frequency.ONE_TIME) bill.copy(paidDates = paid)
-                        else bill.copy(dueDateIso = advance(due, bill.frequency).toString(), paidDates = paid)
+            val bills = data.bills.map { bill ->
+                if (bill.id != id) bill else {
+                    val due = bill.dueDate()
+                    val paid = (bill.paidDates + due.toString()).distinct()
+                    if (bill.frequency == Frequency.ONE_TIME) {
+                        bill.copy(paidDates = paid)
+                    } else {
+                        bill.copy(
+                            dueDateIso = advance(due, bill.frequency).toString(),
+                            paidDates = paid
+                        )
                     }
-                },
+                }
+            }
+            val updatedLinkedBill = linkedDebtId?.let { debtId ->
+                bills.firstOrNull { it.sourceDebtId == debtId }
+            }
+            val debts = if (linkedDebtId != null && updatedLinkedBill != null) {
+                val nextDue = runCatching { updatedLinkedBill.dueDate() }.getOrNull()
+                if (nextDue == null) data.debts else data.debts.map { debt ->
+                    if (debt.id == linkedDebtId) {
+                        debt.copy(dueDateIso = nextDue.toString(), dueDay = nextDue.dayOfMonth)
+                    } else {
+                        debt
+                    }
+                }
+            } else {
+                data.debts
+            }
+
+            data.copy(
+                bills = bills,
+                debts = debts,
                 reservedFunds = data.reservedFunds.map { fund ->
-                    if (fund.billId == id && fund.consumeWhenBillPaid && paidBill != null) fund.copy(amount = (fund.amount - paidBill.amount).coerceAtLeast(0.0)) else fund
+                    if (fund.billId == id && fund.consumeWhenBillPaid && paidBill != null) {
+                        fund.copy(amount = (fund.amount - paidBill.amount).coerceAtLeast(0.0))
+                    } else {
+                        fund
+                    }
                 }
             )
         }
         _data.value.bills.firstOrNull { it.id == id }?.let { queue(SyncMapper.billMutation(it)) }
+        linkedDebtId?.let { debtId ->
+            _data.value.debts.firstOrNull { it.id == debtId }?.let { queue(SyncMapper.debtMutation(it)) }
+        }
     }
 
     fun applyRemoteBill(bill: Bill?, deletedId: String?) {
         update { data ->
             when {
-                bill != null -> data.copy(bills = upsert(data.bills, bill.id, bill) { it.id })
+                bill != null -> {
+                    val debts = bill.sourceDebtId?.let { debtId ->
+                        val due = runCatching { bill.dueDate() }.getOrNull()
+                        if (due == null) data.debts else data.debts.map { debt ->
+                            if (debt.id == debtId) debt.copy(dueDateIso = due.toString(), dueDay = due.dayOfMonth) else debt
+                        }
+                    } ?: data.debts
+                    data.copy(
+                        bills = upsert(data.bills, bill.id, bill) { it.id },
+                        debts = debts
+                    )
+                }
                 !deletedId.isNullOrBlank() -> data.copy(bills = data.bills.filterNot { it.id == deletedId })
                 else -> data
             }
@@ -494,7 +596,11 @@ class BillRepository(
                 "budget" -> data.copy(budgets = remoteList(data.budgets, payload?.let(SyncMapper::decodeBudget), deletedId) { it.id })
                 "budget_override" -> data.copy(budgetTransactionOverrides = remoteList(data.budgetTransactionOverrides, payload?.let(SyncMapper::decodeBudgetOverride), deletedId) { it.id })
                 "budget_adjustment" -> data.copy(budgetAdjustments = remoteList(data.budgetAdjustments, payload?.let(SyncMapper::decodeBudgetAdjustment), deletedId) { it.id })
-                "debt" -> data.copy(debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id })
+                "debt" -> reconcileDebtBills(
+                    data.copy(
+                        debts = remoteList(data.debts, payload?.let(SyncMapper::decodeDebt), deletedId) { it.id }
+                    )
+                )
                 "savings_goal" -> data.copy(savingsGoals = remoteList(data.savingsGoals, payload?.let(SyncMapper::decodeGoal), deletedId) { it.id })
                 "reserved_fund" -> data.copy(reservedFunds = remoteList(data.reservedFunds, payload?.let(SyncMapper::decodeReservedFund), deletedId) { it.id })
                 "subscription_preference" -> data.copy(subscriptionPreferences = remoteList(data.subscriptionPreferences, payload?.let(SyncMapper::decodeSubscriptionPreference), deletedId) { it.merchantKey })
