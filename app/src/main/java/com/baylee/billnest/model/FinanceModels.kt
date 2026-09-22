@@ -340,7 +340,8 @@ data class Debt(
     val balance: Double,
     val apr: Double = 0.0,
     val minimumPayment: Double = 0.0,
-    val dueDay: Int = 1,
+    val dueDay: Int = 0,
+    val dueDateIso: String? = null,
     val creditLimit: Double = 0.0,
     val plaidAccountId: String? = null
 )
@@ -365,10 +366,67 @@ fun mergePlaidCreditDebts(existing: List<Debt>, accounts: List<Account>): List<D
 fun upsertDebtRecord(existing: List<Debt>, value: Debt): List<Debt> = existing
     .filterNot { it.id == value.id || (!value.plaidAccountId.isNullOrBlank() && it.plaidAccountId == value.plaidAccountId) } + value
 
-fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate {
-    fun inMonth(month: java.time.YearMonth): LocalDate = month.atDay(debt.dueDay.coerceIn(1, month.lengthOfMonth()))
+fun hasDebtDueDate(debt: Debt): Boolean =
+    !debt.dueDateIso.isNullOrBlank() || debt.dueDay in 1..31
+
+fun nextDebtDueDateOrNull(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate? {
+    debt.dueDateIso?.takeIf { it.isNotBlank() }?.let { raw ->
+        runCatching { LocalDate.parse(raw) }.getOrNull()?.let { return it }
+    }
+    if (debt.dueDay !in 1..31) return null
+
+    fun inMonth(month: java.time.YearMonth): LocalDate =
+        month.atDay(debt.dueDay.coerceIn(1, month.lengthOfMonth()))
+
     val thisMonth = inMonth(java.time.YearMonth.from(today))
-    return if (thisMonth.isBefore(today)) inMonth(java.time.YearMonth.from(today).plusMonths(1)) else thisMonth
+    return if (thisMonth.isBefore(today)) {
+        inMonth(java.time.YearMonth.from(today).plusMonths(1))
+    } else {
+        thisMonth
+    }
+}
+
+fun nextDebtDueDate(debt: Debt, today: LocalDate = LocalDate.now()): LocalDate =
+    nextDebtDueDateOrNull(debt, today) ?: today
+
+fun debtBillId(debtId: String): String = "debt-payment:$debtId"
+
+fun debtBillCategory(debt: Debt): String = when (debt.type) {
+    DebtType.CREDIT_CARD -> "Credit Card"
+    DebtType.MORTGAGE -> "Housing"
+    DebtType.LOAN, DebtType.OTHER -> "Other"
+}
+
+fun linkedDebtBill(debt: Debt, existing: Bill? = null, today: LocalDate = LocalDate.now()): Bill? {
+    val due = nextDebtDueDateOrNull(debt, today) ?: return null
+    val base = existing ?: Bill(
+        id = debtBillId(debt.id),
+        name = debt.name,
+        amount = debt.minimumPayment.coerceAtLeast(0.0),
+        dueDateIso = due.toString(),
+        frequency = Frequency.MONTHLY,
+        category = debtBillCategory(debt),
+        sourceDebtId = debt.id
+    )
+    return base.copy(
+        name = debt.name,
+        amount = debt.minimumPayment.coerceAtLeast(0.0),
+        dueDateIso = due.toString(),
+        frequency = Frequency.MONTHLY,
+        category = debtBillCategory(debt),
+        sourceDebtId = debt.id
+    )
+}
+
+fun reconcileDebtBills(data: AppData, today: LocalDate = LocalDate.now()): AppData {
+    val existingByDebt = data.bills
+        .mapNotNull { bill -> bill.sourceDebtId?.let { it to bill } }
+        .toMap()
+    val linked = data.debts.mapNotNull { debt ->
+        linkedDebtBill(debt, existingByDebt[debt.id], today)
+    }
+    val manualBills = data.bills.filter { it.sourceDebtId == null }
+    return data.copy(bills = manualBills + linked)
 }
 
 data class SavingsGoal(
