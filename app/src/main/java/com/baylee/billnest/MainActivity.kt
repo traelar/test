@@ -468,14 +468,30 @@ fun BillRow(b: Bill, vm: MainViewModel, onEdit: (Bill) -> Unit, overdue: Boolean
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(b.name, style = MaterialTheme.typography.titleMedium)
             Text(currency(b.amount) + " • " + b.category + if (b.variableAmount) " • Variable" else "")
+            if (b.sourceDebtId != null) {
+                Text(
+                    "Debt payment",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
             Text("Due " + prettyDate(b.dueDate()) + if (b.autopay) " • Autopay" else "")
             account?.let { Text("From: $it", style = MaterialTheme.typography.bodySmall) }
             if (overdue) Text("OVERDUE", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
             if (b.notes.isNotBlank()) Text(b.notes, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { vm.paid(b.id) }) { Text("Paid") }
-                TextButton(onClick = { onEdit(b) }) { Text("Edit") }
-                TextButton(onClick = { vm.delete(b.id) }) { Text("Delete") }
+                if (b.sourceDebtId == null) {
+                    TextButton(onClick = { onEdit(b) }) { Text("Edit") }
+                    TextButton(onClick = { vm.delete(b.id) }) { Text("Delete") }
+                } else {
+                    Text(
+                        "Edit from Debt",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
