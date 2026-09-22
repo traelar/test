@@ -177,7 +177,12 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
         }
         if (data.debts.isEmpty()) item { EmptyFinanceState("No debts yet. Add a credit card, loan, mortgage, or other debt.") }
         items(data.debts, key = { it.id }) { row ->
-            val due = nextDebtDueDate(row).format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+            val linkedBill = data.bills.firstOrNull { it.sourceDebtId == row.id }
+            val dueDate = linkedBill?.let { runCatching { it.dueDate() }.getOrNull() } ?: nextDebtDueDateOrNull(row)
+            val due = dueDate?.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+            val lastPaid = linkedBill?.paidDates
+                ?.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+                ?.maxOrNull()
             val rowUtil = if (row.type == DebtType.CREDIT_CARD && row.creditLimit > 0) (row.balance / row.creditLimit).coerceIn(0.0, 1.0).toFloat() else null
             PremiumFinanceCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -189,14 +194,38 @@ fun DebtPage(data: AppData, vm: MainViewModel, modifier: Modifier = Modifier) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FinanceTag("${row.apr}% APR", BillNestColors.warning)
-                    FinanceTag("Due $due", BillNestColors.info)
+                    if (due != null) {
+                        FinanceTag("Due $due", BillNestColors.info)
+                        if (dueDate?.isBefore(LocalDate.now()) == true) {
+                            FinanceTag("Overdue", BillNestColors.danger)
+                        }
+                    } else {
+                        FinanceTag("No due date", MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Text("Minimum ${currencyV2(row.minimumPayment)} / month", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (linkedBill != null) {
+                    Text(
+                        "Linked to Bills • ${currencyV2(linkedBill.amount)} monthly payment",
+                        color = BillNestColors.info,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    lastPaid?.let {
+                        Text(
+                            "Last marked paid ${it.format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy"))}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
                 rowUtil?.let {
                     FinanceProgress(it, if (it >= .5f) BillNestColors.warning else BillNestColors.accent)
                     Text("${(it * 100).toInt()}% of ${currencyV2(row.creditLimit)} limit", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    linkedBill?.let { bill ->
+                        TextButton({ vm.paid(bill.id) }) { Text("Mark payment paid") }
+                    }
                     TextButton({ editing = row }) { Text("Edit") }
                     TextButton({ vm.deleteDebt(row.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
@@ -902,7 +931,10 @@ private fun DebtEditorDialog(data: AppData, existing: Debt?, onDismiss: () -> Un
     var apr by remember(existing?.id) { mutableStateOf(existing?.apr?.toString().orEmpty()) }
     var minimum by remember(existing?.id) { mutableStateOf(existing?.minimumPayment?.toString().orEmpty()) }
     var creditLimit by remember(existing?.id) { mutableStateOf(existing?.creditLimit?.takeIf { it > 0 }?.toString().orEmpty()) }
-    var dueDate by remember(existing?.id) { mutableStateOf(existing?.let { nextDebtDueDate(it).toString() } ?: LocalDate.now().plusDays(7).toString()) }
+    var hasDueDate by remember(existing?.id) { mutableStateOf(existing?.let { hasDebtDueDate(it) } ?: false) }
+    var dueDate by remember(existing?.id) {
+        mutableStateOf(existing?.let { nextDebtDueDateOrNull(it)?.toString() }.orEmpty())
+    }
     var type by remember(existing?.id) { mutableStateOf(existing?.type ?: DebtType.CREDIT_CARD) }
     var plaidAccountId by remember(existing?.id) { mutableStateOf(existing?.plaidAccountId.orEmpty()) }
     var expanded by remember { mutableStateOf(false) }
@@ -927,12 +959,55 @@ private fun DebtEditorDialog(data: AppData, existing: Debt?, onDismiss: () -> Un
                     }) }
                 }
             }
-            DatePickerButton("Next due date", dueDate) { dueDate = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = hasDueDate,
+                    onCheckedChange = { checked ->
+                        hasDueDate = checked
+                        if (checked && dueDate.isBlank()) dueDate = LocalDate.now().plusDays(7).toString()
+                    }
+                )
+                Text("Track this monthly payment in Bills")
+            }
+            if (hasDueDate) {
+                DatePickerButton(
+                    "Next due date",
+                    dueDate.ifBlank { LocalDate.now().plusDays(7).toString() }
+                ) { dueDate = it }
+                Text(
+                    "BillNest will keep a linked monthly bill in sync with this debt.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         } },
         confirmButton = { Button(onClick = {
             balance.toDoubleOrNull()?.let { parsedBalance ->
-                val selectedDueDate = runCatching { LocalDate.parse(dueDate) }.getOrDefault(LocalDate.now().plusDays(7))
-                onSave(Debt(id = existing?.id ?: java.util.UUID.randomUUID().toString(), name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } }, type = type, balance = parsedBalance.coerceAtLeast(0.0), apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0), dueDay = selectedDueDate.dayOfMonth, creditLimit = if (type == DebtType.CREDIT_CARD) (creditLimit.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0, plaidAccountId = plaidAccountId.ifBlank { null }))
+                val selectedDueDate = if (hasDueDate) {
+                    runCatching {
+                        LocalDate.parse(dueDate.ifBlank { LocalDate.now().plusDays(7).toString() })
+                    }.getOrDefault(LocalDate.now().plusDays(7))
+                } else {
+                    null
+                }
+                onSave(
+                    Debt(
+                        id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                        name = name.ifBlank { type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() } },
+                        type = type,
+                        balance = parsedBalance.coerceAtLeast(0.0),
+                        apr = (apr.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0),
+                        minimumPayment = (minimum.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0),
+                        dueDay = selectedDueDate?.dayOfMonth ?: 0,
+                        dueDateIso = selectedDueDate?.toString(),
+                        creditLimit = if (type == DebtType.CREDIT_CARD) {
+                            (creditLimit.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+                        } else {
+                            0.0
+                        },
+                        plaidAccountId = plaidAccountId.ifBlank { null }
+                    )
+                )
             }
         }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } }
